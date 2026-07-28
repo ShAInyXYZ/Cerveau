@@ -1,0 +1,26 @@
+{
+  "name": "cerveau-panel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "svelte": "^5.56.7",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "@xyflow/svelte": "^1.6.2",
+    "bits-ui": "^2.18.1",
+    "highlight.js": "^11.11.1",
+    "lucide-svelte": "^1.0.1",
+    "marked": "^18.0.7",
+    "marked-footnote": "^1.4.0"
+  }
+}

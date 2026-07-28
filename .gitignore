@@ -1,0 +1,81 @@
+# ── internal docs ─────────────────────────────────────────────────────────
+# Working notes, architecture boards, briefs — for us, not for consumers.
+docs/
+
+# ── dependencies ──────────────────────────────────────────────────────────
+node_modules/
+panel/node_modules/
+arch-viewer/node_modules/
+
+# ── build output ──────────────────────────────────────────────────────────
+# The embedded panel bundle is GENERATED (vite -> internal/panel/dist, then
+# go:embed). Regenerate with `cd panel && npm run build`.
+internal/panel/dist/
+arch-viewer/dist/
+.vite/
+**/.vite/
+
+# compiled binaries
+crv
+crvcli
+/cerveau
+*.exe
+*.so
+*.dylib
+
+# go
+*.test
+*.out
+vendor/
+
+# ── secrets & local config ────────────────────────────────────────────────
+# Runtime config (contains the generated Typesense API key) normally lives at
+# ~/.config/cerveau/config.json — outside the repo. These patterns are a
+# safety net in case one is ever created here.
+.env
+.env.*
+!.env.example
+config.json
+!package.json
+!package-lock.json
+!tsconfig*.json
+!**/svelte.config.json
+*.pem
+*.key
+!panel/src/**/*.key
+credentials*
+secrets*
+
+# ── runtime data (never belongs in the repo) ──────────────────────────────
+# Sessions, memories, code graph and model weights live under ~/.crv/
+.crv/
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+typesense-data/
+models/
+*.gguf
+
+# ── logs & temp ───────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+*.bak.*
+tmp/
+.cache/
+
+# ── python sidecar ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ── editor / OS ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*~
+.vscode/*
+!.vscode/extensions.json
