@@ -28,7 +28,11 @@ func New(workspace string) *Guard {
 	return &Guard{
 		workspace: workspace,
 		cmdRules: []rule{
-			{TierCatastrophic, regexp.MustCompile(`\brm\s+(-\w*[rf]\w*\s+)+\s*(/|~|\*)[/*]*\s*$`), "recursive force-delete of a root path", "never allowed — delete inside the workspace only"},
+			// Recursive/force rm targeting anything outside the workspace: an
+			// absolute path (/, /etc, /usr...), a home-relative path (~, $HOME),
+			// or a bare glob (*). The earlier version anchored on the target
+			// ending in / ~ or *, so `rm -rf /etc` slipped straight through.
+			{TierCatastrophic, regexp.MustCompile(`\brm\s+(-\w*[rf]\w*\s+)+\s*(/|~|\$HOME\b|\$\{HOME\}|\*)`), "recursive force-delete outside the workspace", "never allowed — delete inside the workspace only"},
 			{TierCatastrophic, regexp.MustCompile(`:\(\)\s*\{`), "fork bomb", "never allowed"},
 			{TierCatastrophic, regexp.MustCompile(`\bdd\b[^|]*\bof=/dev/`), "dd writing to a device", "never allowed"},
 			{TierCatastrophic, regexp.MustCompile(`\bmkfs[.\s]`), "filesystem format", "never allowed"},

@@ -17,6 +17,10 @@ func TestCatastrophicBlocked(t *testing.T) {
 		`{"command":"rm -rf /"}`,
 		`{"command":"rm -rf ~"}`,
 		`{"command":"rm -rf /*"}`,
+		`{"command":"rm -rf /etc"}`,
+		`{"command":"rm -rf /usr/lib"}`,
+		`{"command":"rm -fr ~/Documents"}`,
+		`{"command":"rm -rf $HOME/.config"}`,
 		`{"command":"dd if=/dev/zero of=/dev/sda"}`,
 		`{"command":"mkfs.ext4 /dev/sda1"}`,
 		`{"command":"shutdown -h now"}`,
@@ -57,6 +61,29 @@ func TestSensitiveBlocked(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "sensitive") {
 			t.Fatalf("expected sensitive tier for %s %s, got %v", c.tool, c.args, err)
+		}
+	}
+}
+
+// TestRelativeDestructiveRmIsDeliberatelyAllowed documents a KNOWN LIMIT, not an
+// oversight. The rm rule is a footgun-catcher for out-of-workspace deletes
+// (absolute paths, ~, $HOME, bare glob). It intentionally does NOT try to block
+// relative destructive commands — that path is unbounded (`cd /etc && rm -rf .`,
+// `rm -rf ../../etc`, subshells, aliases), and pretending a regex covers it would
+// re-inflate the false "boundary" the README explicitly disclaims. Real bash
+// containment is the roadmap's Landlock jail, not this rule. If a future change
+// makes these commands *blocked*, that is a scope change to discuss — not a bug
+// fix — because it will also start blocking legitimate in-tree cleanup.
+func TestRelativeDestructiveRmIsDeliberatelyAllowed(t *testing.T) {
+	g := New("/tmp/ws")
+	knownGaps := []string{
+		`{"command":"rm -rf ./build"}`,
+		`{"command":"rm -rf ../sibling"}`,
+		`{"command":"cd /etc && rm -rf ."}`,
+	}
+	for _, c := range knownGaps {
+		if err := check(t, g, "bash", c); err != nil {
+			t.Fatalf("this is a documented gap and must stay allowed: %s (got %v)", c, err)
 		}
 	}
 }

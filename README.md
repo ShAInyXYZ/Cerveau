@@ -111,10 +111,17 @@ A 3B-active local model is not Opus, and Cerveau doesn't pretend it is:
 
 ### 🛡️ Safety that is structural, not prompted
 
-A dispatch guard pattern-matches tool *arguments* before execution: `rm -rf /`,
-force-pushes, `DROP TABLE`, writes escaping the workspace. Destructive `mv` is
-auto-rewritten to copy-verify-delete. The model can't talk its way past a rule
-that lives in Go.
+A dispatch guard pattern-matches tool *arguments* before execution and catches
+the common footguns: `rm -rf /`, force-pushes, `DROP TABLE`, piping a remote
+script into a shell. Destructive `mv` is auto-rewritten to copy-verify-delete.
+The file tools (`read`/`write`/`edit`) are additionally jailed to the workspace —
+lexically *and* through symlinks, enforced in Go, not prompted.
+
+This is a **safety floor, not a sandbox.** The guard is pattern-based: an
+obfuscated command can evade it, and `bash` itself is not yet OS-sandboxed (a
+Landlock jail is on the roadmap). Treat API access as shell access to your
+machine — run Cerveau as an unprivileged user, and see [SECURITY.md](SECURITY.md)
+for the full threat model.
 
 ### 🧩 Five memory systems, zero ceremony
 

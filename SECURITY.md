@@ -20,9 +20,13 @@ before deploying it:
 
 - **The HTTP API is unauthenticated.** It binds to `127.0.0.1` by default for
   exactly this reason. Anyone who can reach the API can drive the agent.
-- **The agent can execute shell commands** (in Autopilot mode) and read/write
-  files within the configured workspace. Treat access to the API as equivalent
-  to shell access to your machine, scoped to the workspace.
+- **The agent can execute shell commands** (in Autopilot mode). The `bash` tool
+  is **not OS-sandboxed** — it runs with the workspace as its working directory,
+  but it can read and write anywhere the OS user can (`cat /etc/passwd`,
+  `~/.ssh`, etc.). Only the dedicated file tools (`read`/`write`/`edit`) are
+  jailed to the workspace. Treat access to the API as equivalent to shell
+  access to your machine, full stop. (A Landlock-based `bash` jail is on the
+  roadmap; the guard is not a substitute for it.)
 - **Do not expose the API to a network** (changing the bind address, a reverse
   proxy, port-forwarding) without putting your own authentication in front of
   it. Authenticated remote access is on the roadmap; until then, keep it local.

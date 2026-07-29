@@ -26,10 +26,52 @@ func newJail(workspaceRoot string) jail {
 func (j jail) resolve(path string) (string, error) {
 	clean := filepath.Clean(path)
 	full := filepath.Join(j.root, clean)
-	if full != j.root && !strings.HasPrefix(full, j.root+string(filepath.Separator)) {
+	if !j.contains(full) {
 		return "", fmt.Errorf("path %q escapes the workspace", path)
 	}
+	// Lexical containment is not enough: a symlink *inside* the workspace can
+	// point out of it (e.g. `ln -s /etc link`, then write link/passwd). Resolve
+	// symlinks on the deepest existing ancestor and re-check containment against
+	// the real target. filepath.Clean above already blocked `..` traversal; this
+	// closes the symlink escape.
+	real, err := evalExistingPrefix(full)
+	if err != nil {
+		return "", err
+	}
+	if !j.contains(real) {
+		return "", fmt.Errorf("path %q resolves outside the workspace via a symlink", path)
+	}
 	return full, nil
+}
+
+// contains reports whether p is the jail root or lives beneath it.
+func (j jail) contains(p string) bool {
+	return p == j.root || strings.HasPrefix(p, j.root+string(filepath.Separator))
+}
+
+// evalExistingPrefix resolves symlinks on the longest existing prefix of full.
+// The final path may not exist yet (a fresh write), so we walk up to the first
+// ancestor that does exist, EvalSymlinks that, then re-append the missing tail.
+func evalExistingPrefix(full string) (string, error) {
+	tail := ""
+	cur := full
+	for {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			if tail == "" {
+				return resolved, nil
+			}
+			return filepath.Join(resolved, tail), nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Reached the filesystem root without finding an existing ancestor.
+			return full, nil
+		}
+		tail = filepath.Join(filepath.Base(cur), tail)
+		cur = parent
+	}
 }
 
 type Write struct {
