@@ -15,7 +15,7 @@
     --tone: var(--faint);
     border-radius: 10px;
     background: linear-gradient(180deg, color-mix(in srgb, var(--tone) 4%, var(--s1)) 0%, var(--s1) 46%);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 13%, transparent), 0 4px 12px -8px rgba(0,0,0,.5);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 13%, transparent), 0 1px 0 0 var(--lift) inset;
     padding: 13px 15px;
   }
   .card.accent { --tone: var(--accent); }

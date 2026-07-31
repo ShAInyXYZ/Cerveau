@@ -31,7 +31,7 @@
     color: var(--faint);
     transition: color .1s, background .1s;
   }
-  .wpbtn:hover:not(:disabled) { color: var(--muted); background: color-mix(in srgb,#fff 4%,transparent); }
+  .wpbtn:hover:not(:disabled) { color: var(--muted); background: color-mix(in srgb, #fff 4%, transparent); }
   .wpbtn:disabled { cursor: default; opacity: .7; }
   .wppath {
     font-size: 11px; color: var(--dim);

@@ -54,7 +54,7 @@
     font-family: var(--font-mono); font-weight: 600;
     font-size: 13px; color: var(--text);
   }
-  /* the traced brain logo, amber, sized to the header */
+  /* the traced brain logo, accent, sized to the header */
   .brand .logo {
     display: inline-flex; color: var(--accent);
     flex-shrink: 0;

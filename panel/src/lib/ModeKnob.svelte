@@ -119,12 +119,12 @@
     width: 54px; height: 54px; flex-shrink: 0;
     padding: 0; border: none; background: transparent;
     border-radius: 50%;
-    filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)) drop-shadow(0 16px 30px rgba(0,0,0,.4));
+    filter: drop-shadow(0 1px 0 var(--lift));
     cursor: grab; touch-action: none;
     display: block;
     transition: filter .14s;
   }
-  .knobbtn:hover { filter: drop-shadow(0 6px 14px rgba(0,0,0,.55)) drop-shadow(0 16px 34px rgba(0,0,0,.45)); }
+  .knobbtn:hover { filter: drop-shadow(0 1px 0 var(--lift-strong)); }
   .knobbtn.dragging { cursor: grabbing; }
   .knob { display: block; width: 54px; height: 54px; }
   .knobbtn:hover .knob .ring { stroke: var(--faint); }

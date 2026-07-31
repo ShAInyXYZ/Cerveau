@@ -2,7 +2,7 @@
   import { AlertTriangle, HelpCircle, Info, ChevronDown, ArrowRight } from 'lucide-svelte';
 
   // A single card component for both agent QUESTIONS and ERRORS, in Cerveau's
-  // warm-charcoal + amber identity. Two interaction shapes:
+  // warm-ink + rose identity. Two interaction shapes:
   //   • choices  — full-width stacked option rows (each a real decision)
   //   • actions  — a compact inline button row (retry / dismiss)
   let {
@@ -78,7 +78,7 @@
     --tone: var(--err);
     position: relative;
     /* never let a flex-column parent shrink the card — with overflow:hidden a
-       shrunk card collapses to just its top hairline (a stray red/amber line) */
+       shrunk card collapses to just its top hairline (a stray accent line) */
     flex-shrink: 0;
     border-radius: 12px;
     background:
@@ -87,8 +87,7 @@
     box-shadow:
       0 0 0 1px color-mix(in srgb, var(--tone) 16%, transparent),
       0 1px 0 0 color-mix(in srgb, #fff 4%, transparent) inset,
-      0 8px 20px -10px rgba(0,0,0,.55),
-      0 24px 50px -28px rgba(0,0,0,.72);
+      0 -1px 0 0 var(--shade) inset;
     overflow: hidden;
     animation: rise .2s cubic-bezier(.16,1,.3,1);
   }
@@ -125,7 +124,7 @@
     font-family: var(--font-mono); font-size: 10px;
     padding: 2px 4px 2px 8px; border-radius: 5px;
     background: color-mix(in srgb, #fff 3%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 6%, transparent);
+    box-shadow: inset 0 0 0 1px var(--ring);
   }
   .chip .mk { color: var(--faint); letter-spacing: .1em; }
   .chip .mv { color: var(--muted); background: var(--bg); padding: 1px 6px; border-radius: 3px; }
@@ -133,7 +132,7 @@
   .detail {
     margin: 10px 0 0; padding: 10px 12px;
     background: rgba(0,0,0,.28); border-radius: 7px;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 5%, transparent);
+    box-shadow: inset 0 0 0 1px var(--ring);
     font-family: var(--font-mono); font-size: 11px; line-height: 1.55;
     color: var(--muted); white-space: pre-wrap; overflow-x: auto;
   }
@@ -160,7 +159,7 @@
     padding: 11px 12px 11px 14px;
     border: none; border-radius: 9px; cursor: pointer;
     background: color-mix(in srgb, #fff 3.5%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 7%, transparent);
+    box-shadow: inset 0 0 0 1px var(--ring);
     color: var(--text);
     transition: background .13s, box-shadow .13s, transform .05s;
   }
@@ -190,7 +189,7 @@
     display: flex; gap: 6px; flex-wrap: wrap;
     padding: 11px 16px;
     background: rgba(0,0,0,.18);
-    box-shadow: inset 0 1px 0 0 color-mix(in srgb, #fff 5%, transparent);
+    box-shadow: inset 0 1px 0 0 var(--lift);
   }
 
   @keyframes rise { from { opacity: 0; transform: translateY(5px) scale(.994); } to { opacity: 1; transform: none; } }

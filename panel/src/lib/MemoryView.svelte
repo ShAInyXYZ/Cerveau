@@ -216,7 +216,7 @@
   .searchwrap input::placeholder { color: var(--faint); }
   .clear {
     font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
-    color: var(--dim); background: color-mix(in srgb,#fff 4%,transparent);
+    color: var(--dim); background: color-mix(in srgb, #fff 4%, transparent);
     border: none; border-radius: 999px; padding: 5px 11px; cursor: pointer; flex-shrink: 0;
   }
   .clear:hover { color: var(--text); }
@@ -263,7 +263,7 @@
     --c: var(--faint);
     background: linear-gradient(180deg, color-mix(in srgb, var(--c) 3%, var(--s1)) 0%, var(--s1) 46%);
     border-radius: 10px;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 11%, transparent), 0 4px 12px -8px rgba(0,0,0,.5);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 11%, transparent), 0 1px 0 0 var(--lift) inset;
     padding: 12px 15px;
   }
   .row:has(.badge.semantic) { --c: var(--semantic); }

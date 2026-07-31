@@ -87,13 +87,13 @@
     position: absolute; bottom: calc(100% + 10px); right: 0;
     display: flex; gap: 6px; z-index: 40;
     background: var(--surface); border-radius: 12px;
-    box-shadow: 0 0 0 1px var(--line2), 0 12px 30px -12px rgba(0,0,0,.7);
+    box-shadow: 0 0 0 1px var(--line2), 0 1px 0 0 var(--lift) inset;
     padding: 8px; animation: rise .16s cubic-bezier(.16,1,.3,1);
   }
   .cap {
     position: relative;
     width: 44px; height: 44px; border: none; border-radius: 10px;
-    background: color-mix(in srgb,#fff 3%, transparent);
+    background: color-mix(in srgb, #fff 3%, transparent);
     box-shadow: inset 0 0 0 1px var(--line2);
     display: inline-flex; align-items: center; justify-content: center;
     color: var(--dim); cursor: default;

@@ -312,7 +312,7 @@
     background: transparent; color: var(--faint); cursor: pointer; border: none;
     transition: color .1s, background .1s;
   }
-  .ictl:hover { color: var(--text); background: color-mix(in srgb,#fff 5%,transparent); }
+  .ictl:hover { color: var(--text); background: color-mix(in srgb, #fff 5%, transparent); }
   .ictl.danger:hover { color: var(--err); }
 
   .steps { display: flex; flex-direction: column; gap: 5px; margin: 9px 0 0; }
@@ -331,7 +331,7 @@
   .tool {
     border-radius: 8px;
     background: color-mix(in srgb, #fff 2.5%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 6%, transparent);
+    box-shadow: inset 0 0 0 1px var(--ring);
     overflow: hidden;
   }
   .toolhead {
@@ -341,7 +341,7 @@
     font-family: inherit; cursor: default;
   }
   .toolhead.has-output { cursor: pointer; }
-  .toolhead.has-output:hover { background: color-mix(in srgb,#fff 3%,transparent); }
+  .toolhead.has-output:hover { background: color-mix(in srgb, #fff 3%, transparent); }
 
   .tstate { display: inline-flex; flex-shrink: 0; color: var(--dim); }
   .tool.done .tstate { color: var(--ok); }
@@ -365,7 +365,7 @@
   .toolout {
     margin: 0; padding: 9px 12px;
     background: rgba(0,0,0,.32);
-    box-shadow: inset 0 1px 0 0 color-mix(in srgb,#fff 5%,transparent);
+    box-shadow: inset 0 1px 0 0 var(--lift);
     font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
     color: var(--muted); white-space: pre-wrap; word-break: break-word;
     max-height: 260px; overflow: auto;
@@ -416,8 +416,8 @@
   .bar:focus-within {
     box-shadow:
       0 0 0 1px var(--accent-line),
-      0 1px 0 0 color-mix(in srgb, #fff 5%, transparent) inset,
-      0 8px 20px -10px rgba(0,0,0,.55), 0 22px 48px -24px rgba(0,0,0,.7);
+      0 1px 0 0 var(--lift-strong) inset,
+      0 -1px 0 0 var(--shade) inset;
   }
 
   .input {

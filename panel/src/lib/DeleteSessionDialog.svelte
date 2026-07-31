@@ -77,9 +77,9 @@
   }
   .dialog {
     position: relative; width: 100%;
-    background: linear-gradient(180deg, color-mix(in srgb,#fff 2.5%, var(--s1)) 0%, var(--s1) 40%);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--lift) 55%, var(--s1)) 0%, var(--s1) 40%);
     border-radius: 18px;
-    box-shadow: 0 0 0 1px var(--line2), 0 30px 80px -24px rgba(0,0,0,.85);
+    box-shadow: 0 0 0 1px var(--line2), 0 1px 0 0 var(--lift) inset;
     padding: 24px 26px;
   }
   .x {
@@ -88,7 +88,7 @@
     width: 28px; height: 28px; border: none; border-radius: 8px;
     background: transparent; color: var(--faint); cursor: pointer; transition: color .12s, background .12s;
   }
-  .x:hover { color: var(--text); background: color-mix(in srgb,#fff 6%,transparent); }
+  .x:hover { color: var(--text); background: color-mix(in srgb, #fff 6%, transparent); }
 
   /* header */
   .head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-right: 26px; }
@@ -125,8 +125,8 @@
   .confirm {
     display: flex; flex-direction: column; gap: 12px;
     padding: 16px; border-radius: 18px;
-    background: linear-gradient(180deg, color-mix(in srgb,#fff 2.5%, var(--s1)) 0%, var(--s1) 40%);
-    box-shadow: 0 0 0 1px var(--line2), 0 30px 80px -24px rgba(0,0,0,.85);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--lift) 55%, var(--s1)) 0%, var(--s1) 40%);
+    box-shadow: 0 0 0 1px var(--line2), 0 1px 0 0 var(--lift) inset;
   }
   .clabel { font-size: 12.5px; color: var(--muted); text-align: center; }
   .clabel code {
@@ -147,7 +147,7 @@
     background: transparent; border: none; outline: none; padding: 9px 0;
   }
   .cok { display: inline-flex; color: var(--ok); flex-shrink: 0; margin-right: 2px; }
-  /* the send button, exactly — amber circle, red when Hard */
+  /* the send button, exactly — accent circle, red when Hard */
   .del {
     flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
     width: 42px; height: 42px; border-radius: 50%; cursor: pointer;

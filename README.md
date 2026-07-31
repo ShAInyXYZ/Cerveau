@@ -4,12 +4,12 @@
   <p><strong>A local-first agentic coding harness — built from scratch to squeeze every drop out of the hardware you already own.</strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white" alt="Go 1.25"/>
-    <img src="https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white" alt="Svelte 5"/>
-    <img src="https://img.shields.io/badge/serving-llama.cpp-8A2BE2" alt="llama.cpp"/>
-    <img src="https://img.shields.io/badge/license-Apache--2.0-2ea44f" alt="Apache-2.0"/>
-    <img src="https://img.shields.io/badge/DCO-required-blue" alt="DCO"/>
-    <img src="https://img.shields.io/badge/cloud-none-1a1917" alt="No cloud"/>
+    <img src="https://img.shields.io/badge/Go-1.25-C0304A?style=flat-square&labelColor=17140F&logo=go&logoColor=F2E1DE" alt="Go 1.25"/>
+    <img src="https://img.shields.io/badge/Svelte-5-C0304A?style=flat-square&labelColor=17140F&logo=svelte&logoColor=F2E1DE" alt="Svelte 5"/>
+    <img src="https://img.shields.io/badge/serving-llama.cpp-C0304A?style=flat-square&labelColor=17140F" alt="llama.cpp"/>
+    <img src="https://img.shields.io/badge/license-Apache--2.0-C0304A?style=flat-square&labelColor=17140F" alt="Apache-2.0"/>
+    <img src="https://img.shields.io/badge/DCO-required-C0304A?style=flat-square&labelColor=17140F" alt="DCO"/>
+    <img src="https://img.shields.io/badge/cloud-none-C0304A?style=flat-square&labelColor=17140F" alt="No cloud"/>
   </p>
 
   <p>Your models. Your machine. Your memory. No cloud, no accounts, no telemetry.</p>

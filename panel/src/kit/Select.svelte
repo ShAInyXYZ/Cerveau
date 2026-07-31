@@ -58,7 +58,7 @@
     padding: 7px 10px; border-radius: 7px; cursor: pointer;
     font-size: 12.5px; color: var(--muted); outline: none;
   }
-  :global(.sel-item[data-highlighted]) { background: color-mix(in srgb,#fff 5%,transparent); color: var(--text); }
+  :global(.sel-item[data-highlighted]) { background: color-mix(in srgb, #fff 5%, transparent); color: var(--text); }
   :global(.sel-item-label) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.sel-check) { color: var(--accent); flex-shrink: 0; }
 </style>

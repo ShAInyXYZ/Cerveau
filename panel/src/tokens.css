@@ -13,35 +13,59 @@
 }
 
 :root, [data-theme="dark"] {
-  /* ---- surfaces: flat 4-step ladder, warm charcoal, never pure black ---- */
-  --bg:    #100f0e;   /* app base */
-  --s1:    #171614;   /* panel */
-  --s2:    #1e1c1a;   /* raised / input */
-  --s3:    #262320;   /* control / hover */
+  /* ---- surfaces: flat 4-step ladder, warm ink, never pure black ----
+     Base matches the cerveau.sh dark band (--ink #17140F); the ladder steps
+     up from it so the app and the site read as one product. ---- */
+  --bg:    #12100C;   /* app base */
+  --s1:    #17140F;   /* panel — the site's band background exactly */
+  --s2:    #1E1A14;   /* raised / input */
+  --s3:    #27221A;   /* control / hover */
 
-  /* ---- hairlines ---- */
-  --line:  #262320;   /* default divider */
-  --line2: #34302b;   /* emphasized / focusable edge */
+  /* ---- hairlines: cream at low alpha, as the site's band does ---- */
+  --line:  #27221A;   /* default divider */
+  --line2: #363026;   /* emphasized / focusable edge */
 
-  /* ---- ink ---- */
-  --text:  #ece8e0;   /* primary */
-  --muted: #a8a397;   /* secondary */
-  --dim:   #736e64;   /* tertiary / labels active */
-  --faint: #4e4a43;   /* label rest / disabled ink */
+  /* ---- ink: the site's cream ---- */
+  --text:  #F2E1DE;   /* primary — site --cream */
+  --muted: #B8B2A6;   /* secondary */
+  --dim:   #87816F;   /* tertiary / labels active */
+  --faint: #5A554A;   /* label rest / disabled ink */
 
-  /* ---- one signal accent (amber) — interactive/semantic ONLY ---- */
-  --accent:      #f0803a;
-  --accent-ink:  #100f0e;
-  --accent-soft: rgba(240,128,58,.12);
-  --accent-line: rgba(240,128,58,.42);
+  /* ---- one signal accent — interactive/semantic ONLY.
+     On dark the site uses --cobalt-soft (#E88BA0), not full crimson:
+     #C0304A lacks contrast against ink. Same rule here. ---- */
+  --accent:      #E88BA0;
+  --accent-ink:  #17140F;
+  --accent-soft: rgba(232,139,160,.12);
+  --accent-line: rgba(232,139,160,.42);
 
   /* ---- semantic status — used as dots/labels, not fills ---- */
   --ok:   #4bb894;
   --err:  #e6533f;
   --warn: #cf9f2e;
   --info: #5aa0d6;
-  --semantic: #d67a9a;  /* memory: semantic (pink) */
+  /* memory kinds — moved off pink so they never read as the accent */
+  --semantic: #b48ad6;  /* memory: semantic (violet) */
   --episodic: #5bb7c9;  /* memory: episodic (cyan) */
+
+  /* ---- depth: hairline ring + top-light bump, no cast shadows ----
+     A control is lit from above: a bright top edge, a dark bottom edge, and
+     a ring to separate it from the surface behind. That is the whole depth
+     language — nothing floats, nothing blurs. ---- */
+  --ring:        rgba(255,255,255,.08);
+  --ring-strong: rgba(255,255,255,.12);
+  --lift:        rgba(255,255,255,.09);   /* top-edge highlight */
+  --lift-strong: rgba(255,255,255,.14);   /* raised / focused */
+  --shade:       rgba(0,0,0,.38);         /* bottom-edge shade */
+
+  /* ---- code / syntax tokens (markdown + highlight.js) ----
+     Cool-leaning so they never compete with the rose accent. ---- */
+  --code-inline:  #E8A9B6;
+  --code-keyword: #C99BD6;
+  --code-string:  #8FBF9E;
+  --code-number:  #D9A88C;
+  --code-title:   #7FB3D9;
+  --code-type:    #6BB7C9;
 
   /* ---- geometry: TP-7 is SQUARE — small radii only ---- */
   --r-sm: 2px;
@@ -54,22 +78,6 @@
   --rail-w: 240px;
 }
 
-[data-theme="light"] {
-  --bg:    #e8e6df;
-  --s1:    #efece5;
-  --s2:    #e2ded5;
-  --s3:    #d6d1c5;
-  --line:  #d3cec1;
-  --line2: #bdb7a8;
-  --text:  #1a1917;
-  --muted: #45423c;
-  --dim:   #6b6659;
-  --faint: #9a9488;
-  --accent: #d96a1f;
-  --accent-ink: #fdfcf9;
-  --accent-soft: rgba(217,106,31,.12);
-  --accent-line: rgba(217,106,31,.5);
-}
 
 /* ============================================================================
    BASE
@@ -121,21 +129,23 @@ body {
    ELEVATION — Linear-grade layered surfaces (shadow + hairline ring, not borders)
    Reusable so every component shares one depth language.
    ============================================================================ */
+/* No cast shadows — depth is a hairline ring plus a top-light inset highlight
+   and a bottom shade: the "bumpy" pressed-metal read. Surfaces sit in the
+   plane; nothing hovers above it. */
 :root {
-  /* hairline ring + soft cast shadow — the resting card */
+  /* resting card */
   --elev-1:
-    0 0 0 1px color-mix(in srgb, #fff 6%, transparent),
-    0 1px 0 0 color-mix(in srgb, #fff 4%, transparent) inset,
-    0 4px 12px -8px rgba(0,0,0,.5);
-  /* floating element (dock, popover, menu) */
+    0 0 0 1px var(--ring),
+    0 1px 0 0 var(--lift) inset,
+    0 -1px 0 0 var(--shade) inset;
+  /* floating element (dock, popover, menu) — same language, firmer edge */
   --elev-2:
-    0 0 0 1px color-mix(in srgb, #fff 7%, transparent),
-    0 1px 0 0 color-mix(in srgb, #fff 5%, transparent) inset,
-    0 8px 20px -10px rgba(0,0,0,.55),
-    0 22px 48px -24px rgba(0,0,0,.7);
+    0 0 0 1px var(--ring-strong),
+    0 1px 0 0 var(--lift-strong) inset,
+    0 -1px 0 0 var(--shade) inset;
   /* subtle top-light gradient for a card surface */
-  --surface: linear-gradient(180deg, color-mix(in srgb, #fff 2.5%, var(--s1)) 0%, var(--s1) 46%);
-  --surface-raised: linear-gradient(180deg, color-mix(in srgb, #fff 3%, var(--s2)) 0%, var(--s2) 50%);
+  --surface: linear-gradient(180deg, color-mix(in srgb, var(--lift) 55%, var(--s1)) 0%, var(--s1) 46%);
+  --surface-raised: linear-gradient(180deg, color-mix(in srgb, var(--lift) 60%, var(--s2)) 0%, var(--s2) 50%);
 }
 .elev-1 { box-shadow: var(--elev-1); }
 .elev-2 { box-shadow: var(--elev-2); }

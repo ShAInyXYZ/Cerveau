@@ -30,7 +30,7 @@
     width: 190px;
     background: linear-gradient(180deg, color-mix(in srgb, var(--c) 5%, var(--s2)) 0%, var(--s2) 50%);
     border-radius: 9px;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent), 0 4px 12px -8px rgba(0,0,0,.5);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent), 0 1px 0 0 var(--lift) inset;
     padding: 8px 11px;
     transition: opacity .2s, box-shadow .2s, transform .2s;
   }
@@ -38,8 +38,8 @@
   .mn.episodic { --c: var(--episodic); }
 
   .mn.dim   { opacity: .2; }
-  .mn.match { box-shadow: 0 0 0 1.5px var(--c), 0 0 22px -4px var(--c), 0 4px 12px -8px rgba(0,0,0,.5); }
-  .mn.focus { transform: scale(1.06); box-shadow: 0 0 0 2px var(--c), 0 0 30px -2px var(--c), 0 8px 20px -8px rgba(0,0,0,.6); z-index: 5; }
+  .mn.match { box-shadow: 0 0 0 1.5px var(--c), 0 0 22px -4px var(--c); }
+  .mn.focus { transform: scale(1.06); box-shadow: 0 0 0 2px var(--c), 0 0 30px -2px var(--c); z-index: 5; }
 
   .mhead { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
   .dot { width: 6px; height: 6px; border-radius: 2px; background: var(--c); flex-shrink: 0; }

@@ -157,7 +157,7 @@
     padding: 1.5px 5px;
     border-radius: 5px;
     background: var(--s3);
-    color: #f0b088;
+    color: var(--code-inline);
     border: 1px solid var(--line2);
     white-space: nowrap;
   }
@@ -214,7 +214,7 @@
   .md-body :global(hr) { border: none; height: 1px; background: var(--line2); margin: 18px 0; }
   .md-body :global(img) { max-width: 100%; border-radius: 8px; margin: 6px 0; }
 
-  /* highlight (==x== and <mark>) — amber wash in-theme, not raw yellow */
+  /* highlight (==x== and <mark>) — accent wash in-theme, not raw yellow */
   .md-body :global(mark) {
     background: color-mix(in srgb, var(--accent) 30%, transparent);
     color: var(--text);
@@ -243,13 +243,15 @@
   .md-body :global(.footnotes ol) { padding-left: 1.2em; }
   .md-body :global(a[data-footnote-backref]) { border: none; text-decoration: none; }
 
-  /* highlight.js — warm-charcoal token palette */
+  /* highlight.js — token palette driven by theme tokens (see tokens.css),
+     so code reads the same in dark and light and never re-introduces a
+     second accent hue. */
   .md-body :global(.hljs-comment), .md-body :global(.hljs-quote) { color: var(--faint); font-style: italic; }
-  .md-body :global(.hljs-keyword), .md-body :global(.hljs-selector-tag), .md-body :global(.hljs-built_in) { color: #e08c4e; }
-  .md-body :global(.hljs-string), .md-body :global(.hljs-attr) { color: #8fbf8f; }
-  .md-body :global(.hljs-number), .md-body :global(.hljs-literal) { color: #c99a5b; }
-  .md-body :global(.hljs-title), .md-body :global(.hljs-function .hljs-title), .md-body :global(.hljs-section) { color: #d6a8c4; }
+  .md-body :global(.hljs-keyword), .md-body :global(.hljs-selector-tag), .md-body :global(.hljs-built_in) { color: var(--code-keyword); }
+  .md-body :global(.hljs-string), .md-body :global(.hljs-attr) { color: var(--code-string); }
+  .md-body :global(.hljs-number), .md-body :global(.hljs-literal) { color: var(--code-number); }
+  .md-body :global(.hljs-title), .md-body :global(.hljs-function .hljs-title), .md-body :global(.hljs-section) { color: var(--code-title); }
   .md-body :global(.hljs-variable), .md-body :global(.hljs-name), .md-body :global(.hljs-property) { color: var(--text); }
-  .md-body :global(.hljs-type), .md-body :global(.hljs-class .hljs-title) { color: #6bb7c9; }
+  .md-body :global(.hljs-type), .md-body :global(.hljs-class .hljs-title) { color: var(--code-type); }
   .md-body :global(.hljs-meta), .md-body :global(.hljs-symbol) { color: var(--dim); }
 </style>

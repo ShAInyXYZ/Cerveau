@@ -131,8 +131,8 @@
   .metric {
     display: flex; flex-direction: column; gap: 2px;
     padding: 6px 9px; border-radius: 6px; min-width: 62px;
-    background: color-mix(in srgb,#fff 2.5%,transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb,#fff 5%,transparent);
+    background: color-mix(in srgb, #fff 2.5%, transparent);
+    box-shadow: inset 0 0 0 1px var(--ring);
   }
   .mk { font-family: var(--font-mono); font-size: 8px; letter-spacing: .12em; color: var(--faint); }
   .mv { font-family: var(--font-mono); font-size: 12px; color: var(--text); }

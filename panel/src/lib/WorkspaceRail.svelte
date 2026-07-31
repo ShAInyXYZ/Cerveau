@@ -191,7 +191,7 @@
   .pfolder:hover { color: var(--text); }
   .pfolder.active {
     color: var(--text);
-    box-shadow: 0 0 0 1px var(--accent-line), 0 1px 0 0 color-mix(in srgb,#fff 4%,transparent) inset, 0 4px 12px -8px rgba(0,0,0,.5);
+    box-shadow: 0 0 0 1px var(--accent-line), 0 1px 0 0 var(--lift) inset;
   }
   .chev { display: inline-flex; color: var(--faint); transition: transform .15s; flex-shrink: 0; }
   .chev.open { transform: rotate(90deg); color: var(--dim); }
@@ -267,14 +267,14 @@
     font-size: 12px; font-weight: 500;
     transition: color .12s, background .12s;
   }
-  .settings-btn:hover { color: var(--text); background: color-mix(in srgb, #fff 4%, transparent); }
+  .settings-btn:hover { color: var(--text); background: color-mix(in srgb, #fff 6%, transparent); }
   .settings-btn.on { color: var(--accent); background: var(--accent-soft); }
   .foot {
     display: flex; align-items: center; gap: 8px;
     font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
     padding: 8px 10px; border-radius: 7px;
-    background: color-mix(in srgb, #fff 3%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 6%, transparent);
+    background: color-mix(in srgb, #fff 4%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 9%, transparent);
     color: var(--dim); cursor: pointer; border: none; transition: color .1s, box-shadow .1s;
   }
   .foot:hover { color: var(--text); }
