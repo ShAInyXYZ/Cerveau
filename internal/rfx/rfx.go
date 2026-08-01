@@ -511,15 +511,43 @@ func trunc(s string, n int) string {
 // Widget is one RFX_UI content declaration (docs/RFX-UI.md): declarative
 // only — no code, no HTML. type: button | field | status | log | toggle |
 // progress. A field named after a param IS the binding for sibling buttons.
+// Row is one status metric: a regex (capture group = value, else match
+// count) plus an optional author-declared tone. Tone is semantic — ok / err /
+// warn / accent — the renderer maps it to theme colors; authors never pick
+// raw colors (declarative, theme-owned pixels).
+type Row struct {
+	Re   string `yaml:"re"   json:"re"`
+	Tone string `yaml:"tone" json:"tone,omitempty"`
+}
+
+// UnmarshalYAML accepts both forms: `label: regex` and `label: {re, tone}`.
+func (r *Row) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		r.Re = value.Value
+		return nil
+	}
+	var m struct {
+		Re   string `yaml:"re"`
+		Tone string `yaml:"tone"`
+	}
+	if err := value.Decode(&m); err != nil {
+		return err
+	}
+	r.Re, r.Tone = m.Re, m.Tone
+	return nil
+}
+
 type Widget struct {
-	Type  string            `yaml:"type"  json:"type"`
-	Label string            `yaml:"label" json:"label,omitempty"`
-	Run   string            `yaml:"run"   json:"run,omitempty"`
-	Args  map[string]any    `yaml:"args"  json:"args,omitempty"`
-	Every string            `yaml:"every" json:"every,omitempty"` // status refresh interval, e.g. 30s
-	Rows  map[string]string `yaml:"rows"  json:"rows,omitempty"`  // status: label -> regex (capture group = value, else match count)
-	Lines int               `yaml:"lines" json:"lines,omitempty"` // log tail length
-	Name  string            `yaml:"name"  json:"name,omitempty"`  // field param name
+	Type  string         `yaml:"type"  json:"type"`
+	Label string         `yaml:"label" json:"label,omitempty"`
+	Run   string         `yaml:"run"   json:"run,omitempty"`
+	Args  map[string]any `yaml:"args"  json:"args,omitempty"`
+	Every string         `yaml:"every" json:"every,omitempty"` // status refresh interval, e.g. 30s
+	Rows  map[string]Row `yaml:"rows"  json:"rows,omitempty"`  // status metrics
+	Lines int            `yaml:"lines" json:"lines,omitempty"` // log tail length
+	Name  string         `yaml:"name"  json:"name,omitempty"`  // field param name / toggle target
+	Match string         `yaml:"match" json:"match,omitempty"` // list: multiline regex over the status run's output
+	Limit int            `yaml:"limit" json:"limit,omitempty"` // list: max lines shown
 }
 
 // PackUI is the ui: block of a pack (docs/RFX-UI.md §2).
@@ -597,15 +625,30 @@ func validateWidget(w Widget) error {
 		if w.Lines < 0 {
 			return fmt.Errorf("log: lines must be ≥ 0")
 		}
+	case "list":
+		if w.Match == "" {
+			return fmt.Errorf("list: match: required (a multiline regex over the status run's output)")
+		}
+		if _, err := regexp.Compile(w.Match); err != nil {
+			return fmt.Errorf("list: match %q does not compile: %v", w.Match, err)
+		}
+		if w.Limit < 0 {
+			return fmt.Errorf("list: limit must be ≥ 0")
+		}
 	case "toggle", "progress":
 	default:
-		return fmt.Errorf("unknown widget type %q (button|field|status|log|toggle|progress)", w.Type)
+		return fmt.Errorf("unknown widget type %q (button|field|status|log|toggle|progress|list)", w.Type)
 	}
 	// Semantic checks — load-time rejection, never a runtime surprise in the
 	// panel (the renderer would otherwise throw on a bad regex mid-render).
-	for label, re := range w.Rows {
-		if _, err := regexp.Compile(re); err != nil {
-			return fmt.Errorf("rows.%s: regex %q does not compile: %v", label, re, err)
+	for label, row := range w.Rows {
+		if _, err := regexp.Compile(row.Re); err != nil {
+			return fmt.Errorf("rows.%s: regex %q does not compile: %v", label, row.Re, err)
+		}
+		switch row.Tone {
+		case "", "ok", "err", "warn", "accent":
+		default:
+			return fmt.Errorf("rows.%s: tone %q — must be ok, err, warn, or accent", label, row.Tone)
 		}
 	}
 	if w.Every != "" {

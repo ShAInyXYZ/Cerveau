@@ -9,7 +9,7 @@
   let { pack, members } = $props(); // members: ALL of this pack's reflexes (enabled or not)
 
   let open = $state(true);
-  let status = $state({ rows: [], age: null, error: '' });
+  let status = $state({ rows: [], age: null, error: '', output: '' });
   let fields = $state({});
   let lastRun = $state({ label: '', output: '', err: false });
   let running = $state('');          // label of the in-flight button ('' = idle)
@@ -40,21 +40,32 @@
     return m ? (+m[1]) * (m[2] === 'm' ? 60000 : 1000) : 30000;
   }
 
-  // status rows: regex with capture group → first group of first match;
-  // no group → match count (multiline).
+  // status rows: {re, tone} — capture group → first group of first match;
+  // no group → match count (multiline). Tone is the author's semantic hint;
+  // the theme owns the actual color.
   function extractRows(output, rowsDef) {
-    return Object.entries(rowsDef).map(([label, pattern]) => {
+    return Object.entries(rowsDef).map(([label, row]) => {
+      const pattern = row.re ?? row; // tolerate pre-v1.3 scalar form
+      const tone = row.tone ?? '';
       try {
         const hasGroup = /\((?!\?)/.test(pattern);
         const re = new RegExp(pattern, hasGroup ? 'm' : 'gm');
         if (hasGroup) {
           const m = re.exec(output);
-          return { label, value: m ? m[1] : '—' };
+          return { label, tone, value: m ? m[1].trim() : '—' };
         }
         const n = (output.match(re) ?? []).length;
-        return { label, value: String(n) };
-      } catch { return { label, value: '!' }; }
+        return { label, tone, value: String(n) };
+      } catch { return { label, tone, value: '!' }; }
     });
+  }
+
+  // list widget: matched lines from the status run's output
+  function listLines(w) {
+    try {
+      const re = new RegExp(w.match, 'gm');
+      return (status.output.match(re) ?? []).slice(0, w.limit || 6);
+    } catch { return []; }
   }
 
   // Errors come back as pipeline reports — keep the real text (honest
@@ -70,9 +81,9 @@
     try {
       const res = await jpost('/api/rfx/run', { name: statusW.run, args: {} });
       if (res.ok) {
-        status = { rows: extractRows(res.output ?? '', statusW.rows), age: 0, error: '' };
+        status = { rows: extractRows(res.output ?? '', statusW.rows), age: 0, error: '', output: res.output ?? '' };
       } else {
-        status = { ...status, error: compactError(res.output || res.error) };
+        status = { ...status, output: '', error: compactError(res.output || res.error) };
       }
     } catch { status = { ...status, error: 'core offline' }; }
   }
@@ -182,13 +193,25 @@
             <div class="metrics">
               {#each status.rows as row (row.label)}
                 <div class="metric" class:zero={row.value === '0' || row.value === '—'}>
-                  <span class="mk">{row.label}</span><span class="mv">{row.value}</span>
+                  <span class="mk">{row.label}</span>
+                  <span class="mv" class:t-ok={row.tone === 'ok'} class:t-err={row.tone === 'err'}
+                    class:t-warn={row.tone === 'warn'} class:t-accent={row.tone === 'accent'}>{row.value}</span>
                 </div>
               {/each}
               <div class="metric age">
                 <span class="mk">checked</span>
                 <span class="mv dim">{fmtAge(status.age)}</span>
               </div>
+            </div>
+          {/if}
+
+        {:else if g.kind === 'list'}
+          {@const lines = listLines(g.w)}
+          {#if lines.length}
+            <div class="filelist">
+              {#each lines as line (line)}
+                <div class="fl-row">{line}</div>
+              {/each}
             </div>
           {/if}
 
@@ -286,6 +309,23 @@
   }
   .metric.zero .mv { color: var(--dim); }
   .metric.age { margin-left: auto; min-width: 0; box-shadow: none; background: transparent; }
+  /* author-declared semantic tones — theme owns the actual colors */
+  .metric:not(.zero) .mv.t-ok { color: var(--ok, #4bb894); }
+  .metric:not(.zero) .mv.t-err { color: var(--err); }
+  .metric:not(.zero) .mv.t-warn { color: var(--warn, #b87a00); }
+  .metric:not(.zero) .mv.t-accent { color: var(--accent); }
+
+  /* list — matched lines from the status output (e.g. changed files) */
+  .filelist {
+    border-radius: 6px; padding: 4px 0;
+    background: color-mix(in srgb, #fff 2%, transparent);
+    box-shadow: inset 0 0 0 1px var(--ring, var(--line));
+  }
+  .fl-row {
+    padding: 2px 9px; font-family: var(--font-mono, monospace); font-size: 10px;
+    line-height: 1.5; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
 
   /* compact honest-failure row: last line of the real error, never a wall */
   .status-err {

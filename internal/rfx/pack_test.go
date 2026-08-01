@@ -134,6 +134,10 @@ func TestPackWidgetSemanticRejections(t *testing.T) {
 		{"bad rows regex", "    - {type: status, run: git-status, rows: {branch: '(['}}\n", "does not compile"},
 		{"bad every", "    - {type: status, run: git-status, every: soonish, rows: {branch: 'x'}}\n", "every"},
 		{"pack button needs run", "    - {type: button, label: Go}\n", "run: required"},
+		{"bad row tone", "    - {type: status, run: git-status, rows: {added: {re: 'x', tone: rainbow}}}\n", "tone"},
+		{"bad row map regex", "    - {type: status, run: git-status, rows: {added: {re: '(', tone: ok}}}\n", "does not compile"},
+		{"list needs match", "    - {type: list}\n", "match: required"},
+		{"list bad match", "    - {type: list, match: '(['}\n", "does not compile"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -145,6 +149,33 @@ func TestPackWidgetSemanticRejections(t *testing.T) {
 				t.Fatalf("got %v, want substring %q", err, c.want)
 			}
 		})
+	}
+}
+
+// Rows accept both forms: scalar (label: regex) and map (label: {re, tone}).
+func TestRowSpecBothForms(t *testing.T) {
+	doc := testPackYAML + `ui:
+  widgets:
+    - type: status
+      run: git-status
+      rows:
+        branch: '## (\S+)'
+        added: {re: '(\d+) insertion', tone: ok}
+        removed: {re: '(\d+) deletion', tone: err}
+`
+	p, err := ParsePack([]byte(doc), "pack.yaml")
+	if err != nil {
+		t.Fatalf("ParsePack: %v", err)
+	}
+	if err := ValidatePack(p); err != nil {
+		t.Fatalf("ValidatePack: %v", err)
+	}
+	rows := p.UI.Widgets[0].Rows
+	if rows["branch"].Re != `## (\S+)` || rows["branch"].Tone != "" {
+		t.Fatalf("scalar row: %+v", rows["branch"])
+	}
+	if rows["added"].Tone != "ok" || rows["removed"].Tone != "err" {
+		t.Fatalf("map rows: %+v %+v", rows["added"], rows["removed"])
 	}
 }
 
