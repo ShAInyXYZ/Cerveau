@@ -136,6 +136,7 @@ func main() {
 		}()
 	}
 
+	apPatch := tools.NewApplyPatch()
 	buildEntries := func(ws string, store *codeintel.Store) []tools.Entry {
 		entries := []tools.Entry{
 			{Tool: tools.NewRead(ws), RiskTier: tools.RiskSafe, IngressCap: 8000, RetryClass: "args"},
@@ -143,6 +144,7 @@ func main() {
 			{Tool: tools.NewGlob(ws), RiskTier: tools.RiskSafe, IngressCap: 4000, RetryClass: "args"},
 			{Tool: tools.NewEdit(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot, tools.ModeBrainstorming}, IngressCap: 2000, RetryClass: "args"},
 			{Tool: tools.NewWrite(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot, tools.ModeBrainstorming}, IngressCap: 2000, RetryClass: "args"},
+			{Tool: apPatch, RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot, tools.ModeBrainstorming}, IngressCap: 3000, RetryClass: "args"},
 			{Tool: tools.NewBash(ws), RiskTier: tools.RiskDangerous, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "transient"},
 			{Tool: tools.NewCommitPlan(a.Writer, sctx), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeDiscussion}, IngressCap: 2000, RetryClass: "args"},
 			{Tool: tools.NewAskUser(a.QuestionBroker(), sctx), RiskTier: tools.RiskSafe, IngressCap: 1000, RetryClass: "args"},
@@ -164,6 +166,7 @@ func main() {
 
 	registry := tools.NewRegistry(buildEntries(cfg.Workspace, codeStore)...)
 	registry.SetWorkspace(cfg.Workspace)
+	apPatch.SetRegistry(registry)
 	grd := guard.New(cfg.Workspace)
 	registry.SetGuard(grd.Check)
 	registry.SetRemediator(func(tool string, args json.RawMessage) (json.RawMessage, error) {
@@ -267,6 +270,7 @@ func main() {
 		newGrd := guard.New(abs)
 		newReg := tools.NewRegistry(buildEntries(abs, newStore)...)
 		newReg.SetWorkspace(abs)
+		apPatch.SetRegistry(newReg)
 		newReg.SetGuard(newGrd.Check)
 		newReg.SetRemediator(func(tool string, args json.RawMessage) (json.RawMessage, error) {
 			return newGrd.Remediate(tool, args, time.Now())

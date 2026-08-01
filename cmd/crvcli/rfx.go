@@ -37,7 +37,7 @@ func rfxDir() string {
 // at load anyway — a wrong accept here is caught loudly on the next turn.
 func knownCoreTool(name string) bool {
 	switch name {
-	case "bash", "read", "write", "edit", "grep", "glob", "web_fetch", "ask_user", "commit_plan", "remember",
+	case "bash", "read", "write", "edit", "grep", "glob", "apply_patch", "web_fetch", "ask_user", "commit_plan", "remember",
 		"file_map", "find_symbol", "find_references", "outline_file":
 		return true
 	}
