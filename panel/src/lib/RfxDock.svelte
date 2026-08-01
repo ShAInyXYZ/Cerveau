@@ -1,5 +1,5 @@
 <script>
-  import { Play, ChevronRight, RefreshCw, Zap } from 'lucide-svelte';
+  import { Play, Zap } from 'lucide-svelte';
   import { j, jpost } from './api.js';
   import RfxPackCard from './RfxPackCard.svelte';
 
@@ -78,15 +78,7 @@
 {#if tabs.length > 0}
   <div class="npanel">
     {#if openValid && openTab}
-      <aside class="panel">
-        <div class="panel-head">
-          <span class="label">{openTab === '·rfx' ? 'RFX · standalone' : openTab}</span>
-          <div class="head-btns">
-            <button class="icon" onclick={load} aria-label="reload"><RefreshCw size={12} /></button>
-            <button class="icon" onclick={() => pick(openTab)} aria-label="collapse"><ChevronRight size={13} /></button>
-          </div>
-        </div>
-
+      <aside class="panel anim-rise">
         <div class="panel-body">
           {#if openPack}
             <RfxPackCard pack={openPack} members={membersOf(openPack.name)} />
@@ -147,7 +139,9 @@
 {/if}
 
 <style>
-  .npanel { display: flex; flex-shrink: 0; min-height: 0; }
+  /* strip participates in layout; the open panel FLOATS over the chat —
+     it takes no space from it and carries no backdrop of its own. */
+  .npanel { position: relative; display: flex; flex-shrink: 0; min-height: 0; }
 
   /* ── the strip: always present, ~34px, Blender-N-panel tab rail ── */
   .strip {
@@ -184,23 +178,18 @@
   }
   .tab.on .tab-count { color: var(--accent); background: transparent; }
 
-  /* ── the panel: opens inline next to the strip, one pack at a time ── */
+  /* ── the panel: floats left of the strip, just the card, no backdrop ── */
   .panel {
-    width: 292px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
-    border-left: 1px solid var(--line); background: var(--surface-raised, var(--s1));
+    position: absolute; top: 8px; right: 100%; margin-right: 8px;
+    width: 292px; max-height: calc(100% - 16px);
+    display: flex; flex-direction: column; z-index: 30;
   }
-  .panel-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 12px; border-bottom: 1px solid var(--line); flex-shrink: 0;
+  .panel-body { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  /* floating cards must be opaque — they sit over chat text, not on a rail */
+  .panel-body :global(.pcard), .panel-body .card {
+    background: var(--s2);
+    box-shadow: 0 0 0 1px var(--ring-strong, var(--line2)), 0 1px 0 0 var(--lift, transparent) inset;
   }
-  .head-btns { display: flex; gap: 4px; }
-  .icon {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 22px; height: 22px; border: none; border-radius: 6px; cursor: pointer;
-    background: transparent; color: var(--faint);
-  }
-  .icon:hover { color: var(--text); background: var(--s3); }
-  .panel-body { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 
   /* ── default cards (standalone / no-ui reflexes) ── */
   .card {
