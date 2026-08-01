@@ -42,6 +42,18 @@ const panelBridge = `<style>
 *::-webkit-scrollbar-track { background: transparent; }
 html, body { margin: 0; background: transparent; color: var(--text); }
 body { font: 12px/1.5 system-ui, sans-serif; }
+/* kit-styled tooltip for panels: put data-tip="…" on any element. Mirrors
+   the app's own tooltip (never the browser title= — slow and unstyled). */
+.rfx-tip {
+  position: fixed; z-index: 9999; pointer-events: none;
+  padding: 5px 9px; border-radius: 7px;
+  background: var(--s2); color: var(--text);
+  font: 11.5px/1.2 system-ui, sans-serif; white-space: nowrap;
+  box-shadow: 0 0 0 1px var(--line2);
+  opacity: 0; transform: translateY(2px);
+  transition: opacity .12s ease, transform .12s ease;
+}
+.rfx-tip.show { opacity: 1; transform: none; }
 </style>
 <script>
 (function () {
@@ -75,6 +87,30 @@ body { font: 12px/1.5 system-ui, sans-serif; }
     if (m.rfx === "result" && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
     if (m.rfx === "event") subs.forEach((f) => f(m.event));
   });
+
+  // data-tip tooltips — one shared node, kit look, 300ms intent delay.
+  let tip = null, tipTimer = null;
+  function tipNode() {
+    if (!tip) { tip = document.createElement("div"); tip.className = "rfx-tip"; document.body.appendChild(tip); }
+    return tip;
+  }
+  addEventListener("mouseover", (e) => {
+    const t = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+    clearTimeout(tipTimer);
+    if (!t) { if (tip) tip.classList.remove("show"); return; }
+    tipTimer = setTimeout(() => {
+      const n = tipNode();
+      n.textContent = t.getAttribute("data-tip");
+      const r = t.getBoundingClientRect();
+      n.classList.add("show");
+      const w = n.offsetWidth, h = n.offsetHeight;
+      let x = Math.max(4, Math.min(innerWidth - w - 4, r.left + r.width / 2 - w / 2));
+      let y = r.top - h - 7;
+      if (y < 4) y = r.bottom + 7;
+      n.style.left = x + "px"; n.style.top = y + "px";
+    }, 300);
+  });
+  addEventListener("mousedown", () => { clearTimeout(tipTimer); if (tip) tip.classList.remove("show"); });
 })();
 </script>
 `
