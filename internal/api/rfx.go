@@ -21,11 +21,12 @@ type rfxReflexView struct {
 }
 
 type rfxPackView struct {
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Author      string   `json:"author"`
-	Description string   `json:"description"`
-	Docs        []string `json:"docs"`
+	Name        string     `json:"name"`
+	Version     string     `json:"version"`
+	Author      string     `json:"author"`
+	Description string     `json:"description"`
+	Docs        []string   `json:"docs"`
+	UI          rfx.PackUI `json:"ui,omitempty"`
 }
 
 // ListRfx serves the Settings → RFX section: packs, reflexes with on/OFF
@@ -37,7 +38,7 @@ func (a *API) ListRfx(w http.ResponseWriter, r *http.Request) {
 	}
 	packs := []rfxPackView{}
 	for _, p := range a.rfxLoader.Packs() {
-		packs = append(packs, rfxPackView{p.Pack, p.Version, p.Author, p.Description, p.Docs})
+		packs = append(packs, rfxPackView{p.Pack, p.Version, p.Author, p.Description, p.Docs, p.UI})
 	}
 	reflexes := []rfxReflexView{}
 	for _, d := range a.rfxLoader.All() {

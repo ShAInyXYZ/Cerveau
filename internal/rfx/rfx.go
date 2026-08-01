@@ -503,14 +503,34 @@ func trunc(s string, n int) string {
 
 // Pack is a pack.yaml manifest: a folder of related reflexes — a "talent"
 // (github/, blender/, homelab/). One folder level max; names stay global.
+// Widget is one RFX_UI content declaration (docs/RFX-UI.md): declarative
+// only — no code, no HTML. type: button | field | status | log | toggle |
+// progress. A field named after a param IS the binding for sibling buttons.
+type Widget struct {
+	Type  string            `yaml:"type"  json:"type"`
+	Label string            `yaml:"label" json:"label,omitempty"`
+	Run   string            `yaml:"run"   json:"run,omitempty"`
+	Args  map[string]any    `yaml:"args"  json:"args,omitempty"`
+	Every string            `yaml:"every" json:"every,omitempty"` // status refresh interval, e.g. 30s
+	Rows  map[string]string `yaml:"rows"  json:"rows,omitempty"`  // status: label -> regex (capture group = value, else match count)
+	Lines int               `yaml:"lines" json:"lines,omitempty"` // log tail length
+	Name  string            `yaml:"name"  json:"name,omitempty"`  // field param name
+}
+
+// PackUI is the ui: block of a pack (docs/RFX-UI.md §2).
+type PackUI struct {
+	Widgets []Widget `yaml:"widgets" json:"widgets"`
+}
+
 type Pack struct {
 	RFX         int      `yaml:"rfx"`
 	Pack        string   `yaml:"pack"`
 	Version     string   `yaml:"version"`
 	Author      string   `yaml:"author"`
 	Description string   `yaml:"description"`
-	Docs        []string `yaml:"-"` // discovered docs/*.md, listed not indexed (recall lands later)
-	Path        string   `yaml:"-"`
+	UI          PackUI   `yaml:"ui"   json:"ui,omitempty"`
+	Docs        []string `yaml:"-"    json:"docs,omitempty"` // discovered docs/*.md
+	Path        string   `yaml:"-"    json:"-"`
 }
 
 func ParsePack(data []byte, path string) (*Pack, error) {
@@ -541,6 +561,36 @@ func ValidatePack(p *Pack) error {
 	}
 	if len(p.Description) > 200 {
 		return fmt.Errorf("description: %d chars, max 200", len(p.Description))
+	}
+	for i, w := range p.UI.Widgets {
+		if err := validateWidget(w); err != nil {
+			return fmt.Errorf("ui.widgets[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func validateWidget(w Widget) error {
+	switch w.Type {
+	case "button":
+		if w.Label == "" {
+			return fmt.Errorf("button: label required")
+		}
+	case "field":
+		if w.Name == "" {
+			return fmt.Errorf("field: name required (it is the param binding)")
+		}
+	case "status":
+		if w.Run == "" || len(w.Rows) == 0 {
+			return fmt.Errorf("status: run + rows required")
+		}
+	case "log":
+		if w.Lines < 0 {
+			return fmt.Errorf("log: lines must be ≥ 0")
+		}
+	case "toggle", "progress":
+	default:
+		return fmt.Errorf("unknown widget type %q (button|field|status|log|toggle|progress)", w.Type)
 	}
 	return nil
 }

@@ -1,13 +1,13 @@
 <script>
   import { Zap, Play, ChevronRight, RefreshCw } from 'lucide-svelte';
   import { j, jpost } from './api.js';
+  import RfxPackCard from './RfxPackCard.svelte';
 
-  // RfxDock — the RFX_UI chat dock: one live card per ENABLED reflex.
-  // Cards are generated from the registry schema (v1); custom ui: manifest
-  // widgets land later. Quick-run goes through the guarded Action Bridge.
+  // RfxDock — the RFX chat dock (docs/RFX-UI.md). Pack cockpits first
+  // (ui: manifest), default quick-run cards for everything else.
   let data = $state({ packs: [], reflexes: [] });
-  let runs = $state({});     // name -> {state: 'run'|'ok'|'err', output}
-  let args = $state({});     // name -> {param: value}
+  let runs = $state({});
+  let args = $state({});
   let collapsed = $state(localStorage.getItem('rfxdock-collapsed') === '1');
 
   async function load() {
@@ -16,11 +16,13 @@
   load();
 
   const enabled = $derived((data.reflexes ?? []).filter((r) => r.enabled));
+  const uiPacks = $derived((data.packs ?? []).filter((p) => (p.ui?.widgets ?? []).length > 0));
+  const membersOf = $derived((name) => enabled.filter((r) => r.pack === name));
+  // default cards: standalone reflexes, or reflexes whose pack declares no ui
+  const defaults = $derived(enabled.filter((r) => !r.pack || !uiPacks.some((p) => p.name === r.pack)));
 
-  // safe accessors — template reads must never touch an undefined parent
   function getArg(name, p) { return args[name]?.[p] ?? ''; }
   function setArg(name, p, v) { (args[name] ??= {})[p] = v; }
-  const packOf = $derived(Object.fromEntries((data.packs ?? []).map((p) => [p.name, p])));
 
   function toggleCollapsed() {
     collapsed = !collapsed;
@@ -58,7 +60,7 @@
   {:else}
     <aside class="dock">
       <div class="dock-head">
-        <span class="label">TALENTS · {enabled.length}</span>
+        <span class="label">RFX · {enabled.length}</span>
         <div class="dock-head-btns">
           <button class="icon" onclick={load} aria-label="reload"><RefreshCw size={12} /></button>
           <button class="icon" onclick={toggleCollapsed} aria-label="collapse"><ChevronRight size={13} /></button>
@@ -66,13 +68,18 @@
       </div>
 
       <div class="cards">
-        {#each enabled as r (r.name)}
+        {#each uiPacks as p (p.name)}
+          {#if membersOf(p.name).length > 0}
+            <RfxPackCard pack={p} members={membersOf(p.name)} />
+          {/if}
+        {/each}
+
+        {#each defaults as r (r.name)}
           <div class="card">
             <div class="c-head">
               <span class="c-name">{r.name}</span>
               <span class="chip" class:chip-dangerous={r.risk === 'dangerous'} class:chip-sensitive={r.risk === 'sensitive'}>{r.risk}</span>
             </div>
-            {#if r.pack && packOf[r.pack]}<div class="c-pack">{r.pack} · v{packOf[r.pack].version}</div>{/if}
             <div class="c-desc">{r.description}</div>
 
             {#each paramsOf(r) as p (p.name)}
@@ -136,20 +143,19 @@
     background: color-mix(in srgb, #fff 2.5%, transparent); box-shadow: inset 0 0 0 1px var(--line);
   }
   .c-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .c-name { font-size: 13px; font-weight: 650; color: var(--text); font-family: var(--mono, monospace); }
-  .c-pack { font-size: 10px; color: var(--faint); margin-top: 2px; }
+  .c-name { font-size: 12px; font-weight: 650; color: var(--text); font-family: var(--font-mono, monospace); }
   .c-desc { font-size: 11.5px; color: var(--dim); margin: 6px 0 8px; line-height: 1.45; }
   .chip {
     font-size: 9.5px; font-weight: 600; letter-spacing: .04em; padding: 2px 7px; border-radius: 5px;
     color: var(--dim); background: var(--s3); box-shadow: inset 0 0 0 1px var(--line);
   }
-  .chip-sensitive { color: var(--amber, #b87a00); }
+  .chip-sensitive { color: var(--warn, #b87a00); }
   .chip-dangerous { color: var(--err); }
   .field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .fname { font-size: 10.5px; color: var(--muted); min-width: 60px; font-family: var(--mono, monospace); }
+  .fname { font-size: 10.5px; color: var(--muted); min-width: 60px; font-family: var(--font-mono, monospace); }
   .field input[type="text"], .field input[type="number"], .field select {
     flex: 1; min-width: 0; font-size: 11.5px; padding: 5px 8px; border-radius: 6px;
-    border: 1px solid var(--line); background: var(--paper, #17140f); color: var(--text); outline: none;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); outline: none;
   }
   .field input:focus, .field select:focus { border-color: var(--accent); }
   .run {
@@ -162,8 +168,8 @@
   .result {
     margin: 8px 0 0; padding: 8px; border-radius: 6px; max-height: 180px; overflow: auto;
     font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-    background: var(--paper, #17140f); color: var(--text); border: 1px solid var(--line);
-    font-family: var(--mono, monospace);
+    background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    font-family: var(--font-mono, monospace);
   }
   .result.err { border-color: var(--err); color: var(--err); }
 </style>
