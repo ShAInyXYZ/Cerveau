@@ -18,7 +18,7 @@ func TestBuiltinPackLoadsAndFuzzes(t *testing.T) {
 
 	known := func(name string) bool {
 		switch name {
-		case "bash", "read", "write", "edit", "grep", "web_fetch", "ask_user", "commit_plan", "remember",
+		case "bash", "read", "write", "edit", "grep", "glob", "web_fetch", "ask_user", "commit_plan", "remember",
 			"file_map", "find_symbol", "find_references", "outline_file":
 			return true
 		}

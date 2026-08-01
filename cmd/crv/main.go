@@ -140,6 +140,7 @@ func main() {
 		entries := []tools.Entry{
 			{Tool: tools.NewRead(ws), RiskTier: tools.RiskSafe, IngressCap: 8000, RetryClass: "args"},
 			{Tool: tools.NewGrep(ws), RiskTier: tools.RiskSafe, IngressCap: 8000, RetryClass: "args"},
+			{Tool: tools.NewGlob(ws), RiskTier: tools.RiskSafe, IngressCap: 4000, RetryClass: "args"},
 			{Tool: tools.NewEdit(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot, tools.ModeBrainstorming}, IngressCap: 2000, RetryClass: "args"},
 			{Tool: tools.NewWrite(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot, tools.ModeBrainstorming}, IngressCap: 2000, RetryClass: "args"},
 			{Tool: tools.NewBash(ws), RiskTier: tools.RiskDangerous, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "transient"},
