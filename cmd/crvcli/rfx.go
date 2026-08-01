@@ -211,7 +211,13 @@ func rfxInstall(src string) error {
 func rfxRemove(name string) error {
 	path := filepath.Join(rfxDir(), name+".rfx.yaml")
 	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("no reflex file %s", path)
+		// Pack-aware: resolve through the loader.
+		l := rfx.NewLoader(rfxDir(), knownCoreTool)
+		d, ok := l.Get(name)
+		if !ok {
+			return fmt.Errorf("no reflex file for %q (check 'crvcli rfx list')", name)
+		}
+		path = d.Path
 	}
 	if err := os.Remove(path); err != nil {
 		return err
@@ -221,10 +227,19 @@ func rfxRemove(name string) error {
 }
 
 func rfxTest(target string) error {
-	// Accept a name from the dir or a direct file path.
+	// Accept a name (standalone or inside a pack) or a direct file path.
 	path := target
 	if !strings.HasSuffix(target, ".rfx.yaml") {
 		path = filepath.Join(rfxDir(), target+".rfx.yaml")
+		if _, err := os.Stat(path); err != nil {
+			// Not standalone — resolve through the loader (pack-aware).
+			l := rfx.NewLoader(rfxDir(), knownCoreTool)
+			d, ok := l.Get(target)
+			if !ok {
+				return fmt.Errorf("no reflex named %q (check 'crvcli rfx list')", target)
+			}
+			path = d.Path
+		}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
