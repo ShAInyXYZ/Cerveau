@@ -68,7 +68,7 @@ func (t *ReflexTool) ExecuteMode(ctx context.Context, args json.RawMessage, mode
 				return ok, defined
 			})
 			if err != nil {
-				return report.String(), fmt.Errorf("reflex %s step %s: %w", t.def.Name, label, err)
+				return report.String(), fmt.Errorf("reflex %s %s: %w", t.def.Name, label, err)
 			}
 			if !run {
 				fmt.Fprintf(&report, "== %s (%s) [skipped: when %s] ==\n", label, s.Tool, s.When)
@@ -78,17 +78,17 @@ func (t *ReflexTool) ExecuteMode(ctx context.Context, args json.RawMessage, mode
 
 		stepArgs, err := substituteStepArgs(s, params, outputs)
 		if err != nil {
-			return report.String(), fmt.Errorf("reflex %s step %s: %w", t.def.Name, label, err)
+			return report.String(), fmt.Errorf("reflex %s %s: %w", t.def.Name, label, err)
 		}
 		// Capability card enforcement — in Go, per dispatch (spec §5).
 		if argMap, ok := stepArgs.(map[string]any); ok {
 			if err := rfx.CheckStep(t.def.Card, s.Tool, argMap); err != nil {
-				return report.String(), fmt.Errorf("reflex %s step %s: %w", t.def.Name, label, err)
+				return report.String(), fmt.Errorf("reflex %s %s: %w", t.def.Name, label, err)
 			}
 		}
 		raw, err := json.Marshal(stepArgs)
 		if err != nil {
-			return report.String(), fmt.Errorf("reflex %s step %s: args don't serialize: %w", t.def.Name, label, err)
+			return report.String(), fmt.Errorf("reflex %s %s: args don't serialize: %w", t.def.Name, label, err)
 		}
 
 		out, err := t.reg.ExecuteMode(ctx, s.Tool, raw, mode)
@@ -107,7 +107,7 @@ func (t *ReflexTool) ExecuteMode(ctx context.Context, args json.RawMessage, mode
 			if s.Optional {
 				continue
 			}
-			return report.String(), fmt.Errorf("reflex %s step %s (%s) failed: %w", t.def.Name, label, s.Tool, err)
+			return report.String(), fmt.Errorf("reflex %s %s (%s) failed: %w", t.def.Name, label, s.Tool, err)
 		}
 		fmt.Fprintf(&report, "== %s (%s) [ok] ==\n%s\n", label, s.Tool, out)
 	}

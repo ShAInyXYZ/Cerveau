@@ -24,6 +24,8 @@
   const enabled = $derived((data.reflexes ?? []).filter((r) => r.enabled));
   const uiPacks = $derived((data.packs ?? []).filter((p) => (p.ui?.widgets ?? []).length > 0));
   const membersOf = $derived((name) => enabled.filter((r) => r.pack === name));
+  // the card gets ALL members — it greys buttons whose target is disabled
+  const allMembersOf = $derived((name) => (data.reflexes ?? []).filter((r) => r.pack === name));
   // standalone group: reflexes with no pack, or whose pack declares no ui
   const defaults = $derived(enabled.filter((r) => !r.pack || !uiPacks.some((p) => p.name === r.pack)));
 
@@ -81,7 +83,7 @@
       <aside class="panel anim-rise">
         <div class="panel-body">
           {#if openPack}
-            <RfxPackCard pack={openPack} members={membersOf(openPack.name)} />
+            <RfxPackCard pack={openPack} members={allMembersOf(openPack.name)} />
           {:else}
             {#each defaults as r (r.name)}
               <div class="card">
