@@ -19,6 +19,48 @@
 
 ---
 
+## 📌 Patch notes
+
+<table>
+  <tr>
+    <td bgcolor="#E88BA0">
+
+### ⚡ v0.2 — "RFX" · 2026-08-01
+
+**RFX — the declarative capability stack — is how Cerveau grows new tools.**
+A *reflex* is a single `.rfx.yaml` file: typed parameters compiled into the
+model's grammar, steps that re-dispatch through the existing guard, a
+permission card enforced in Go, and a fuzz contract verified at install.
+Drop a file into `~/.crv/rfx/` — it's a native tool on the next turn.
+
+**Why not MCP?** MCP was designed for frontier cloud models with giant
+context windows. On a small local model with a 32K window, its costs land
+exactly where it hurts:
+
+| | MCP servers | RFX reflexes |
+|---|---|---|
+| **Context cost** | full tool schemas + prose descriptions, always resident | name + typed schema → GBNF; **zero prose, zero dump** |
+| **Argument safety** | free-form JSON, "hope the model gets it right" | grammar-constrained decode — malformed calls are **impossible** |
+| **Permissions** | none in the protocol | capability card (`fs`/`network`/`env`/`subprocess`), **enforced in Go** |
+| **Verification** | none — tools rot silently | fuzz contract at install; misbehaving tools **refused, loudly** |
+| **Runtime** | a Node/Python process per server (your RAM is KV-cache) | composed steps or one-shot subprocess; **single binary untouched** |
+| **Failure style** | retry loops the small model can't escape | real stderr kept, self-correction wired in |
+
+Ships with a builtin pack (`git-status`, `panel-build`, `test-race`,
+`serve-fast`…), a **Blender hardsurface-modeling talent**
+(`blender-new` / `blender-run` / `blender-inspect` — the agent writes bpy
+scripts, the talent runs the loop), and `crvcli rfx` to
+list / show / install / remove / test / distill.
+
+*Prose skills keep working; `crvcli rfx distill` migrates them to drafts
+you approve. The brain deliberates — reflexes just fire.*
+
+  </td>
+  </tr>
+</table>
+
+---
+
 Cerveau is a coding agent designed as a **harness from first principles** — not a
 chat UI with tools bolted on. A single Go binary owns the agent loop, the context
 window, tool dispatch and structural safety guards; the Svelte control panel is
