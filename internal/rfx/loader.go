@@ -205,6 +205,14 @@ func (l *Loader) refresh(force bool) {
 			l.errors = append(l.errors, LoadError{packYAML, err})
 			continue
 		}
+		// Discover the custom panel (RFX-UI tier 2): ui/panel.html, size-capped.
+		if fi, err := os.Stat(filepath.Join(packDir, "ui", "panel.html")); err == nil && !fi.IsDir() {
+			if fi.Size() <= MaxPanelBytes {
+				p.Panel = filepath.Join(packDir, "ui", "panel.html")
+			} else {
+				l.notices = append(l.notices, fmt.Sprintf("%s: ui/panel.html is %d bytes (cap %d) — pack loads WITHOUT its custom panel", p.Pack, fi.Size(), MaxPanelBytes))
+			}
+		}
 		// Discover docs (listed, not indexed — recall-indexing lands later).
 		if docs, err := os.ReadDir(filepath.Join(packDir, "docs")); err == nil {
 			for _, d := range docs {

@@ -3,6 +3,7 @@
   import { rfxIcon } from './rfxIcons.js';
   import { j, jpost } from './api.js';
   import RfxPackCard from './RfxPackCard.svelte';
+  import RfxCustomPanel from './RfxCustomPanel.svelte';
 
   // RfxDock — Blender-N-panel-style RFX surface (docs/RFX-UI.md).
   // A slim vertical tab strip lives at the chat's right edge — one rotated
@@ -84,7 +85,9 @@
     {#if openValid && openTab}
       <aside class="panel anim-rise">
         <div class="panel-body">
-          {#if openPack}
+          {#if openPack?.has_panel}
+            <RfxCustomPanel pack={openPack} members={allMembersOf(openPack.name)} />
+          {:else if openPack}
             <RfxPackCard pack={openPack} members={allMembersOf(openPack.name)} />
           {:else}
             {#each defaults as r (r.name)}

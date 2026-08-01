@@ -271,3 +271,43 @@ func TestCrossPackNameCollision(t *testing.T) {
 		t.Fatal("cross-pack collision not reported as DuplicateError")
 	}
 }
+
+// A pack may ship ui/panel.html — full custom UI, discovered at load.
+// Oversized panels are rejected loudly (the file is served to the iframe).
+func TestPanelDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "github")
+	os.MkdirAll(filepath.Join(pd, "ui"), 0o755)
+	writeFile(t, pd, "pack.yaml", testPackYAML)
+	writeFile(t, pd, "git-status.rfx.yaml", validAliasFor("git-status"))
+	writeFile(t, filepath.Join(pd, "ui"), "panel.html", "<h1>custom</h1>")
+
+	l := NewLoader(dir, knownCore)
+	packs := l.Packs()
+	if len(packs) != 1 || packs[0].Panel == "" {
+		t.Fatalf("panel.html not discovered: %+v", packs)
+	}
+}
+
+func TestPanelSizeCap(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "github")
+	os.MkdirAll(filepath.Join(pd, "ui"), 0o755)
+	writeFile(t, pd, "pack.yaml", testPackYAML)
+	writeFile(t, pd, "git-status.rfx.yaml", validAliasFor("git-status"))
+	writeFile(t, filepath.Join(pd, "ui"), "panel.html", strings.Repeat("x", MaxPanelBytes+1))
+
+	l := NewLoader(dir, knownCore)
+	if packs := l.Packs(); len(packs) != 1 || packs[0].Panel != "" {
+		t.Fatalf("oversized panel should load the pack WITHOUT a panel: %+v", packs)
+	}
+	found := false
+	for _, n := range l.Notices() {
+		if strings.Contains(n, "panel.html") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no oversized-panel notice: %v", l.Notices())
+	}
+}

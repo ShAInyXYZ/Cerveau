@@ -26,6 +26,7 @@ type rfxPackView struct {
 	Author      string     `json:"author"`
 	Description string     `json:"description"`
 	Icon        string     `json:"icon,omitempty"`
+	HasPanel    bool       `json:"has_panel,omitempty"`
 	Docs        []string   `json:"docs"`
 	UI          rfx.PackUI `json:"ui,omitempty"`
 }
@@ -39,7 +40,7 @@ func (a *API) ListRfx(w http.ResponseWriter, r *http.Request) {
 	}
 	packs := []rfxPackView{}
 	for _, p := range a.rfxLoader.Packs() {
-		packs = append(packs, rfxPackView{p.Pack, p.Version, p.Author, p.Description, p.Icon, p.Docs, p.UI})
+		packs = append(packs, rfxPackView{p.Pack, p.Version, p.Author, p.Description, p.Icon, p.Panel != "", p.Docs, p.UI})
 	}
 	reflexes := []rfxReflexView{}
 	for _, d := range a.rfxLoader.All() {
@@ -69,6 +70,9 @@ func (a *API) ListRfx(w http.ResponseWriter, r *http.Request) {
 // ToggleRfx flips one reflex's enabled state (.state.json — manifests are
 // never edited). Grammar follows on the next turn.
 func (a *API) ToggleRfx(w http.ResponseWriter, r *http.Request) {
+	if !requireJSON(w, r) {
+		return
+	}
 	if a.rfxLoader == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "rfx not wired"})
 		return
@@ -91,6 +95,9 @@ func (a *API) ToggleRfx(w http.ResponseWriter, r *http.Request) {
 // RunRfx is the RFX_UI dock's action bridge: fire one reflex manually with
 // args, through the guarded registry path. The output returns to the card.
 func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
+	if !requireJSON(w, r) {
+		return
+	}
 	if a.chat == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "loop not wired"})
 		return

@@ -17,6 +17,11 @@ import (
 
 const SpecVersion = 1
 
+// MaxPanelBytes caps a pack's ui/panel.html. The file is served whole into
+// the sandboxed panel iframe; a cap keeps a broken pack from shipping a
+// gigabyte of "UI".
+const MaxPanelBytes = 512 * 1024
+
 const (
 	KindPipeline = "pipeline"
 	KindExec     = "exec"
@@ -591,6 +596,7 @@ type Pack struct {
 	Author      string   `yaml:"author"`
 	Description string   `yaml:"description"`
 	Icon        string   `yaml:"icon" json:"icon,omitempty"` // from Icons; the pack's tab + card glyph
+	Panel       string   `yaml:"-"    json:"-"` // discovered ui/panel.html — full custom UI (RFX-UI tier 2)
 	UI          PackUI   `yaml:"ui"   json:"ui,omitempty"`
 	Docs        []string `yaml:"-"    json:"docs,omitempty"` // discovered docs/*.md
 	Path        string   `yaml:"-"    json:"-"`
