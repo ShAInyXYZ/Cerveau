@@ -21,11 +21,13 @@
 
 ## 📌 Patch notes
 
-<table>
-  <tr>
-    <td bgcolor="#E88BA0">
-
 ### ⚡ v0.2 — "RFX" · 2026-08-01
+
+<p>
+  <img src="https://img.shields.io/badge/RFX-v1_frozen-C0304A?style=flat-square&labelColor=17140F" alt="RFX v1 frozen"/>
+  <img src="https://img.shields.io/badge/reflexes-11_live-E88BA0?style=flat-square&labelColor=17140F" alt="11 reflexes live"/>
+  <img src="https://img.shields.io/badge/prose_in_context-0_tokens-C0304A?style=flat-square&labelColor=17140F" alt="0 prose tokens"/>
+</p>
 
 **RFX — the declarative capability stack — is how Cerveau grows new tools.**
 A *reflex* is a single `.rfx.yaml` file: typed parameters compiled into the
@@ -39,25 +41,21 @@ exactly where it hurts:
 
 | | MCP servers | RFX reflexes |
 |---|---|---|
-| **Context cost** | full tool schemas + prose descriptions, always resident | name + typed schema → GBNF; **zero prose, zero dump** |
-| **Argument safety** | free-form JSON, "hope the model gets it right" | grammar-constrained decode — malformed calls are **impossible** |
-| **Permissions** | none in the protocol | capability card (`fs`/`network`/`env`/`subprocess`), **enforced in Go** |
-| **Verification** | none — tools rot silently | fuzz contract at install; misbehaving tools **refused, loudly** |
-| **Runtime** | a Node/Python process per server (your RAM is KV-cache) | composed steps or one-shot subprocess; **single binary untouched** |
-| **Failure style** | retry loops the small model can't escape | real stderr kept, self-correction wired in |
+| **Context cost** | schemas + prose, always resident | name + GBNF grammar; zero prose |
+| **Arguments** | free-form JSON, hope for the best | malformed calls impossible by grammar |
+| **Permissions** | none in the protocol | capability card, enforced in Go |
+| **Verification** | none — tools rot silently | fuzz contract at install, loud refusal |
+| **Runtime** | a Node/Python process per server | composed steps or one-shot subprocess |
+| **Failure style** | retry loops | real stderr kept, self-correction wired in |
 
-Ships with a builtin pack (`git-status`, `panel-build`, `test-race`,
-`serve-fast`…), a **Blender hardsurface-modeling talent**
-(`blender-new` / `blender-run` / `blender-inspect` — the agent writes bpy
-scripts, the talent runs the loop), and `crvcli rfx` to
-list / show / install / remove / test / distill.
+**Ships with:** the builtin pack (`git-status`, `panel-build`, `test-race`,
+`serve-fast`…), a **Blender hardsurface-modeling talent** (`blender-new` /
+`blender-run` / `blender-inspect` — the agent writes bpy scripts, the talent
+runs the loop), and `crvcli rfx` to list / show / install / remove / test /
+distill.
 
-*Prose skills keep working; `crvcli rfx distill` migrates them to drafts
-you approve. The brain deliberates — reflexes just fire.*
-
-  </td>
-  </tr>
-</table>
+*Prose skills keep working; `crvcli rfx distill` migrates them to drafts you
+approve. The brain deliberates — reflexes just fire.*
 
 ---
 
