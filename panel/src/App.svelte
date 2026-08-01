@@ -151,6 +151,20 @@
     messages = []; errors = []; question = null; report = null;
     dismissedErrorKeys = loadDismissed(id); // this session's own remembered dismissals
     loadMessages(); loadTicks(); loadErrors(); loadReport();
+    followSessionWorkspace(id);
+  }
+
+  // The workspace follows the SESSION, not the other way around: selecting a
+  // session in another project re-points the core (registry, guard, code
+  // graph, RFX runs) at that session's folder, and the WS chip + RFX dock
+  // update with it. Without this, the dock kept showing the previous
+  // project's git state after a session switch.
+  async function followSessionWorkspace(id) {
+    const s = sessions.find((x) => x.id === id);
+    const ws = s?.workspace;
+    if (!ws || ws === health?.workspace) return;
+    const r = await jpost('/api/config/workspace', { path: ws });
+    if (r?.ok) await loadHealth();
   }
 
   async function createSession(name, workspace) {
@@ -318,7 +332,9 @@
           onDismissError={dismissAllErrors}
           onAttach={(kind) => console.log('attach requested:', kind)}
           onWorkspaceChanged={onWorkspaceChanged} />
-        <RfxDock />
+        {#key health?.workspace}
+          <RfxDock />
+        {/key}
       </div>
     {/if}
 
