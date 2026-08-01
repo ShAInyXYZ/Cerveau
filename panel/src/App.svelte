@@ -7,6 +7,7 @@
   import Chat from './lib/Chat.svelte';
   import Activity from './lib/Activity.svelte';
   import MemoryView from './lib/MemoryView.svelte';
+  import RfxDock from './lib/RfxDock.svelte';
   import Settings from './lib/Settings.svelte';
   import DeleteSessionDialog from './lib/DeleteSessionDialog.svelte';
 
@@ -305,17 +306,20 @@
     {:else if memView}
       <MemoryView />
     {:else}
-      <Chat
-        {messages} {running} {runStarted} bind:mode {question} {errors} {report} {liveSteps}
-        workspace={health?.workspace ?? ''}
-        modalities={health?.model?.modalities ?? null}
-        isInstant={activeInstant}
-        onSend={send} onSteer={steer} onPause={pause} onKill={kill}
-        onAnswer={answer} onRunAutopilot={runAutopilot}
-        onRetry={async (text) => { await dismissAllErrors(); send(text); }}
-        onDismissError={dismissAllErrors}
-        onAttach={(kind) => console.log('attach requested:', kind)}
-        onWorkspaceChanged={onWorkspaceChanged} />
+      <div class="chatwrap">
+        <Chat
+          {messages} {running} {runStarted} bind:mode {question} {errors} {report} {liveSteps}
+          workspace={health?.workspace ?? ''}
+          modalities={health?.model?.modalities ?? null}
+          isInstant={activeInstant}
+          onSend={send} onSteer={steer} onPause={pause} onKill={kill}
+          onAnswer={answer} onRunAutopilot={runAutopilot}
+          onRetry={async (text) => { await dismissAllErrors(); send(text); }}
+          onDismissError={dismissAllErrors}
+          onAttach={(kind) => console.log('attach requested:', kind)}
+          onWorkspaceChanged={onWorkspaceChanged} />
+        <RfxDock />
+      </div>
     {/if}
 
     {#if activityOpen}
@@ -331,6 +335,8 @@
 
 <style>
   .shell { height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+  .chatwrap { display: flex; flex: 1; min-width: 0; min-height: 0; }
+  .chatwrap :global(main.chat) { flex: 1; min-width: 0; }
   .body { flex: 1; display: flex; min-height: 0; gap: 1px; background: var(--line); }
   .body > :global(*) { background: var(--bg); }
 </style>

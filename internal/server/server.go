@@ -38,6 +38,7 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("GET /api/skills", a.ListSkills)
 	mux.HandleFunc("GET /api/rfx", a.ListRfx)
 	mux.HandleFunc("POST /api/rfx/toggle", a.ToggleRfx)
+	mux.HandleFunc("POST /api/rfx/run", a.RunRfx)
 	mux.HandleFunc("POST /api/config/workspace", a.ChangeWorkspace)
 	mux.HandleFunc("POST /api/config/pick-workspace", a.PickWorkspace)
 	mux.HandleFunc("POST /api/codegraph/index", a.ReindexCode)

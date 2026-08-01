@@ -10,13 +10,14 @@ import (
 // rfxLoader is wired via SetRfxLoader (mirrors SetSkillLoader).
 
 type rfxReflexView struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Kind        string   `json:"kind"`
-	Risk        string   `json:"risk"`
-	Modes       []string `json:"modes"`
-	Pack        string   `json:"pack"`
-	Enabled     bool     `json:"enabled"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Kind        string         `json:"kind"`
+	Risk        string         `json:"risk"`
+	Modes       []string       `json:"modes"`
+	Pack        string         `json:"pack"`
+	Enabled     bool           `json:"enabled"`
+	Params      map[string]any `json:"params,omitempty"`
 }
 
 type rfxPackView struct {
@@ -47,6 +48,7 @@ func (a *API) ListRfx(w http.ResponseWriter, r *http.Request) {
 		reflexes = append(reflexes, rfxReflexView{
 			Name: d.Name, Description: d.Description, Kind: d.Kind, Risk: d.Risk,
 			Modes: modes, Pack: d.Pack, Enabled: !a.rfxLoader.Disabled(d.Name),
+			Params: d.Params,
 		})
 	}
 	notices := []string{}
@@ -82,4 +84,30 @@ func (a *API) ToggleRfx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": body.Name, "enabled": body.Enabled})
+}
+
+// RunRfx is the RFX_UI dock's action bridge: fire one reflex manually with
+// args, through the guarded registry path. The output returns to the card.
+func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
+	if a.chat == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "loop not wired"})
+		return
+	}
+	var body struct {
+		Name string          `json:"name"`
+		Args json.RawMessage `json:"args"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
+		return
+	}
+	if len(body.Args) == 0 {
+		body.Args = json.RawMessage(`{}`)
+	}
+	out, err := a.chat.RunReflex(r.Context(), body.Name, body.Args)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "output": out, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "output": out})
 }

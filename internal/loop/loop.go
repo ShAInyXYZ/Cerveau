@@ -131,6 +131,24 @@ func (l *Loop) SetSkills(s *skills.Loader, f func([]skills.SkillTool) []tools.To
 // a file dropped into ~/.crv/rfx goes live on the next turn, no restart.
 func (l *Loop) SetReflexes(r *rfx.Loader) { l.rfx = r }
 
+// RunReflex executes one reflex manually (RFX_UI dock quick-run) through the
+// SAME path the model uses: registry copy with reflexes → guard → remediator
+// → dispatch. Mode "" means mode-fencing doesn't restrict it — the human
+// clicked the button, which is its own authorization.
+func (l *Loop) RunReflex(ctx context.Context, name string, args json.RawMessage) (string, error) {
+	if l.rfx == nil {
+		return "", fmt.Errorf("rfx not wired")
+	}
+	reg, errs := l.registry().WithReflexes(l.rfx.List())
+	if len(errs) > 0 {
+		return "", fmt.Errorf("reflex registration: %v", errs[0])
+	}
+	if _, ok := reg.Entry(name); !ok {
+		return "", fmt.Errorf("no enabled reflex named %q", name)
+	}
+	return reg.ExecuteMode(ctx, name, args, "")
+}
+
 type Result struct {
 	Reply      string         `json:"reply"`
 	Iterations int            `json:"iterations"`
