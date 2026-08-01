@@ -49,10 +49,9 @@ exactly where it hurts:
 | **Failure style** | retry loops | real stderr kept, self-correction wired in |
 
 **Ships with:** the builtin pack (`git-status`, `panel-build`, `test-race`,
-`serve-fast`…), a **Blender hardsurface-modeling talent** (`blender-new` /
-`blender-run` / `blender-inspect` — the agent writes bpy scripts, the talent
-runs the loop), and `crvcli rfx` to list / show / install / remove / test /
-distill.
+`serve-fast`…) and `crvcli rfx` to list / show / install / remove / test /
+distill — write your own reflexes in minutes, or convert old prose skills
+with `crvcli rfx distill`.
 
 *Prose skills keep working; `crvcli rfx distill` migrates them to drafts you
 approve. The brain deliberates — reflexes just fire.*
