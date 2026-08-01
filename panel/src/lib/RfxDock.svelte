@@ -178,11 +178,14 @@
   }
   .tab.on .tab-count { color: var(--accent); background: transparent; }
 
-  /* ── the panel: floats left of the strip, just the card, no backdrop ── */
+  /* ── the panel: a reserved 292px column, visually invisible — no
+     background, no border. The chat never gets covered; the opaque cards
+     appear to float in the empty space. ── */
   .panel {
-    position: absolute; top: 8px; right: 100%; margin-right: 8px;
-    width: 292px; max-height: calc(100% - 16px);
-    display: flex; flex-direction: column; z-index: 30;
+    width: 292px; flex-shrink: 0; min-height: 0;
+    padding: 8px 8px 8px 0;
+    display: flex; flex-direction: column;
+    background: transparent;
   }
   .panel-body { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
   /* floating cards must be opaque — they sit over chat text, not on a rail */
