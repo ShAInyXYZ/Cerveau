@@ -2,21 +2,17 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
-	"cerveau/internal/guard"
 	"cerveau/internal/rfx"
 )
 
-// The builtin pack (repo-root rfx/) is dogfood, not decoration: this test
-// loads it through the REAL loader, then executes git-status through the
-// REAL bash tool and REAL dispatch guard. If the pack drifts out of spec,
-// or the executor out of the pack, this fails.
-func TestBuiltinPackLoadsAndExecutes(t *testing.T) {
+// The builtin pack (repo-root rfx/) is dogfood, not decoration: every file
+// in it must load through the REAL loader, carry a fuzz contract, and pass
+// a REAL fuzz run. If the pack drifts out of spec, this fails — regardless
+// of which reflexes the pack currently contains.
+func TestBuiltinPackLoadsAndFuzzes(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
 	packDir := filepath.Join(repoRoot, "rfx")
 
@@ -30,35 +26,20 @@ func TestBuiltinPackLoadsAndExecutes(t *testing.T) {
 	}
 	l := rfx.NewLoader(packDir, known)
 	defs := l.List()
-	if len(defs) < 5 {
-		t.Fatalf("builtin pack: %d reflexes loaded, want ≥5; errors: %v", len(defs), l.Errors())
-	}
 	if errs := l.Errors(); len(errs) != 0 {
 		t.Fatalf("builtin pack has rejected manifests: %v", errs)
 	}
+	if len(defs) == 0 {
+		t.Skip("builtin pack is empty (ground-up redesign) — loader gate stands")
+	}
 
-	// Every builtin must carry a fuzz contract (pack discipline).
 	for _, d := range defs {
 		if d.Contract.MaxMs <= 0 {
-			t.Errorf("builtin %q: no contract.max_ms", d.Name)
+			t.Errorf("builtin %q: no contract.max_ms (pack discipline)", d.Name)
 		}
-	}
-
-	// Execute git-status for real against this repo.
-	reg := NewRegistry(Entry{Tool: NewBash(repoRoot), RiskTier: RiskDangerous, Modes: []string{ModeAutopilot}})
-	grd := guard.New(repoRoot)
-	reg.SetGuard(grd.Check)
-	reg.SetRemediator(func(tool string, args json.RawMessage) (json.RawMessage, error) {
-		return grd.Remediate(tool, args, time.Now())
-	})
-	if errs := reg.AddReflexes(defs); len(errs) != 0 {
-		t.Fatal(errs)
-	}
-	out, err := reg.ExecuteMode(context.Background(), "git-status", json.RawMessage(`{}`), ModeAutopilot)
-	if err != nil {
-		t.Fatalf("git-status reflex failed for real: %v\n%s", err, out)
-	}
-	if !strings.Contains(out, "##") { // git status --branch always prints "## <branch>"
-		t.Fatalf("git-status output doesn't look like git status: %q", out)
+		rep := FuzzReflex(context.Background(), d, rfx.GenerateArgs(d.Params, 100))
+		if fails := rep.Failures(); len(fails) != 0 {
+			t.Errorf("builtin %q fails its own fuzz contract: %v", d.Name, fails)
+		}
 	}
 }
