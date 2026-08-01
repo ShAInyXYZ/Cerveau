@@ -21,11 +21,43 @@
 
 ## 📌 Patch notes
 
+### 🎛️ v0.2.1 — "RFX_UI" · 2026-08-02
+
+<p>
+  <img src="https://img.shields.io/badge/RFX__UI-tier_2-C0304A?style=flat-square&labelColor=17140F" alt="RFX_UI tier 2"/>
+  <img src="https://img.shields.io/badge/panels-any_HTML%2FJS-E88BA0?style=flat-square&labelColor=17140F" alt="custom panels"/>
+  <img src="https://img.shields.io/badge/capability-still_guarded-C0304A?style=flat-square&labelColor=17140F" alt="capability guarded"/>
+</p>
+
+**RFX_UI — packs now ship their own control panels into the chat.**
+A Blender-style tab strip sits at the chat's right edge; each pack gets a
+panel, two ways to build one:
+
+- **Declarative widgets** (`ui:` in `pack.yaml`) — status metrics with
+  semantic tones, buttons, fields, file lists, progress, toggles. Six
+  lines of YAML, zero code, validated at load.
+- **Full custom panels** (`ui/panel.html`) — *any* HTML/CSS/JS, the
+  author's own design. Rendered in a sandboxed iframe (opaque origin,
+  CSP: no network, no frames); its only door is the `window.rfx` bridge,
+  and every call lands in the same guarded registry the model uses.
+  **Presentation is free; capability is still RFX.**
+
+The trust chain got real teeth on the way: guard denials are typed by
+tier, the sensitive tier is satisfied by an explicit **user confirmation**
+(host-owned confirm strips a panel cannot draw over — catastrophic is
+never approvable, by anyone), and the workspace now follows the active
+session, so panels always show the project you're actually in.
+
+Built as the reference: a github cockpit pack — live status with per-file
+line stats, a colored diff viewer, one-click stage/commit/push, repo
+publishing via `gh`, commit-identity management, and a ✦ button that has
+**the local model write your commit message**. Twelve talents, all YAML +
+one HTML file, zero core changes — which is the point.
+
 ### ⚡ v0.2 — "RFX" · 2026-08-01
 
 <p>
   <img src="https://img.shields.io/badge/RFX-v1_frozen-C0304A?style=flat-square&labelColor=17140F" alt="RFX v1 frozen"/>
-  <img src="https://img.shields.io/badge/reflexes-11_live-E88BA0?style=flat-square&labelColor=17140F" alt="11 reflexes live"/>
   <img src="https://img.shields.io/badge/prose_in_context-0_tokens-C0304A?style=flat-square&labelColor=17140F" alt="0 prose tokens"/>
 </p>
 
@@ -33,7 +65,9 @@
 A *reflex* is a single `.rfx.yaml` file: typed parameters compiled into the
 model's grammar, steps that re-dispatch through the existing guard, a
 permission card enforced in Go, and a fuzz contract verified at install.
-Drop a file into `~/.crv/rfx/` — it's a native tool on the next turn.
+Drop a file into `~/.crv/rfx/` — it's a native tool on the next turn;
+group related reflexes into a *pack* (a folder with `pack.yaml`) and they
+travel together.
 
 **Why not MCP?** MCP was designed for frontier cloud models with giant
 context windows. On a small local model with a 32K window, its costs land
@@ -48,13 +82,10 @@ exactly where it hurts:
 | **Runtime** | a Node/Python process per server | composed steps or one-shot subprocess |
 | **Failure style** | retry loops | real stderr kept, self-correction wired in |
 
-**Ships with:** the builtin pack (`git-status`, `panel-build`, `test-race`,
-`serve-fast`…) and `crvcli rfx` to list / show / install / remove / test /
-distill — write your own reflexes in minutes, or convert old prose skills
-with `crvcli rfx distill`.
-
-*Prose skills keep working; `crvcli rfx distill` migrates them to drafts you
-approve. The brain deliberates — reflexes just fire.*
+**Tooling:** `crvcli rfx` to list / show / install / remove / enable /
+disable / test / distill — write your own reflexes in minutes, or convert
+old prose skills with `crvcli rfx distill`. Prose skills keep working.
+*The brain deliberates — reflexes just fire.*
 
 ---
 
