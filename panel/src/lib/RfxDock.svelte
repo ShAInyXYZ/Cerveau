@@ -1,5 +1,6 @@
 <script>
   import { Play, Zap } from 'lucide-svelte';
+  import { rfxIcon } from './rfxIcons.js';
   import { j, jpost } from './api.js';
   import RfxPackCard from './RfxPackCard.svelte';
 
@@ -31,8 +32,9 @@
 
   // tabs: packs with a live panel + one "rfx" tab for the standalone group
   const tabs = $derived([
-    ...uiPacks.filter((p) => membersOf(p.name).length > 0).map((p) => ({ id: p.name, count: membersOf(p.name).length })),
-    ...(defaults.length ? [{ id: '·rfx', count: defaults.length }] : [])
+    ...uiPacks.filter((p) => membersOf(p.name).length > 0)
+      .map((p) => ({ id: p.name, count: membersOf(p.name).length, icon: p.icon })),
+    ...(defaults.length ? [{ id: '·rfx', count: defaults.length, icon: 'zap' }] : [])
   ]);
   const openPack = $derived(uiPacks.find((p) => p.name === openTab));
   const openValid = $derived(tabs.some((t) => t.id === openTab));
@@ -130,8 +132,10 @@
     <nav class="strip" aria-label="RFX packs">
       <div class="strip-mark"><Zap size={12} /></div>
       {#each tabs as t (t.id)}
+        {@const TabIcon = rfxIcon(t.icon, Zap)}
         <button class="tab" class:on={openTab === t.id} onclick={() => pick(t.id)}
           aria-label="{t.id} panel" aria-expanded={openTab === t.id}>
+          <TabIcon size={13} strokeWidth={2.2} />
           <span class="tab-name">{t.id === '·rfx' ? 'rfx' : t.id}</span>
           <span class="tab-count">{t.count}</span>
         </button>

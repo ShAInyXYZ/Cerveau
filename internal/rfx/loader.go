@@ -303,6 +303,9 @@ func validatePackRuns(p Pack, reflexNames map[string]bool) error {
 		if w.Run != "" && !reflexNames[w.Run] {
 			return fmt.Errorf("ui.widgets[%d]: run: %q — no reflex with that name exists", i, w.Run)
 		}
+		if w.OnFail != nil && !reflexNames[w.OnFail.Run] {
+			return fmt.Errorf("ui.widgets[%d]: on_fail.run %q — no reflex with that name exists", i, w.OnFail.Run)
+		}
 	}
 	return nil
 }

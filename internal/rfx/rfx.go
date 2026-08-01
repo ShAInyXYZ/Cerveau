@@ -537,17 +537,46 @@ func (r *Row) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// Icons is the closed icon vocabulary (docs/RFX-UI.md). Authors pick a NAME;
+// the renderer owns the glyphs. Unknown names are load-time rejections, so a
+// card never renders a mystery hole.
+var Icons = []string{
+	"play", "zap", "plus", "check", "x", "upload", "download", "history",
+	"file-diff", "git-branch", "git-commit", "folder-git", "terminal",
+	"database", "globe", "wrench", "package", "bug", "shield", "sparkles",
+	"rocket", "refresh", "search", "trash", "eye", "flame",
+}
+
+func validIcon(name string) bool {
+	for _, i := range Icons {
+		if i == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Action is a small declarative remedy: shown by a status widget when its
+// run fails (on_fail) — "this is broken, here is the button that fixes it".
+type Action struct {
+	Label string `yaml:"label" json:"label"`
+	Run   string `yaml:"run"   json:"run"`
+	Icon  string `yaml:"icon"  json:"icon,omitempty"`
+}
+
 type Widget struct {
-	Type  string         `yaml:"type"  json:"type"`
-	Label string         `yaml:"label" json:"label,omitempty"`
-	Run   string         `yaml:"run"   json:"run,omitempty"`
-	Args  map[string]any `yaml:"args"  json:"args,omitempty"`
-	Every string         `yaml:"every" json:"every,omitempty"` // status refresh interval, e.g. 30s
-	Rows  map[string]Row `yaml:"rows"  json:"rows,omitempty"`  // status metrics
-	Lines int            `yaml:"lines" json:"lines,omitempty"` // log tail length
-	Name  string         `yaml:"name"  json:"name,omitempty"`  // field param name / toggle target
-	Match string         `yaml:"match" json:"match,omitempty"` // list: multiline regex over the status run's output
-	Limit int            `yaml:"limit" json:"limit,omitempty"` // list: max lines shown
+	Type   string         `yaml:"type"    json:"type"`
+	Label  string         `yaml:"label"   json:"label,omitempty"`
+	Icon   string         `yaml:"icon"    json:"icon,omitempty"` // from Icons; buttons default to play
+	Run    string         `yaml:"run"     json:"run,omitempty"`
+	Args   map[string]any `yaml:"args"    json:"args,omitempty"`
+	Every  string         `yaml:"every"   json:"every,omitempty"` // status refresh interval, e.g. 30s
+	Rows   map[string]Row `yaml:"rows"    json:"rows,omitempty"`  // status metrics
+	OnFail *Action        `yaml:"on_fail" json:"on_fail,omitempty"`
+	Lines  int            `yaml:"lines"   json:"lines,omitempty"` // log tail length
+	Name   string         `yaml:"name"    json:"name,omitempty"`  // field param name / toggle target
+	Match  string         `yaml:"match"   json:"match,omitempty"` // list: multiline regex over the status run's output
+	Limit  int            `yaml:"limit"   json:"limit,omitempty"` // list: max lines shown
 }
 
 // PackUI is the ui: block of a pack (docs/RFX-UI.md §2).
@@ -561,6 +590,7 @@ type Pack struct {
 	Version     string   `yaml:"version"`
 	Author      string   `yaml:"author"`
 	Description string   `yaml:"description"`
+	Icon        string   `yaml:"icon" json:"icon,omitempty"` // from Icons; the pack's tab + card glyph
 	UI          PackUI   `yaml:"ui"   json:"ui,omitempty"`
 	Docs        []string `yaml:"-"    json:"docs,omitempty"` // discovered docs/*.md
 	Path        string   `yaml:"-"    json:"-"`
@@ -594,6 +624,9 @@ func ValidatePack(p *Pack) error {
 	}
 	if len(p.Description) > 200 {
 		return fmt.Errorf("description: %d chars, max 200", len(p.Description))
+	}
+	if p.Icon != "" && !validIcon(p.Icon) {
+		return fmt.Errorf("icon %q: not in the icon set (%s)", p.Icon, strings.Join(Icons, ", "))
 	}
 	for i, w := range p.UI.Widgets {
 		if err := validateWidget(w); err != nil {
@@ -641,6 +674,20 @@ func validateWidget(w Widget) error {
 	}
 	// Semantic checks — load-time rejection, never a runtime surprise in the
 	// panel (the renderer would otherwise throw on a bad regex mid-render).
+	if w.Icon != "" && !validIcon(w.Icon) {
+		return fmt.Errorf("icon %q: not in the icon set (%s)", w.Icon, strings.Join(Icons, ", "))
+	}
+	if w.OnFail != nil {
+		if w.Type != "status" {
+			return fmt.Errorf("on_fail: only valid on a status widget")
+		}
+		if w.OnFail.Label == "" || w.OnFail.Run == "" {
+			return fmt.Errorf("on_fail: label and run are both required")
+		}
+		if w.OnFail.Icon != "" && !validIcon(w.OnFail.Icon) {
+			return fmt.Errorf("on_fail.icon %q: not in the icon set", w.OnFail.Icon)
+		}
+	}
 	for label, row := range w.Rows {
 		if _, err := regexp.Compile(row.Re); err != nil {
 			return fmt.Errorf("rows.%s: regex %q does not compile: %v", label, row.Re, err)

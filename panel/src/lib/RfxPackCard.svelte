@@ -1,6 +1,7 @@
 <script>
-  import { Zap, Play, ChevronDown, ChevronUp, Loader, CircleAlert } from 'lucide-svelte';
-  import { j, jpost } from './api.js';
+  import { Zap, Play, ChevronDown, ChevronUp, Loader, CircleAlert, Sparkles } from 'lucide-svelte';
+  import { rfxIcon } from './rfxIcons.js';
+  import { jpost } from './api.js';
 
   // RfxPackCard — one talent pack's cockpit in the RFX dock (docs/RFX-UI.md).
   // Chrome is shared and fixed; content is the pack's ui: widget list,
@@ -22,6 +23,7 @@
   const fieldWs = $derived(widgets.filter((w) => w.type === 'field'));
   const maxRisk = $derived(members.some((m) => m.risk === 'dangerous') ? 'dangerous'
     : members.some((m) => m.risk === 'sensitive') ? 'sensitive' : 'safe');
+  const PackIcon = $derived(rfxIcon(pack.icon, Zap));
 
   // Consecutive buttons flow into one row; everything else breaks the row.
   const groups = $derived.by(() => {
@@ -68,12 +70,13 @@
     } catch { return []; }
   }
 
-  // Errors come back as pipeline reports — keep the real text (honest
-  // failures), but surface only its LAST line in the compact row; the full
-  // report lives in the log stream.
-  function compactError(text) {
-    const lines = (text ?? '').trim().split('\n').filter(Boolean);
-    return lines[lines.length - 1] ?? 'failed';
+  // Errors come back as pipeline reports (== step headers + output). Strip
+  // the report scaffolding, keep the real message lines — shown IN FULL
+  // (a truncated error is no error at all).
+  function cleanError(text) {
+    const lines = (text ?? '').trim().split('\n')
+      .filter((l) => l.trim() && !l.startsWith('==') && !l.startsWith('reflex '));
+    return lines.join('\n') || 'failed';
   }
 
   async function runStatus() {
@@ -83,7 +86,7 @@
       if (res.ok) {
         status = { rows: extractRows(res.output ?? '', statusW.rows), age: 0, error: '', output: res.output ?? '' };
       } else {
-        status = { ...status, output: '', error: compactError(res.output || res.error) };
+        status = { ...status, output: '', error: cleanError(res.output || res.error) };
       }
     } catch { status = { ...status, error: 'core offline' }; }
   }
@@ -133,7 +136,7 @@
         output: (res.output ?? '') + (!res.ok && res.error ? (res.output ? '\n' : '') + res.error : ''),
         err: !res.ok
       };
-      if (statusW && (target.name === statusW.run || !res.err)) runStatus();
+      if (statusW && (target.name === statusW.run || res.ok)) runStatus();
       if (res.ok) fields = {}; // a successful run consumes its field input
     } catch (e) {
       lastRun = { label: w.label, output: String(e), err: true };
@@ -172,7 +175,7 @@
 
 <div class="pcard">
   <button class="phead" onclick={() => (open = !open)}>
-    <Zap size={13} />
+    <PackIcon size={13} />
     <span class="pname">{pack.name}</span>
     <span class="pver">v{pack.version} · {members.length} talents</span>
     <span class="chip" class:chip-dangerous={maxRisk === 'dangerous'} class:chip-sensitive={maxRisk === 'sensitive'}>{maxRisk}</span>
@@ -184,10 +187,21 @@
       {#each groups as g, gi (gi)}
         {#if g.kind === 'status'}
           {#if status.error}
-            <div class="status-err">
-              <CircleAlert size={12} />
-              <span class="err-text">{status.error}</span>
-              <span class="err-age mk">{fmtAge(status.age)}</span>
+            <div class="status-fail">
+              <div class="sf-head">
+                <CircleAlert size={12} />
+                <span class="mk">unavailable</span>
+                <span class="mk sf-age">{fmtAge(status.age)}</span>
+              </div>
+              <div class="sf-text">{status.error}</div>
+              {#if g.w.on_fail}
+                {@const RemedyIcon = rfxIcon(g.w.on_fail.icon, Sparkles)}
+                <button class="act primary sf-remedy" disabled={!!running}
+                  onclick={() => fire({ label: g.w.on_fail.label, run: g.w.on_fail.run })}>
+                  {#if running === g.w.on_fail.label}<Loader size={10} class="spin" />{:else}<RemedyIcon size={11} strokeWidth={2.4} />{/if}
+                  {g.w.on_fail.label}
+                </button>
+              {/if}
             </div>
           {:else}
             <div class="metrics">
@@ -229,11 +243,12 @@
           <div class="actions">
             {#each g.items as w (w.label)}
               {@const off = !enabledSet.has(w.run)}
+              {@const BtnIcon = rfxIcon(w.icon, Play)}
               <button class="act" class:primary={g.items[0] === w} class:armed={armed === w.label}
                 disabled={!!running || off || missingField(w)}
                 title={off ? `${w.run} is disabled in Settings` : w.run}
                 onclick={() => fire(w)}>
-                {#if running === w.label}<Loader size={10} class="spin" />{:else}<Play size={10} strokeWidth={2.5} />{/if}
+                {#if running === w.label}<Loader size={10} class="spin" />{:else}<BtnIcon size={10} strokeWidth={2.5} />{/if}
                 {armed === w.label ? 'confirm?' : w.label}
               </button>
             {/each}

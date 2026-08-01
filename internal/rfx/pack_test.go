@@ -138,6 +138,8 @@ func TestPackWidgetSemanticRejections(t *testing.T) {
 		{"bad row map regex", "    - {type: status, run: git-status, rows: {added: {re: '(', tone: ok}}}\n", "does not compile"},
 		{"list needs match", "    - {type: list}\n", "match: required"},
 		{"list bad match", "    - {type: list, match: '(['}\n", "does not compile"},
+		{"unknown icon", "    - {type: button, label: Go, run: git-status, icon: dragon}\n", "icon"},
+		{"on_fail needs label+run", "    - {type: status, run: git-status, rows: {b: 'x'}, on_fail: {label: Fix}}\n", "on_fail"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -176,6 +178,21 @@ func TestRowSpecBothForms(t *testing.T) {
 	}
 	if rows["added"].Tone != "ok" || rows["removed"].Tone != "err" {
 		t.Fatalf("map rows: %+v %+v", rows["added"], rows["removed"])
+	}
+}
+
+// on_fail.run must resolve like any widget run: — a dangling remedy is
+// rejected with the pack at load.
+func TestOnFailRunMustResolve(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "github")
+	os.MkdirAll(pd, 0o755)
+	writeFile(t, pd, "pack.yaml", testPackYAML+
+		"ui:\n  widgets:\n    - {type: status, run: git-status, rows: {b: 'x'}, on_fail: {label: Init, run: no-such}}\n")
+	writeFile(t, pd, "git-status.rfx.yaml", validAliasFor("git-status"))
+	l := NewLoader(dir, knownCore)
+	if packs := l.Packs(); len(packs) != 0 {
+		t.Fatalf("pack with dangling on_fail.run was loaded: %v", packs)
 	}
 }
 
