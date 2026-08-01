@@ -205,6 +205,7 @@ func main() {
 		slog.Info("rfx: reflexes loaded", "count", n)
 	}
 	agentLoop.SetReflexes(rfxLoader)
+	a.SetRfxLoader(rfxLoader)
 	// Per-session workspace: a session (esp. an instant scratch session) carries
 	// its OWN workspace in meta; fall back to the live global cfg.Workspace.
 	agentLoop.SetWorkspaceFunc(func(sessionID string) string {

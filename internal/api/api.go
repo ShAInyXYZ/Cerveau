@@ -17,6 +17,7 @@ import (
 	"cerveau/internal/episodic"
 	"cerveau/internal/loop"
 	"cerveau/internal/memory"
+	"cerveau/internal/rfx"
 	"cerveau/internal/session"
 	"cerveau/internal/skills"
 	"cerveau/internal/tools"
@@ -41,6 +42,7 @@ type API struct {
 	qmu         sync.Mutex
 	questions   map[string]*pendingQuestion
 	skillLoader *skills.Loader
+	rfxLoader   *rfx.Loader
 	wsChange    func(string) error
 }
 
@@ -68,6 +70,8 @@ func (a *API) SetSessionContext(sctx *tools.SessionContext) { a.sctx = sctx }
 func (a *API) SetCodeIntel(ci *codeintel.Indexer) { a.ci = ci }
 
 func (a *API) SetSkillLoader(l *skills.Loader) { a.skillLoader = l }
+
+func (a *API) SetRfxLoader(l *rfx.Loader) { a.rfxLoader = l }
 
 func (a *API) SetWorkspaceChanger(f func(string) error) { a.wsChange = f }
 
