@@ -63,6 +63,7 @@
       setTimeout(() => { if (armed === r.name) armed = ''; }, 3000);
       return;
     }
+    const confirmed = r.risk === 'dangerous';
     armed = '';
     const a = {};
     for (const p of paramsOf(r)) {
@@ -71,7 +72,7 @@
     }
     runs[r.name] = { state: 'run', output: '' };
     try {
-      const res = await jpost('/api/rfx/run', { name: r.name, args: a });
+      const res = await jpost('/api/rfx/run', { name: r.name, args: a, confirmed });
       runs[r.name] = res.ok ? { state: 'ok', output: res.output || '(no output)' }
                             : { state: 'err', output: (res.output ? res.output + '\n' : '') + res.error };
     } catch (e) {

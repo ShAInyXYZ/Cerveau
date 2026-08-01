@@ -2,6 +2,7 @@ package guard
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -106,5 +107,21 @@ func TestAllowed(t *testing.T) {
 		if err := check(t, g, c.tool, c.args); err != nil {
 			t.Fatalf("expected allow for %s %s, got %v", c.tool, c.args, err)
 		}
+	}
+}
+
+// Guard denials carry their tier as a typed error, so callers can
+// distinguish "needs the user's confirmation" (sensitive) from "never"
+// (catastrophic) without string-matching.
+func TestDenialsAreTierErrors(t *testing.T) {
+	g := New("/tmp/ws")
+	err := check(t, g, "bash", `{"command":"git push origin main"}`)
+	var te *TierError
+	if !errors.As(err, &te) || te.Tier != TierSensitive {
+		t.Fatalf("want TierError{sensitive}, got %T %v", err, err)
+	}
+	err = check(t, g, "bash", `{"command":"rm -rf /etc"}`)
+	if !errors.As(err, &te) || te.Tier != TierCatastrophic {
+		t.Fatalf("want TierError{catastrophic}, got %T %v", err, err)
 	}
 }

@@ -122,6 +122,7 @@
       setTimeout(() => { if (armed === w.label) armed = ''; }, 3000);
       return;
     }
+    const confirmed = target.risk === 'dangerous'; // second (armed) click
     armed = '';
     const args = { ...(w.args ?? {}) };
     // field binding: a field named after a param fills it (docs/RFX-UI.md §2)
@@ -130,7 +131,7 @@
     }
     running = w.label;
     try {
-      const res = await jpost('/api/rfx/run', { name: target.name, args });
+      const res = await jpost('/api/rfx/run', { name: target.name, args, confirmed });
       lastRun = {
         label: w.label,
         output: (res.output ?? '') + (!res.ok && res.error ? (res.output ? '\n' : '') + res.error : ''),

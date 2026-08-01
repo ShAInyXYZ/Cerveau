@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"cerveau/internal/rfx"
+	"cerveau/internal/tools"
 )
 
 // rfxLoader is wired via SetRfxLoader (mirrors SetSkillLoader).
@@ -103,8 +104,9 @@ func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name string          `json:"name"`
-		Args json.RawMessage `json:"args"`
+		Name      string          `json:"name"`
+		Args      json.RawMessage `json:"args"`
+		Confirmed bool            `json:"confirmed"` // an explicit UI confirm click
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
@@ -113,7 +115,13 @@ func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
 	if len(body.Args) == 0 {
 		body.Args = json.RawMessage(`{}`)
 	}
-	out, err := a.chat.RunReflex(r.Context(), body.Name, body.Args)
+	ctx := r.Context()
+	if body.Confirmed {
+		// The user clicked through a confirm strip / arm step: sensitive-tier
+		// guard rules treat that as their required confirmation.
+		ctx = tools.WithHumanApproval(ctx)
+	}
+	out, err := a.chat.RunReflex(ctx, body.Name, body.Args)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "output": out, "error": err.Error()})
 		return

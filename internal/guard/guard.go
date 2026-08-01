@@ -92,6 +92,19 @@ func match(rules []rule, s string) *rule {
 	return nil
 }
 
+// TierError is a guard denial carrying its tier, so callers can tell
+// "needs the user's confirmation" (sensitive) from "never" (catastrophic)
+// without string-matching.
+type TierError struct {
+	Tier   string
+	Reason string
+	Hint   string
+}
+
+func (e *TierError) Error() string {
+	return fmt.Sprintf("[%s] blocked: %s — %s", e.Tier, e.Reason, e.Hint)
+}
+
 func deny(r *rule) error {
-	return fmt.Errorf("[%s] blocked: %s — %s", r.tier, r.reason, r.hint)
+	return &TierError{Tier: r.tier, Reason: r.reason, Hint: r.hint}
 }

@@ -24,9 +24,9 @@
   const maxRisk = $derived(members.some((m) => m.risk === 'dangerous') ? 'dangerous'
     : members.some((m) => m.risk === 'sensitive') ? 'sensitive' : 'safe');
 
-  async function execute(id, name, args, source) {
+  async function execute(id, name, args, source, confirmed = false) {
     try {
-      const res = await jpost('/api/rfx/run', { name, args: args ?? {} });
+      const res = await jpost('/api/rfx/run', { name, args: args ?? {}, confirmed });
       source.postMessage({ rfx: 'result', id, ok: !!res.ok, output: res.output ?? '', error: res.error ?? '' }, '*');
     } catch (e) {
       source.postMessage({ rfx: 'result', id, ok: false, output: '', error: String(e) }, '*');
@@ -61,7 +61,7 @@
   function approveDanger() {
     const p = pendingDanger;
     pendingDanger = null;
-    if (p) execute(p.id, p.name, p.args, p.source);
+    if (p) execute(p.id, p.name, p.args, p.source, true);
   }
   function denyDanger() {
     const p = pendingDanger;

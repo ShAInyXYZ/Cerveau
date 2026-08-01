@@ -1,6 +1,9 @@
 package tools
 
 import (
+	"errors"
+
+	"cerveau/internal/guard"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -194,7 +197,13 @@ func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMe
 	}
 	if r.guard != nil {
 		if err := r.guard(name, args); err != nil {
-			return "", fmt.Errorf("guard denied %q: %w", name, err)
+			// A human-approved run (RFX_UI confirm strip / arm-click) passes
+			// SENSITIVE denials — the approval IS the confirmation that tier
+			// asks for. Catastrophic is never approvable, by anyone.
+			var te *guard.TierError
+			if !(HumanApproved(ctx) && errors.As(err, &te) && te.Tier == guard.TierSensitive) {
+				return "", fmt.Errorf("guard denied %q: %w", name, err)
+			}
 		}
 	}
 	// Hard-rule remediation: rewrite the call to its safe form (or block if the
@@ -241,4 +250,21 @@ func CapIngress(out string, cap int) string {
 
 func isDesignArtifact(path string) bool {
 	return strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".json") || strings.HasPrefix(path, "docs/")
+}
+
+
+// ── human approval (RFX_UI manual runs) ─────────────────────────────────
+
+type humanApprovalKey struct{}
+
+// WithHumanApproval marks ctx as carrying an explicit user confirmation
+// (a confirm strip or arm/confirm click). It lets SENSITIVE guard denials
+// pass in ExecuteMode; catastrophic never.
+func WithHumanApproval(ctx context.Context) context.Context {
+	return context.WithValue(ctx, humanApprovalKey{}, true)
+}
+
+func HumanApproved(ctx context.Context) bool {
+	ok, _ := ctx.Value(humanApprovalKey{}).(bool)
+	return ok
 }
