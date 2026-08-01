@@ -16,8 +16,8 @@ arch-viewer/dist/
 **/.vite/
 
 # compiled binaries
-crv
-crvcli
+/crv
+/crvcli
 /cerveau
 *.exe
 *.so
@@ -79,3 +79,4 @@ Thumbs.db
 *~
 .vscode/*
 !.vscode/extensions.json
+Reports/

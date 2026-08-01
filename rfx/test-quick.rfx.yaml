@@ -1,0 +1,10 @@
+rfx: 1
+name: test-quick
+description: Run the fast Go test suite across all internal packages
+risk: dangerous
+modes: [autopilot]
+kind: pipeline
+card: {fs: [workspace], subprocess: true}
+contract: {max_ms: 180000}
+steps:
+  - bash: go test ./internal/... ./cmd/...

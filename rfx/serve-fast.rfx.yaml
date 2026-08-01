@@ -1,0 +1,10 @@
+rfx: 1
+name: serve-fast
+description: Restart the model server on the fast profile (~98 tok/s, ~4GB VRAM free)
+risk: dangerous
+modes: [autopilot]
+kind: pipeline
+card: {fs: [workspace], network: any, subprocess: true}
+contract: {max_ms: 30000}
+steps:
+  - bash: CRV_PROFILE=fast ~/.crv/bin/serve-model.sh

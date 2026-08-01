@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"cerveau/internal/llm"
+	"cerveau/internal/rfx"
 )
 
 const (
@@ -26,6 +27,15 @@ type Tool interface {
 	Description() string
 	Schema() map[string]any
 	Execute(ctx context.Context, args json.RawMessage) (string, error)
+}
+
+// ModeTool is a Tool that wants the invoking mode at execution time. The
+// Recipe Executor implements this so mode fencing propagates THROUGH a
+// reflex into its re-dispatched steps (a bash step inside a reflex stays
+// autopilot-only).
+type ModeTool interface {
+	Tool
+	ExecuteMode(ctx context.Context, args json.RawMessage, mode string) (string, error)
 }
 
 type Entry struct {
@@ -48,7 +58,12 @@ type Registry struct {
 	guard     Guard
 	remediate Remediator
 	postExec  func(name string, args json.RawMessage)
+	workspace string
 }
+
+// SetWorkspace tells the registry its workspace root (exec-kind reflexes
+// run their subprocesses there). Set at construction and on workspace switch.
+func (r *Registry) SetWorkspace(ws string) { r.workspace = ws }
 
 func NewRegistry(entries ...Entry) *Registry {
 	r := &Registry{entries: map[string]Entry{}}
@@ -69,10 +84,53 @@ func (r *Registry) Entry(name string) (Entry, bool) {
 	return e, ok
 }
 
+// WithReflexes returns a session registry copy with all valid pipeline
+// reflexes registered as NATIVE entries (declared risk/modes/cap — see
+// AddReflexes). Fresh per turn, so a reflex added or edited on disk goes
+// live on the NEXT turn: registry copy changes → GBNF rebuilt before the
+// next Think, no restart. Collision errors are returned for loud surfacing.
+func (r *Registry) WithReflexes(defs []rfx.Reflex) (*Registry, []error) {
+	cp := &Registry{
+		entries:   map[string]Entry{},
+		guard:     r.guard,
+		remediate: r.remediate,
+		postExec:  r.postExec,
+		workspace: r.workspace,
+	}
+	for k, e := range r.entries {
+		cp.entries[k] = e
+	}
+	errs := cp.AddReflexes(defs)
+	return cp, errs
+}
+
 func (r *Registry) Entries() []Entry {
 	out := make([]Entry, 0, len(r.entries))
 	for _, e := range r.entries {
 		out = append(out, e)
+	}
+	return out
+}
+
+// ReflexNames returns the names of registered RFX reflex tools available in
+// the given mode ("" = any). Used to surface the reflex set in the system
+// prompt — a tool the model doesn't know exists is a tool that doesn't.
+func (r *Registry) ReflexNames(mode string) []string {
+	var out []string
+	for name, e := range r.entries {
+		switch e.Tool.(type) {
+		case *ReflexTool, *ExecReflexTool:
+			if r.allowed(name, mode) {
+				out = append(out, name)
+			}
+		}
+	}
+	for i := 0; i < len(out)-1; i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j] < out[i] {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
 	}
 	return out
 }
@@ -148,11 +206,18 @@ func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMe
 		}
 		args = rewritten
 	}
-	out, err := e.Tool.Execute(ctx, args)
+	out, err := r.dispatch(ctx, e, name, args, mode)
 	if err == nil && r.postExec != nil {
 		r.postExec(name, args)
 	}
 	return out, err
+}
+
+func (r *Registry) dispatch(ctx context.Context, e Entry, name string, args json.RawMessage, mode string) (string, error) {
+	if mt, ok := e.Tool.(ModeTool); ok {
+		return mt.ExecuteMode(ctx, args, mode)
+	}
+	return e.Tool.Execute(ctx, args)
 }
 
 // IngressCapFor returns the per-tool ingress cap (0 = uncapped). The loop uses

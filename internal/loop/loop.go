@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"cerveau/internal/episodic"
 	"cerveau/internal/llm"
 	"cerveau/internal/memory"
+	"cerveau/internal/rfx"
 	"cerveau/internal/skills"
 	"cerveau/internal/tools"
 	"cerveau/internal/window"
@@ -70,6 +72,7 @@ type Loop struct {
 	curator      *memory.Curator
 	skills       *skills.Loader
 	skillFactory func([]skills.SkillTool) []tools.Tool
+	rfx          *rfx.Loader
 	workspace    func(sessionID string) string // the SESSION's workspace path (per-session, e.g. instant scratch)
 	stackInfo    func() string                 // the harness's own running services + reserved ports
 	isInstant    func(id string) bool          // is this session an ephemeral instant session?
@@ -124,6 +127,10 @@ func (l *Loop) SetSkills(s *skills.Loader, f func([]skills.SkillTool) []tools.To
 	l.skillFactory = f
 }
 
+// SetReflexes wires the RFX loader. Reflexes are applied per turn in Run —
+// a file dropped into ~/.crv/rfx goes live on the next turn, no restart.
+func (l *Loop) SetReflexes(r *rfx.Loader) { l.rfx = r }
+
 type Result struct {
 	Reply      string         `json:"reply"`
 	Iterations int            `json:"iterations"`
@@ -158,6 +165,44 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		turnPulls = l.recall.TurnStart(ctx, sessionID, userMsg, l.tailEvtIDs(sessionID, 20))
 	}
 	sessionReg := l.registry()
+	if l.rfx != nil {
+		defs := l.rfx.List()
+		reg, rfxErrs := sessionReg.WithReflexes(defs)
+		sessionReg = reg
+		for _, e := range rfxErrs {
+			// Loud, never silent: a reflex that couldn't register is told
+			// to the session log where the user and the report can see it.
+			wr.Append(episodic.Note, map[string]string{"kind": "rfx_rejected", "text": e.Error()})
+		}
+		// Prompt link: the model must KNOW reflexes exist (a tool it doesn't
+		// know about is a tool that doesn't exist) — and EVERY mode sees the
+		// full inventory with mode tags, so "what reflexes do you have?" is
+		// answerable anywhere, even where they're all fenced out.
+		if len(defs) > 0 {
+			avail := sessionReg.ReflexNames(mode.Name)
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "\n\nRFX: %d pre-wired reflex tools are installed (from ~/.crv/rfx — typed, guard-checked; prefer a fitting reflex over raw bash). Installed: ", len(defs))
+			for i, d := range defs {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(d.Name)
+				if len(d.Modes) > 0 {
+					sb.WriteString(" [" + strings.Join(d.Modes, ", ") + "]")
+				} else {
+					sb.WriteString(" [all modes]")
+				}
+			}
+			sb.WriteString(".")
+			if len(avail) > 0 {
+				sb.WriteString(" Callable in THIS mode: " + strings.Join(avail, ", ") + ".")
+			} else {
+				sb.WriteString(" None are callable in this mode (mode-fenced); they activate in their declared modes.")
+			}
+			systemPrompt += sb.String()
+			wr.Append(episodic.Note, map[string]string{"kind": "rfx_loaded", "text": fmt.Sprintf("%d reflexes loaded, %d available in %s", len(defs), len(avail), mode.Name)})
+		}
+	}
 	var skillNotes []string
 	if l.skills != nil {
 		var st []tools.Tool

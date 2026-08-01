@@ -185,9 +185,9 @@ func (s *Store) References(ctx context.Context, name string, limit int) ([]Call,
 }
 
 func (s *Store) FileMap(ctx context.Context) ([]struct {
-	Path   string
-	Lang   string
-	Count  int
+	Path  string
+	Lang  string
+	Count int
 }, error) {
 	rows, err := s.db.QueryContext(ctx,
 		"SELECT f.path, f.lang, COUNT(s.id) FROM files f LEFT JOIN symbols s ON s.file = f.path GROUP BY f.path ORDER BY f.path")

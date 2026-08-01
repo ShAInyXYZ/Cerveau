@@ -1,3 +1,8 @@
+// LEGACY PATH (sunset per M9): skill-declared tools use {{arg}} string
+// templating into shell commands and are always registered RiskDangerous —
+// the two flaws RFX was built to kill (typed params + declared risk).
+// Kept working during transition; migrate skills with `crvcli rfx distill`,
+// which produces a human-reviewed .rfx.yaml draft. New extensions: use RFX.
 package tools
 
 import (
@@ -10,9 +15,9 @@ import (
 )
 
 type skillTool struct {
-	def    skills.SkillTool
-	bash   *Bash
-	guard  Guard
+	def   skills.SkillTool
+	bash  *Bash
+	guard Guard
 }
 
 func SkillTools(defs []skills.SkillTool, workspace string, guard Guard) []Tool {
@@ -44,7 +49,7 @@ func (t *skillTool) Execute(ctx context.Context, args json.RawMessage) (string, 
 		json.Unmarshal(args, &flat)
 	}
 	for k, v := range flat {
-		 s := fmt.Sprint(v)
+		s := fmt.Sprint(v)
 		if strings.ContainsAny(s, "\x00") {
 			return "", fmt.Errorf("bad arg %q", k)
 		}
@@ -65,7 +70,7 @@ func (t *skillTool) Execute(ctx context.Context, args json.RawMessage) (string, 
 
 func (r *Registry) WithSessionTools(ts []Tool) *Registry {
 	cp := &Registry{
-		entries:  map[string]Entry{},
+		entries:   map[string]Entry{},
 		guard:     r.guard,
 		remediate: r.remediate,
 		postExec:  r.postExec,

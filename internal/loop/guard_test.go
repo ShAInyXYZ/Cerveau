@@ -63,9 +63,9 @@ func toolCallReply(id string) map[string]any {
 // iteration cap rather than being killed by loop detection.
 type changingTool struct{ n int }
 
-func (c *changingTool) Name() string             { return "runner" }
-func (c *changingTool) Description() string       { return "returns changing output" }
-func (c *changingTool) Schema() map[string]any    { return map[string]any{"type": "object"} }
+func (c *changingTool) Name() string           { return "runner" }
+func (c *changingTool) Description() string    { return "returns changing output" }
+func (c *changingTool) Schema() map[string]any { return map[string]any{"type": "object"} }
 func (c *changingTool) Execute(_ context.Context, _ json.RawMessage) (string, error) {
 	c.n++
 	return "error variant " + string(rune('A'+c.n)), nil

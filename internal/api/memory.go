@@ -42,7 +42,7 @@ func (a *API) MemoryList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "memory offline (T0)"})
 		return
 	}
-	memType := r.URL.Query().Get("type")     // "", "semantic", "episodic", …
+	memType := r.URL.Query().Get("type")      // "", "semantic", "episodic", …
 	sessionID := r.URL.Query().Get("session") // "" = all sessions
 	// hide superseded semantic docs; harmless for episodic (field defaults false)
 	hits, err := a.mem.Search(r.Context(), "*", memType, sessionID, 200, false, "superseded:=false")
@@ -124,8 +124,8 @@ func (a *API) MemoryProvenance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type provenanceEvent struct {
-		Session string          `json:"session"`
-		Event   episodic.Event  `json:"event"`
+		Session string         `json:"session"`
+		Event   episodic.Event `json:"event"`
 	}
 	found := []provenanceEvent{}
 	for _, src := range doc.Sources {

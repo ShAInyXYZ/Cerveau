@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	PullMaxDocs   = 5
-	PullDocChars  = 400
-	pullTailScan  = 60
+	PullMaxDocs    = 5
+	PullDocChars   = 400
+	pullTailScan   = 60
 	pullQueryChars = 300
 )
 

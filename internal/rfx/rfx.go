@@ -1,0 +1,499 @@
+// Package rfx implements the RFX reflex manifest (docs/RFX.md, spec v1):
+// parsing, validation, and discovery of ~/.crv/rfx/*.rfx.yaml files.
+//
+// A reflex is a declarative capability — composed from tools the harness
+// already guards. No prose from a reflex ever enters the context window;
+// the model sees a name, a description, and a schema.
+package rfx
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+const SpecVersion = 1
+
+const (
+	KindPipeline = "pipeline"
+	KindExec     = "exec"
+)
+
+const (
+	RiskSafe      = "safe"
+	RiskSensitive = "sensitive"
+	RiskDangerous = "dangerous"
+)
+
+var Modes = []string{"discussion", "brainstorming", "autopilot"}
+
+// stringList accepts either a scalar or a sequence in YAML
+// (network: none  ≡  network: [none]).
+type stringList []string
+
+func (s *stringList) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		*s = []string{value.Value}
+		return nil
+	}
+	var out []string
+	if err := value.Decode(&out); err != nil {
+		return err
+	}
+	*s = out
+	return nil
+}
+
+// Card is the capability card (spec §5): declared permissions, enforced in
+// Go at install and dispatch. Metadata, never prompt text.
+type Card struct {
+	FS         stringList `yaml:"fs"`         // "workspace" | "none" | extra absolute read-only paths
+	Network    stringList `yaml:"network"`    // "none" | "any" | host allowlist
+	Env        []string   `yaml:"env"`        // env var names visible to exec steps
+	Subprocess bool       `yaml:"subprocess"` // required by kind: exec
+}
+
+// DefaultCard is the most restrictive card (spec §2): what a reflex gets
+// when it declares none.
+func DefaultCard() Card {
+	return Card{FS: []string{"workspace"}, Network: []string{"none"}, Env: []string{}, Subprocess: false}
+}
+
+// Contract is the fuzz contract (spec §6): what "passing crv rfx test" means.
+type Contract struct {
+	MaxMs          int      `yaml:"max_ms"`
+	OutputRegex    string   `yaml:"output_regex"`
+	MustNotContain []string `yaml:"must_not_contain"`
+}
+
+// Step is one pipeline step (spec §3): a single-key map of tool name → args,
+// plus optional id / when / optional meta keys.
+type Step struct {
+	ID       string
+	When     string
+	Optional bool
+	Tool     string
+	Args     any // string for bash; map[string]any otherwise
+}
+
+var stepMetaKeys = map[string]bool{"id": true, "when": true, "optional": true}
+
+func (s *Step) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("step must be a map")
+	}
+	var raw map[string]yaml.Node
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	tool := ""
+	for k := range raw {
+		if stepMetaKeys[k] {
+			continue
+		}
+		if tool != "" {
+			return fmt.Errorf("step has two tool keys (%q and %q) — one tool per step", tool, k)
+		}
+		tool = k
+	}
+	if tool == "" {
+		return fmt.Errorf("step has no tool key")
+	}
+	s.Tool = tool
+	argsNode := raw[tool]
+	var args any
+	if err := argsNode.Decode(&args); err != nil {
+		return fmt.Errorf("step %q args: %w", tool, err)
+	}
+	s.Args = args
+	if n, ok := raw["id"]; ok {
+		if err := n.Decode(&s.ID); err != nil {
+			return fmt.Errorf("step id: %w", err)
+		}
+	}
+	if n, ok := raw["when"]; ok {
+		if err := n.Decode(&s.When); err != nil {
+			return fmt.Errorf("step when: %w", err)
+		}
+	}
+	if n, ok := raw["optional"]; ok {
+		if err := n.Decode(&s.Optional); err != nil {
+			return fmt.Errorf("step optional: %w", err)
+		}
+	}
+	return nil
+}
+
+// Reflex is one parsed .rfx.yaml manifest.
+type Reflex struct {
+	RFX         int            `yaml:"rfx"`
+	Name        string         `yaml:"name"`
+	Description string         `yaml:"description"`
+	Kind        string         `yaml:"kind"`
+	Risk        string         `yaml:"risk"`
+	Modes       []string       `yaml:"modes"` // nil = all modes (registry semantics)
+	IngressCap  *int           `yaml:"ingress_cap"`
+	Params      map[string]any `yaml:"params"`
+	Card        Card           `yaml:"card"`
+	Contract    Contract       `yaml:"contract"`
+	Steps       []Step         `yaml:"steps"`
+	Argv        []string       `yaml:"argv"`
+	Timeout     string         `yaml:"timeout"`
+
+	Path string `yaml:"-"`
+}
+
+// Cap returns the effective ingress cap (spec §2): unset = 4000, 0 = uncapped.
+func (r *Reflex) Cap() int {
+	if r.IngressCap == nil {
+		return 4000
+	}
+	return *r.IngressCap
+}
+
+var nameRe = regexp.MustCompile(`^[a-z0-9-]+$`)
+
+// placeholder: {{ params.NAME }} or {{ steps.ID.output }}
+var placeholderRe = regexp.MustCompile(`\{\{\s*(params\.[A-Za-z0-9_-]+|steps\.[a-z0-9-]+\.output)\s*\}\}`)
+
+// anyBrace catches malformed placeholders like {{ paramx.foo }} or {{ }}.
+var anyBraceRe = regexp.MustCompile(`\{\{[^}]*\}\}`)
+
+var whenRe = regexp.MustCompile(`^!?steps\.([a-z0-9-]+)\.(ok|failed)$`)
+
+// EvalWhen evaluates the entire v1 conditional language (spec §3.3) against
+// step statuses. statusFor returns (ok, defined) for a step id. Load-time
+// validation has already rejected bad expressions; an error here means a
+// runtime inconsistency and is surfaced loudly.
+func EvalWhen(expr string, statusFor func(id string) (ok, defined bool)) (bool, error) {
+	m := whenRe.FindStringSubmatch(expr)
+	if m == nil {
+		return false, fmt.Errorf("when %q: not in the conditional language ([\"!\"]steps.ID.(ok|failed))", expr)
+	}
+	negated := strings.HasPrefix(expr, "!")
+	id := m[1]
+	wantOK := m[2] == "ok"
+	ok, defined := statusFor(id)
+	if !defined {
+		return false, fmt.Errorf("when %q: step %q has no recorded status (skipped?)", expr, id)
+	}
+	result := ok == wantOK
+	if negated {
+		result = !result
+	}
+	return result, nil
+}
+
+// Parse decodes one manifest file. Validation lives in Validate; Parse only
+// guarantees YAML structure decodes.
+func Parse(data []byte, path string) (*Reflex, error) {
+	var r Reflex
+	dec := yaml.NewDecoder(strings.NewReader(string(data)))
+	dec.KnownFields(true) // typos in field names are load-time errors, not silent drops
+	if err := dec.Decode(&r); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	r.Path = path
+	// Spec §2 defaults: an undeclared card is the most restrictive one.
+	if r.Card.FS == nil {
+		r.Card.FS = []string{"workspace"}
+	}
+	if r.Card.Network == nil {
+		r.Card.Network = []string{"none"}
+	}
+	return &r, nil
+}
+
+// KnownTool reports whether a step tool name exists in the registry. Injected
+// by the caller so rfx stays free of a tools dependency (reflextool imports
+// rfx, not the other way around).
+type KnownTool func(name string) bool
+
+// Validate enforces spec v1. Every rule here is a load-time rejection —
+// nothing in this list may fail mid-run.
+func Validate(r *Reflex, known KnownTool) error {
+	if r.RFX != SpecVersion {
+		return fmt.Errorf("rfx: must be %d (got %d) — unknown versions are rejected, never guessed", SpecVersion, r.RFX)
+	}
+	if r.Name == "" {
+		return fmt.Errorf("name: required")
+	}
+	if len(r.Name) > 40 || !nameRe.MatchString(r.Name) {
+		return fmt.Errorf("name %q: must match [a-z0-9-]+ and be ≤ 40 chars", r.Name)
+	}
+	if stem := fileStem(r.Path); stem != "" && stem != r.Name {
+		return fmt.Errorf("name %q must equal filename stem %q (spec §1)", r.Name, stem)
+	}
+	if r.Description == "" {
+		return fmt.Errorf("description: required — it is what the model sees to choose this tool")
+	}
+	if len(r.Description) > 200 {
+		return fmt.Errorf("description: %d chars, max 200 — write it for a small-model reader", len(r.Description))
+	}
+	if r.Kind != KindPipeline && r.Kind != KindExec {
+		return fmt.Errorf("kind %q: must be %q or %q", r.Kind, KindPipeline, KindExec)
+	}
+	switch r.Risk {
+	case RiskSafe, RiskSensitive, RiskDangerous:
+	case "":
+		return fmt.Errorf("risk: required — no default, authors must decide")
+	default:
+		return fmt.Errorf("risk %q: must be safe, sensitive, or dangerous", r.Risk)
+	}
+	for _, m := range r.Modes {
+		if !validMode(m) {
+			return fmt.Errorf("modes: %q is not one of %s", m, strings.Join(Modes, ", "))
+		}
+	}
+	if r.IngressCap != nil && *r.IngressCap < 0 {
+		return fmt.Errorf("ingress_cap: must be ≥ 0")
+	}
+	if err := validateParams(r.Params); err != nil {
+		return err
+	}
+	if err := validateCard(r); err != nil {
+		return err
+	}
+	if r.Timeout != "" {
+		d, err := time.ParseDuration(r.Timeout)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("timeout %q: use a positive duration like 90s or 5m", r.Timeout)
+		}
+	}
+	if r.Contract.MaxMs < 0 {
+		return fmt.Errorf("contract.max_ms: must be ≥ 0")
+	}
+
+	switch r.Kind {
+	case KindPipeline:
+		if len(r.Steps) == 0 {
+			return fmt.Errorf("kind pipeline: steps required (an alias is a one-step pipeline)")
+		}
+		if len(r.Argv) > 0 {
+			return fmt.Errorf("kind pipeline: argv is only valid for kind exec")
+		}
+		return validateSteps(r, known)
+	case KindExec:
+		if len(r.Steps) > 0 {
+			return fmt.Errorf("kind exec: steps are only valid for kind pipeline")
+		}
+		if len(r.Argv) == 0 {
+			return fmt.Errorf("kind exec: argv required")
+		}
+		if !strings.HasPrefix(r.Argv[0], "/") {
+			return fmt.Errorf("kind exec: argv[0] must be an absolute path (got %q)", r.Argv[0])
+		}
+		if !r.Card.Subprocess {
+			return fmt.Errorf("kind exec requires card.subprocess: true (spec §4)")
+		}
+		return validatePlaceholders(r, strings.Join(r.Argv, " "))
+	}
+	return nil
+}
+
+func validateSteps(r *Reflex, known KnownTool) error {
+	seenIDs := map[string]bool{}
+	hasBash := false
+	var refs []string
+	for i, s := range r.Steps {
+		where := fmt.Sprintf("steps[%d] (%s)", i, s.Tool)
+		if known != nil && !known(s.Tool) {
+			return fmt.Errorf("%s: unknown tool %q — step tools must exist in the registry", where, s.Tool)
+		}
+		if s.Tool == "bash" {
+			hasBash = true
+			if _, ok := s.Args.(string); !ok {
+				return fmt.Errorf("%s: bash args must be a command string", where)
+			}
+		}
+		if s.ID != "" {
+			if !nameRe.MatchString(s.ID) {
+				return fmt.Errorf("%s: id %q must match [a-z0-9-]+", where, s.ID)
+			}
+			if seenIDs[s.ID] {
+				return fmt.Errorf("%s: duplicate step id %q", where, s.ID)
+			}
+		}
+		if s.When != "" {
+			m := whenRe.FindStringSubmatch(s.When)
+			if m == nil {
+				return fmt.Errorf("%s: when %q — the entire conditional language is [\"!\"]steps.ID.(ok|failed)", where, s.When)
+			}
+			if !seenIDs[m[1]] {
+				return fmt.Errorf("%s: when references %q, which is not a previously defined step id", where, m[1])
+			}
+		}
+		if str, ok := s.Args.(string); ok {
+			refs = append(refs, str)
+		} else {
+			collectStrings(s.Args, &refs)
+		}
+		if s.ID != "" {
+			seenIDs[s.ID] = true
+		}
+	}
+	// Risk plausibility (spec §7): a pipeline with a bash step may not
+	// declare safe. Stricter than computed is fine, laxer is not.
+	if hasBash && r.Risk == RiskSafe {
+		return fmt.Errorf("risk: pipeline contains a bash step — may not declare safe (spec §7)")
+	}
+	return validatePlaceholders(r, refs...)
+}
+
+// validatePlaceholders checks every {{ ... }} in step/argv strings: known
+// param names, previously defined step ids, and no malformed braces.
+func validatePlaceholders(r *Reflex, strs ...string) error {
+	paramNames := map[string]bool{}
+	if props, ok := r.Params["properties"].(map[string]any); ok {
+		for k := range props {
+			paramNames[k] = true
+		}
+	}
+	stepIDs := map[string]bool{}
+	for _, s := range r.Steps {
+		if s.ID != "" {
+			stepIDs[s.ID] = true
+		}
+	}
+	for _, str := range strs {
+		for _, bad := range anyBraceRe.FindAllString(str, -1) {
+			if !placeholderRe.MatchString(bad) {
+				return fmt.Errorf("malformed placeholder %s in %q — only {{ params.NAME }} and {{ steps.ID.output }} exist", bad, trunc(str, 60))
+			}
+		}
+		for _, ph := range placeholderRe.FindAllStringSubmatch(str, -1) {
+			ref := strings.Join(strings.Fields(ph[1]), "")
+			if strings.HasPrefix(ref, "params.") {
+				if !paramNames[strings.TrimPrefix(ref, "params.")] {
+					return fmt.Errorf("unknown placeholder {{ %s }} — not declared in params.properties", ref)
+				}
+			} else {
+				id := strings.TrimSuffix(strings.TrimPrefix(ref, "steps."), ".output")
+				if !stepIDs[id] {
+					return fmt.Errorf("unknown placeholder {{ %s }} — no step with id %q", ref, id)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func collectStrings(v any, out *[]string) {
+	switch t := v.(type) {
+	case string:
+		*out = append(*out, t)
+	case map[string]any:
+		for _, vv := range t {
+			collectStrings(vv, out)
+		}
+	case []any:
+		for _, vv := range t {
+			collectStrings(vv, out)
+		}
+	}
+}
+
+// validateParams enforces the GBNF-compatible schema subset: the same types
+// tools.SchemaToGBNF can compile, checked here so rfx doesn't import tools.
+func validateParams(p map[string]any) error {
+	if p == nil {
+		return nil
+	}
+	if typ, _ := p["type"].(string); typ != "" && typ != "object" {
+		return fmt.Errorf("params: top-level type must be object")
+	}
+	props, ok := p["properties"].(map[string]any)
+	if !ok || len(props) == 0 {
+		return fmt.Errorf("params: properties must be a non-empty map")
+	}
+	var walk func(name string, s map[string]any) error
+	walk = func(name string, s map[string]any) error {
+		if enums, ok := s["enum"].([]any); ok {
+			for _, e := range enums {
+				if _, isStr := e.(string); !isStr {
+					return fmt.Errorf("params.%s: enum values must be strings (GBNF)", name)
+				}
+			}
+			return nil
+		}
+		switch typ, _ := s["type"].(string); typ {
+		case "string", "integer", "number", "boolean":
+		case "array":
+			sub, _ := s["items"].(map[string]any)
+			if sub != nil {
+				return walk(name+"[]", sub)
+			}
+		case "object", "":
+			sub, _ := s["properties"].(map[string]any)
+			for k, v := range sub {
+				vm, _ := v.(map[string]any)
+				if err := walk(name+"."+k, vm); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("params.%s: type %q is not GBNF-compilable (string/integer/number/boolean/array/object)", name, typ)
+		}
+		return nil
+	}
+	for k, v := range props {
+		vm, _ := v.(map[string]any)
+		if err := walk(k, vm); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCard(r *Reflex) error {
+	for _, f := range r.Card.FS {
+		if f == "workspace" || f == "none" {
+			continue
+		}
+		if !strings.HasPrefix(f, "/") {
+			return fmt.Errorf("card.fs: %q must be \"workspace\", \"none\", or an absolute path", f)
+		}
+	}
+	for _, n := range r.Card.Network {
+		if n == "none" || n == "any" {
+			continue
+		}
+		// hosts only: allow host or host:port, no schemes or paths
+		if strings.Contains(n, "://") || strings.ContainsAny(n, "/ ") {
+			return fmt.Errorf("card.network: %q must be a host (optionally host:port), \"none\", or \"any\"", n)
+		}
+	}
+	for _, e := range r.Card.Env {
+		if strings.ContainsAny(e, "= \t") {
+			return fmt.Errorf("card.env: %q must be a variable NAME, not a value", e)
+		}
+	}
+	return nil
+}
+
+func validMode(m string) bool {
+	for _, v := range Modes {
+		if m == v {
+			return true
+		}
+	}
+	return false
+}
+
+func fileStem(path string) string {
+	base := path
+	if i := strings.LastIndexByte(base, '/'); i >= 0 {
+		base = base[i+1:]
+	}
+	return strings.TrimSuffix(base, ".rfx.yaml")
+}
+
+func trunc(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}

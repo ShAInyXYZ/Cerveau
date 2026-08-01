@@ -64,9 +64,18 @@ func TestIndexerCursorAndCatchUp(t *testing.T) {
 	sessDir := t.TempDir()
 	cursorPath := filepath.Join(t.TempDir(), "cursor.json")
 	appendEvents(t, sessDir, "s1",
-		struct{ typ episodic.EventType; txt string }{episodic.MsgUser, "hello"},
-		struct{ typ episodic.EventType; txt string }{episodic.MsgAssistant, "hi there"},
-		struct{ typ episodic.EventType; txt string }{episodic.MsgUser, "how are you"},
+		struct {
+			typ episodic.EventType
+			txt string
+		}{episodic.MsgUser, "hello"},
+		struct {
+			typ episodic.EventType
+			txt string
+		}{episodic.MsgAssistant, "hi there"},
+		struct {
+			typ episodic.EventType
+			txt string
+		}{episodic.MsgUser, "how are you"},
 	)
 
 	ix := NewIndexer(NewTSClient(srv.URL, "k"), sessDir, cursorPath, "")
@@ -80,7 +89,10 @@ func TestIndexerCursorAndCatchUp(t *testing.T) {
 	}
 
 	appendEvents(t, sessDir, "s1",
-		struct{ typ episodic.EventType; txt string }{episodic.MsgAssistant, "fine"},
+		struct {
+			typ episodic.EventType
+			txt string
+		}{episodic.MsgAssistant, "fine"},
 	)
 	ix.Tick(context.Background())
 	if len(c.docs) != 4 {

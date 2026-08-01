@@ -19,7 +19,7 @@ var pyRule = &regexRule{
 		regexp.MustCompile(`^\s*def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)`),
 		regexp.MustCompile(`^\s*class\s+([A-Za-z_]\w*)`),
 	},
-	callRe: regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
+	callRe:     regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
 	callFilter: pyBuiltins,
 }
 
@@ -30,7 +30,7 @@ var jsRule = &regexRule{
 		regexp.MustCompile(`^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$]\w*)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>`),
 		regexp.MustCompile(`^\s*(?:export\s+)?class\s+([A-Za-z_$]\w*)`),
 	},
-	callRe: regexp.MustCompile(`\b([A-Za-z_$]\w*)\s*\(`),
+	callRe:     regexp.MustCompile(`\b([A-Za-z_$]\w*)\s*\(`),
 	callFilter: jsBuiltins,
 }
 

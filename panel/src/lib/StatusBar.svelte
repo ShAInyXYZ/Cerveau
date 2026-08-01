@@ -19,7 +19,7 @@
   <div class="brand">
     <span class="logo">{@html logo}</span>
     <span class="word">CERVEAU</span>
-    <span class="rev"><DotMatrix text="V0.1" dot={1.4} gap={1.3} /></span>
+    <span class="rev"><DotMatrix text="V0.2" dot={1.4} gap={1.3} /></span>
   </div>
 
   <div class="spacer"></div>
@@ -62,7 +62,7 @@
   .brand .logo :global(svg) { width: 22px; height: 22px; display: block; }
   .brand .word { letter-spacing: .3em; }
 
-  /* V0.1 — a bare LED dot-matrix readout, stadium-scoreboard style */
+  /* V0.2 — a bare LED dot-matrix readout, stadium-scoreboard style */
   .brand .rev { display: inline-flex; align-items: center; margin-left: 4px; }
 
   .spacer { flex: 1; }

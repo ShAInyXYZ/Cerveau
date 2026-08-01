@@ -53,8 +53,8 @@ func (t *CommitPlan) Schema() map[string]any {
 
 func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var plan struct {
-		Title          string `json:"title"`
-		Steps          []struct {
+		Title string `json:"title"`
+		Steps []struct {
 			Title  string   `json:"title"`
 			Detail string   `json:"detail"`
 			Files  []string `json:"files"`

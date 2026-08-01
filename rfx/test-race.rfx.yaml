@@ -1,0 +1,10 @@
+rfx: 1
+name: test-race
+description: Run the Go test suite with the race detector across all internal packages
+risk: dangerous
+modes: [autopilot]
+kind: pipeline
+card: {fs: [workspace], subprocess: true}
+contract: {max_ms: 600000}
+steps:
+  - bash: go test -race ./internal/... ./cmd/...

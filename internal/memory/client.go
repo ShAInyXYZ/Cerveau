@@ -23,21 +23,21 @@ func NewTSClient(base, key string) *TSClient {
 }
 
 type Doc struct {
-	ID         string   `json:"id"`
-	SessionID  string   `json:"session_id"`
-	MemoryType string   `json:"memory_type"`
-	EvtType    string   `json:"evt_type"`
-	EvtID      string   `json:"evt_id"`
-	Content    string   `json:"content"`
-	TS         int64    `json:"ts"`
-	Category   string   `json:"category,omitempty"`
-	Confidence float64  `json:"confidence,omitempty"`
-	Sources    []string `json:"sources,omitempty"`
-	Superseded bool     `json:"superseded"`
-	SupersededBy string `json:"superseded_by,omitempty"`
-	RelatedTo  []string `json:"related_to,omitempty"`
-	LastSeen   int64    `json:"last_seen,omitempty"`
-	Review     bool     `json:"review,omitempty"`
+	ID           string   `json:"id"`
+	SessionID    string   `json:"session_id"`
+	MemoryType   string   `json:"memory_type"`
+	EvtType      string   `json:"evt_type"`
+	EvtID        string   `json:"evt_id"`
+	Content      string   `json:"content"`
+	TS           int64    `json:"ts"`
+	Category     string   `json:"category,omitempty"`
+	Confidence   float64  `json:"confidence,omitempty"`
+	Sources      []string `json:"sources,omitempty"`
+	Superseded   bool     `json:"superseded"`
+	SupersededBy string   `json:"superseded_by,omitempty"`
+	RelatedTo    []string `json:"related_to,omitempty"`
+	LastSeen     int64    `json:"last_seen,omitempty"`
+	Review       bool     `json:"review,omitempty"`
 }
 
 var semanticFields = []map[string]any{

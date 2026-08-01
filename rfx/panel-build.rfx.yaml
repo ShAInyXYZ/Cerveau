@@ -1,0 +1,10 @@
+rfx: 1
+name: panel-build
+description: Build the Svelte panel for production (vite build into internal/panel/dist)
+risk: dangerous
+modes: [autopilot]
+kind: pipeline
+card: {fs: [workspace], subprocess: true}
+contract: {max_ms: 120000}
+steps:
+  - bash: cd panel && npm run build

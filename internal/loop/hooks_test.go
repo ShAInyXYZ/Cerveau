@@ -72,7 +72,7 @@ func TestBoundaryHookPromotes(t *testing.T) {
 			fake.mu.Unlock()
 			json.NewEncoder(w).Encode(map[string]any{
 				"choices": []any{map[string]any{
-					"message": map[string]string{"role": "assistant", "content": `{"summary":"planned the refactor","decisions":["use interface"],"promotion_candidates":[{"content":"user prefers interfaces","category":"preference"}],"open_loops":[]}`},
+					"message":       map[string]string{"role": "assistant", "content": `{"summary":"planned the refactor","decisions":["use interface"],"promotion_candidates":[{"content":"user prefers interfaces","category":"preference"}],"open_loops":[]}`},
 					"finish_reason": "stop",
 				}},
 				"usage": map[string]int{"prompt_tokens": 5, "completion_tokens": 30},

@@ -14,8 +14,8 @@ type runHandle struct {
 	paused   atomic.Bool
 	killed   atomic.Bool
 	steered  atomic.Bool // set ONLY by a real user steer, so an incidental
-	                      // context cancel (e.g. a flaky model endpoint) is not
-	                      // mistaken for one and silently swallowed
+	// context cancel (e.g. a flaky model endpoint) is not
+	// mistaken for one and silently swallowed
 }
 
 func (h *runHandle) setInFlight(cancel context.CancelFunc) {

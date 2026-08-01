@@ -44,9 +44,9 @@ func TestMvRewrittenToCopyVerifyDelete(t *testing.T) {
 func TestMvWithFlagsOrGlobsNotRewritten(t *testing.T) {
 	g := New(t.TempDir())
 	for _, cmd := range []string{
-		"mv -f a b",        // has a flag — leave it, don't guess
-		"mv a b c",         // multiple sources
-		"mv *.go dir/",     // glob
+		"mv -f a b",          // has a flag — leave it, don't guess
+		"mv a b c",           // multiple sources
+		"mv *.go dir/",       // glob
 		"mv a b && rm -rf /", // compound — must not be treated as a bare mv
 	} {
 		got := remediateBash(t, g, cmd)

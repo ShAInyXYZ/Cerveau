@@ -37,23 +37,32 @@ func gpuStats() map[string]any {
 		return nil
 	}
 	f := splitCSV(line)
-	get := func(i int) float64 { if i < len(f) { v, _ := strconv.ParseFloat(strings.TrimSpace(f[i]), 64); return v }; return 0 }
+	get := func(i int) float64 {
+		if i < len(f) {
+			v, _ := strconv.ParseFloat(strings.TrimSpace(f[i]), 64)
+			return v
+		}
+		return 0
+	}
 	name := ""
-	if len(f) > 0 { name = strings.TrimSpace(f[0]) }
+	if len(f) > 0 {
+		name = strings.TrimSpace(f[0])
+	}
 	return map[string]any{
-		"name":       name,
-		"temp":       get(1),
-		"util":       get(2),
-		"mem_used":   get(3), // MiB
-		"mem_total":  get(4),
-		"power":      get(5),
-		"power_max":  get(6),
-		"fan":        get(7),
+		"name":      name,
+		"temp":      get(1),
+		"util":      get(2),
+		"mem_used":  get(3), // MiB
+		"mem_total": get(4),
+		"power":     get(5),
+		"power_max": get(6),
+		"fan":       get(7),
 	}
 }
 
 // ---- CPU ----
 var cpuBrand string
+
 func cpuStats() map[string]any {
 	if cpuBrand == "" {
 		cpuBrand = readCPUBrand()
@@ -167,6 +176,7 @@ func readProcStat() (idle, total float64) {
 
 // ---- RAM ----
 var ramBrand map[string]any
+
 func ramStats() map[string]any {
 	used, total := memUsed()
 	m := map[string]any{"used": used, "total": total} // MiB
