@@ -144,6 +144,7 @@ type Reflex struct {
 	Timeout     string         `yaml:"timeout"`
 
 	Path string `yaml:"-"`
+	Pack string `yaml:"-"` // pack name when loaded from a pack folder, "" = standalone
 }
 
 // Cap returns the effective ingress cap (spec §2): unset = 4000, 0 = uncapped.
@@ -496,4 +497,50 @@ func trunc(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// ── Packs (spec v1.1) ───────────────────────────────────────────────────
+
+// Pack is a pack.yaml manifest: a folder of related reflexes — a "talent"
+// (github/, blender/, homelab/). One folder level max; names stay global.
+type Pack struct {
+	RFX         int      `yaml:"rfx"`
+	Pack        string   `yaml:"pack"`
+	Version     string   `yaml:"version"`
+	Author      string   `yaml:"author"`
+	Description string   `yaml:"description"`
+	Docs        []string `yaml:"-"` // discovered docs/*.md, listed not indexed (recall lands later)
+	Path        string   `yaml:"-"`
+}
+
+func ParsePack(data []byte, path string) (*Pack, error) {
+	var p Pack
+	dec := yaml.NewDecoder(strings.NewReader(string(data)))
+	dec.KnownFields(true)
+	if err := dec.Decode(&p); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	p.Path = path
+	return &p, nil
+}
+
+var semverRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+func ValidatePack(p *Pack) error {
+	if p.RFX != SpecVersion {
+		return fmt.Errorf("rfx: must be %d (got %d)", SpecVersion, p.RFX)
+	}
+	if !nameRe.MatchString(p.Pack) || len(p.Pack) > 40 {
+		return fmt.Errorf("pack %q: must match [a-z0-9-]+ and be ≤ 40 chars", p.Pack)
+	}
+	if !semverRe.MatchString(p.Version) {
+		return fmt.Errorf("version %q: must be semver (e.g. 1.0.0)", p.Version)
+	}
+	if p.Description == "" {
+		return fmt.Errorf("description: required — one sentence on what this talent does")
+	}
+	if len(p.Description) > 200 {
+		return fmt.Errorf("description: %d chars, max 200", len(p.Description))
+	}
+	return nil
 }

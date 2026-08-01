@@ -67,6 +67,11 @@ func (c *client) cmdRfx(args []string) error {
 			return fmt.Errorf("rfx remove: name required")
 		}
 		return rfxRemove(args[1])
+	case "enable", "disable":
+		if len(args) < 2 {
+			return fmt.Errorf("rfx %s: name required", args[0])
+		}
+		return rfxSetEnabled(args[1], args[0] == "enable")
 	case "test":
 		if len(args) < 2 {
 			return fmt.Errorf("rfx test: name or file required")
@@ -85,22 +90,57 @@ func (c *client) cmdRfx(args []string) error {
 
 func rfxList() error {
 	l := rfx.NewLoader(rfxDir(), knownCoreTool)
-	defs := l.List()
-	errs := l.Errors()
-	fmt.Printf("%-20s %-9s %-10s %-24s %s\n", "NAME", "KIND", "RISK", "MODES", "DESCRIPTION")
-	for _, d := range defs {
-		modes := strings.Join(d.Modes, ",")
-		if modes == "" {
-			modes = "all"
+	packDesc := map[string]string{}
+	for _, p := range l.Packs() {
+		packDesc[p.Pack] = p.Description
+	}
+	groups := map[string][]rfx.Reflex{}
+	var order []string
+	for _, d := range l.All() {
+		g := d.Pack
+		if g == "" {
+			g = "(standalone)"
 		}
-		fmt.Printf("%-20s %-9s %-10s %-24s %s\n", d.Name, d.Kind, d.Risk, modes, d.Description)
+		if _, seen := groups[g]; !seen {
+			order = append(order, g)
+		}
+		groups[g] = append(groups[g], d)
 	}
-	for _, e := range errs {
-		fmt.Printf("REJECTED %-14s %s: %v\n", filepath.Base(e.Path), "", e.Err)
+	for _, g := range order {
+		fmt.Printf("\n%s\n", g)
+		if desc := packDesc[g]; desc != "" {
+			fmt.Printf("  %s\n", desc)
+		}
+		for _, d := range groups[g] {
+			state := "on "
+			if l.Disabled(d.Name) {
+				state = "OFF"
+			}
+			fmt.Printf("  %s %-20s %-9s %-10s %-22s %s\n", state, d.Name, d.Kind, d.Risk, orAll(d.Modes), d.Description)
+		}
 	}
-	if len(defs) == 0 && len(errs) == 0 {
+	for _, n := range l.Notices() {
+		fmt.Printf("\nnotice: %s\n", n)
+	}
+	for _, e := range l.Errors() {
+		fmt.Printf("REJECTED %s: %v\n", filepath.Base(e.Path), e.Err)
+	}
+	if len(l.All()) == 0 && len(l.Errors()) == 0 {
 		fmt.Println("(no reflexes in " + rfxDir() + ")")
 	}
+	return nil
+}
+
+func rfxSetEnabled(name string, enabled bool) error {
+	l := rfx.NewLoader(rfxDir(), knownCoreTool)
+	if err := l.SetEnabled(name, enabled); err != nil {
+		return err
+	}
+	verb := "enabled — back in the grammar on the next turn"
+	if !enabled {
+		verb = "disabled — leaves the grammar on the next turn (file untouched)"
+	}
+	fmt.Printf("%s %s\n", name, verb)
 	return nil
 }
 
@@ -232,10 +272,12 @@ func orAll(modes []string) string {
 func rfxUsage() {
 	fmt.Fprint(os.Stderr, `crvcli rfx — local reflex management (no server needed)
 
-  crvcli rfx list                valid reflexes + rejected files
+  crvcli rfx list                reflexes by pack + on/OFF state + rejections
   crvcli rfx show <name>         one reflex, expanded
   crvcli rfx install <file>      validate + copy into ~/.crv/rfx/
   crvcli rfx remove <name>       delete a reflex
+  crvcli rfx enable <name>       re-enable (writes .state.json)
+  crvcli rfx disable <name>      disable without deleting (writes .state.json)
   crvcli rfx test <name|file>    validate + fuzz against spec v1
   crvcli rfx distill <skill>      convert a prose skill to a draft reflex (needs server)
 `)
