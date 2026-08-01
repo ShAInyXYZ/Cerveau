@@ -133,6 +133,9 @@ func (a *API) PanelRfx(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			// Never cache: pack authors iterate on panel.html and a stale
+			// iframe made "the fix isn't there" bugs. Panels are small.
+			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Content-Security-Policy",
 				"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'")
 			w.Write([]byte(panelBridge))
