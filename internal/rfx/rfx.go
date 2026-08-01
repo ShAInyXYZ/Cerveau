@@ -287,6 +287,11 @@ func Validate(r *Reflex, known KnownTool) error {
 		if !strings.HasPrefix(r.Argv[0], "/") {
 			return fmt.Errorf("kind exec: argv[0] must be an absolute path (got %q)", r.Argv[0])
 		}
+		// The absolute-path guarantee is only real if it survives substitution:
+		// "/usr/bin/{{ params.x }}" would let a param walk the path anywhere.
+		if anyBraceRe.MatchString(r.Argv[0]) {
+			return fmt.Errorf("kind exec: argv[0] may not contain placeholders — the binary path must be literal")
+		}
 		if !r.Card.Subprocess {
 			return fmt.Errorf("kind exec requires card.subprocess: true (spec §4)")
 		}
@@ -576,6 +581,10 @@ func validateWidget(w Widget) error {
 		if w.Label == "" {
 			return fmt.Errorf("button: label required")
 		}
+		// Pack-level context: there is no "card's own reflex" to default to.
+		if w.Run == "" {
+			return fmt.Errorf("button: run: required (a pack card has no implicit target reflex)")
+		}
 	case "field":
 		if w.Name == "" {
 			return fmt.Errorf("field: name required (it is the param binding)")
@@ -591,6 +600,19 @@ func validateWidget(w Widget) error {
 	case "toggle", "progress":
 	default:
 		return fmt.Errorf("unknown widget type %q (button|field|status|log|toggle|progress)", w.Type)
+	}
+	// Semantic checks — load-time rejection, never a runtime surprise in the
+	// panel (the renderer would otherwise throw on a bad regex mid-render).
+	for label, re := range w.Rows {
+		if _, err := regexp.Compile(re); err != nil {
+			return fmt.Errorf("rows.%s: regex %q does not compile: %v", label, re, err)
+		}
+	}
+	if w.Every != "" {
+		d, err := time.ParseDuration(w.Every)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("every %q: use a positive duration like 30s or 5m", w.Every)
+		}
 	}
 	return nil
 }

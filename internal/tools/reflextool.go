@@ -324,7 +324,12 @@ func checkArgType(name string, schema map[string]any, val any) error {
 		if _, ok := val.(string); !ok {
 			return fmt.Errorf("param %q: must be a string", name)
 		}
-	case "integer", "number":
+	case "integer":
+		f, ok := val.(float64)
+		if !ok || f != float64(int64(f)) {
+			return fmt.Errorf("param %q: must be an integer", name)
+		}
+	case "number":
 		if _, ok := val.(float64); !ok {
 			return fmt.Errorf("param %q: must be a number", name)
 		}

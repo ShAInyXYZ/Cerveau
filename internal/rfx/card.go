@@ -45,8 +45,11 @@ func cardFSNone(card Card) bool {
 	return false
 }
 
-// NetworkAllowed reports whether the card permits contacting host (used by
-// the Synapse executor for exec tools too).
+// NetworkAllowed reports whether the card permits contacting host. Today its
+// only enforcement point is CheckStep (web_fetch steps). It is NOT applied to
+// exec subprocesses — a process can open raw sockets, so pre-Landlock the
+// card's network list is declarative there; the loader emits a notice saying
+// exactly that. Wire this into the Landlock jail when it lands (M10+).
 func NetworkAllowed(card Card, host string) bool {
 	for _, n := range card.Network {
 		switch n {

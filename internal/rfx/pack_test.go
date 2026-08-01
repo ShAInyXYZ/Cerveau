@@ -126,6 +126,81 @@ func TestStateEnableDisable(t *testing.T) {
 	}
 }
 
+// Widget semantics are load-time errors, not runtime surprises in the panel:
+// rows regexes must compile, every must parse, pack-level buttons need run.
+func TestPackWidgetSemanticRejections(t *testing.T) {
+	base := testPackYAML + "ui:\n  widgets:\n"
+	cases := []struct{ name, widgets, want string }{
+		{"bad rows regex", "    - {type: status, run: git-status, rows: {branch: '(['}}\n", "does not compile"},
+		{"bad every", "    - {type: status, run: git-status, every: soonish, rows: {branch: 'x'}}\n", "every"},
+		{"pack button needs run", "    - {type: button, label: Go}\n", "run: required"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p, err := ParsePack([]byte(base+c.widgets), "pack.yaml")
+			if err != nil {
+				t.Fatalf("ParsePack: %v", err)
+			}
+			if err := ValidatePack(p); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("got %v, want substring %q", err, c.want)
+			}
+		})
+	}
+}
+
+// A widget run: naming a reflex that doesn't exist rejects the PACK at load
+// (loud), instead of failing later inside the panel.
+func TestPackWidgetRunMustResolve(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "github")
+	os.MkdirAll(pd, 0o755)
+	writeFile(t, pd, "pack.yaml", testPackYAML+
+		"ui:\n  widgets:\n    - {type: button, label: Go, run: no-such-reflex}\n")
+	writeFile(t, pd, "git-status.rfx.yaml", validAliasFor("git-status"))
+
+	l := NewLoader(dir, knownCore)
+	if packs := l.Packs(); len(packs) != 0 {
+		t.Fatalf("pack with dangling run: was loaded: %v", packs)
+	}
+	found := false
+	for _, e := range l.Errors() {
+		if strings.Contains(e.Err.Error(), "no-such-reflex") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("dangling run: not reported: %v", l.Errors())
+	}
+}
+
+// An exec reflex declaring a network allowlist gets a loader NOTICE: the
+// card cannot enforce it pre-Landlock (honest scoping, never silent).
+func TestExecNetworkAllowlistNotice(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "homelab-temps.rfx.yaml", `
+rfx: 1
+name: homelab-temps
+description: d
+risk: safe
+kind: exec
+argv: [/opt/homelab/temps]
+card: {network: [homelab.local], subprocess: true}
+`)
+	l := NewLoader(dir, knownCore)
+	if got := l.All(); len(got) != 1 {
+		t.Fatalf("exec reflex rejected: %v", l.Errors())
+	}
+	found := false
+	for _, n := range l.Notices() {
+		if strings.Contains(n, "homelab-temps") && strings.Contains(n, "network") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no unenforceable-network notice: %v", l.Notices())
+	}
+}
+
 func TestCrossPackNameCollision(t *testing.T) {
 	dir := t.TempDir()
 	for _, pack := range []string{"alpha", "beta"} {

@@ -180,6 +180,7 @@ func (l *Loader) refresh(force bool) {
 		pack string // "" = standalone
 	}
 	var files []candidate
+	var pendingPacks []Pack
 	for _, e := range entries {
 		name := e.Name()
 		if !e.IsDir() {
@@ -212,7 +213,9 @@ func (l *Loader) refresh(force bool) {
 				}
 			}
 		}
-		l.packs = append(l.packs, *p)
+		// Held back: a pack only registers once its ui: run refs resolve
+		// against the full reflex set (validated after pass 2 below).
+		pendingPacks = append(pendingPacks, *p)
 		sub, _ := os.ReadDir(packDir)
 		for _, se := range sub {
 			if !se.IsDir() && strings.HasSuffix(se.Name(), ".rfx.yaml") {
@@ -253,8 +256,24 @@ func (l *Loader) refresh(force bool) {
 		}
 		return l.known != nil && l.known(name)
 	}
+	// A pack's ui: widgets may only run reflexes that actually exist. A
+	// dangling run: rejects the PACK and its members at load — loud — instead
+	// of a dead button (or worse, a silent no-op) in the panel later.
+	badPacks := map[string]bool{}
+	for _, p := range pendingPacks {
+		if err := validatePackRuns(p, reflexNames); err != nil {
+			l.errors = append(l.errors, LoadError{p.Path, err})
+			badPacks[p.Pack] = true
+			continue
+		}
+		l.packs = append(l.packs, p)
+	}
+
 	seen := map[string]string{} // name -> first path, for collision reporting
 	for _, pr := range parsed {
+		if badPacks[pr.pack] {
+			continue // pack rejected above; its members go with it
+		}
 		if err := Validate(pr.r, known); err != nil {
 			l.errors = append(l.errors, LoadError{pr.r.Path, err})
 			continue
@@ -266,7 +285,38 @@ func (l *Loader) refresh(force bool) {
 		seen[pr.r.Name] = pr.r.Path
 		pr.r.Pack = pr.pack
 		l.reflexes = append(l.reflexes, *pr.r)
+
+		// Honest scoping (card.go): network allowlists on exec reflexes are
+		// declarative until the Landlock jail lands — say so, don't imply
+		// enforcement that doesn't exist.
+		if pr.r.Kind == KindExec && !networkIsNone(pr.r.Card) {
+			l.notices = append(l.notices,
+				fmt.Sprintf("%s: card.network %v is declared but NOT enforced for exec subprocesses (pre-Landlock) — the process can reach any host the OS user can", pr.r.Name, []string(pr.r.Card.Network)))
+		}
 	}
+}
+
+// validatePackRuns checks every widget run: against the set of parsed reflex
+// names (pack members and standalones alike).
+func validatePackRuns(p Pack, reflexNames map[string]bool) error {
+	for i, w := range p.UI.Widgets {
+		if w.Run != "" && !reflexNames[w.Run] {
+			return fmt.Errorf("ui.widgets[%d]: run: %q — no reflex with that name exists", i, w.Run)
+		}
+	}
+	return nil
+}
+
+func networkIsNone(c Card) bool {
+	if len(c.Network) == 0 {
+		return true
+	}
+	for _, n := range c.Network {
+		if n != "none" {
+			return false
+		}
+	}
+	return true
 }
 
 func (l *Loader) loadStateLocked() map[string]bool {

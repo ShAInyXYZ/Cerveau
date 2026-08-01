@@ -93,6 +93,7 @@ kind: exec
 card: {subprocess: true}
 `, "argv required"},
 		{"exec argv0 absolute", strings.Replace(validExec, "/opt/homelab/temps", "temps", 1), "absolute path"},
+		{"exec argv0 no placeholder", strings.Replace(validExec, "/opt/homelab/temps", `"/opt/homelab/{{ params.zone }}"`, 1), "argv[0] may not contain placeholders"},
 		{"exec needs subprocess card", strings.Replace(validExec, "  subprocess: true\n", "", 1), "card.subprocess"},
 		{"exec no steps", validExec + "steps:\n  - bash: echo hi\n", "only valid for kind pipeline"},
 		{"unknown param placeholder", strings.Replace(validAlias, "npm run build", "npm run {{ params.flavor }}", 1), "not declared in params"},
