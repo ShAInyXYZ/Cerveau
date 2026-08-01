@@ -70,9 +70,18 @@
     return `${Math.floor(s / 60)}m ago`;
   }
 
+  // dangerous tier: two-click arm/confirm — a misclick never fires it
+  let armed = $state('');
+
   async function fire(w) {
     const target = w.run ?? members[0]?.name;
     const targetDef = members.find((m) => m.name === target);
+    if (targetDef?.risk === 'dangerous' && armed !== w.label) {
+      armed = w.label;
+      setTimeout(() => { if (armed === w.label) armed = ''; }, 3000);
+      return;
+    }
+    armed = '';
     const args = { ...(w.args ?? {}) };
     // field binding: a field named after a param fills it (docs/RFX-UI.md §2)
     for (const [k, v] of Object.entries(fields)) {
@@ -132,8 +141,9 @@
       {#if buttons.length > 0}
         <div class="actions">
           {#each buttons as w (w.label)}
-            <button class="act" disabled={lastRun.running || needsField(w)} onclick={() => fire(w)}>
-              <Play size={10} strokeWidth={2.5} />{w.label}
+            <button class="act" class:armed={armed === w.label}
+              disabled={lastRun.running || needsField(w)} onclick={() => fire(w)}>
+              <Play size={10} strokeWidth={2.5} />{armed === w.label ? 'confirm?' : w.label}
             </button>
           {/each}
         </div>
@@ -194,6 +204,9 @@
 
   .status-err {
     display: flex; align-items: baseline; gap: 8px;
+  }
+  .status-err .mk { flex-shrink: 0; }
+  .status-err {
     padding: 7px 9px; border-radius: 6px; font-size: 10.5px; color: var(--warn, #b87a00);
     background: color-mix(in srgb, #fff 2.5%, transparent);
     box-shadow: inset 0 0 0 1px var(--ring, var(--line));
@@ -208,6 +221,7 @@
     transition: filter .1s;
   }
   .act + .act { background: var(--s3); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+  .act.armed { background: var(--err); color: #fff; }
   .act:hover:not(:disabled) { filter: brightness(1.12); }
   .act:disabled { opacity: .45; cursor: default; }
 

@@ -1,14 +1,20 @@
 <script>
-  import { Zap, Play, ChevronRight, RefreshCw } from 'lucide-svelte';
+  import { Play, ChevronRight, RefreshCw, Zap } from 'lucide-svelte';
   import { j, jpost } from './api.js';
   import RfxPackCard from './RfxPackCard.svelte';
 
-  // RfxDock — the RFX chat dock (docs/RFX-UI.md). Pack cockpits first
-  // (ui: manifest), default quick-run cards for everything else.
+  // RfxDock — Blender-N-panel-style RFX surface (docs/RFX-UI.md).
+  // A slim vertical tab strip lives at the chat's right edge — one rotated
+  // tab per pack (plus one for standalone reflexes). Clicking a tab expands
+  // that pack's panel INLINE next to the strip; clicking it again collapses
+  // back to the bare strip. Only one pack is open at a time.
   let data = $state({ packs: [], reflexes: [] });
   let runs = $state({});
   let args = $state({});
-  let collapsed = $state(localStorage.getItem('rfxdock-collapsed') === '1');
+  let armed = $state('');            // name of the dangerous reflex awaiting confirm
+  // ?rfx=<pack> deep-links a panel open (also how CI screenshots verify it)
+  let openTab = $state(new URLSearchParams(location.search).get('rfx')
+    ?? localStorage.getItem('rfxdock-tab') ?? '');
 
   async function load() {
     try { data = await j('/api/rfx'); } catch { /* older core */ }
@@ -18,16 +24,24 @@
   const enabled = $derived((data.reflexes ?? []).filter((r) => r.enabled));
   const uiPacks = $derived((data.packs ?? []).filter((p) => (p.ui?.widgets ?? []).length > 0));
   const membersOf = $derived((name) => enabled.filter((r) => r.pack === name));
-  // default cards: standalone reflexes, or reflexes whose pack declares no ui
+  // standalone group: reflexes with no pack, or whose pack declares no ui
   const defaults = $derived(enabled.filter((r) => !r.pack || !uiPacks.some((p) => p.name === r.pack)));
+
+  // tabs: packs with a live panel + one "rfx" tab for the standalone group
+  const tabs = $derived([
+    ...uiPacks.filter((p) => membersOf(p.name).length > 0).map((p) => ({ id: p.name, count: membersOf(p.name).length })),
+    ...(defaults.length ? [{ id: '·rfx', count: defaults.length }] : [])
+  ]);
+  const openPack = $derived(uiPacks.find((p) => p.name === openTab));
+  const openValid = $derived(tabs.some((t) => t.id === openTab));
+
+  function pick(id) {
+    openTab = openTab === id ? '' : id;
+    localStorage.setItem('rfxdock-tab', openTab);
+  }
 
   function getArg(name, p) { return args[name]?.[p] ?? ''; }
   function setArg(name, p, v) { (args[name] ??= {})[p] = v; }
-
-  function toggleCollapsed() {
-    collapsed = !collapsed;
-    localStorage.setItem('rfxdock-collapsed', collapsed ? '1' : '0');
-  }
 
   function paramsOf(r) {
     const props = r.params?.properties ?? {};
@@ -35,7 +49,16 @@
     return Object.entries(props).map(([name, s]) => ({ name, required: required.has(name), ...(s ?? {}) }));
   }
 
+  // Dangerous tier gets a two-click arm/confirm — a human misclick should
+  // not fire a dangerous reflex, and neither should a stray local request
+  // decide it's "just a button".
   async function run(r) {
+    if (r.risk === 'dangerous' && armed !== r.name) {
+      armed = r.name;
+      setTimeout(() => { if (armed === r.name) armed = ''; }, 3000);
+      return;
+    }
+    armed = '';
     const a = {};
     for (const p of paramsOf(r)) {
       const v = args[r.name]?.[p.name];
@@ -52,92 +75,134 @@
   }
 </script>
 
-{#if enabled.length > 0}
-  {#if collapsed}
-    <button class="strip" onclick={toggleCollapsed} aria-label="open RFX dock">
-      <Zap size={14} /><span class="strip-count">{enabled.length}</span>
-    </button>
-  {:else}
-    <aside class="dock">
-      <div class="dock-head">
-        <span class="label">RFX · {enabled.length}</span>
-        <div class="dock-head-btns">
-          <button class="icon" onclick={load} aria-label="reload"><RefreshCw size={12} /></button>
-          <button class="icon" onclick={toggleCollapsed} aria-label="collapse"><ChevronRight size={13} /></button>
-        </div>
-      </div>
-
-      <div class="cards">
-        {#each uiPacks as p (p.name)}
-          {#if membersOf(p.name).length > 0}
-            <RfxPackCard pack={p} members={membersOf(p.name)} />
-          {/if}
-        {/each}
-
-        {#each defaults as r (r.name)}
-          <div class="card">
-            <div class="c-head">
-              <span class="c-name">{r.name}</span>
-              <span class="chip" class:chip-dangerous={r.risk === 'dangerous'} class:chip-sensitive={r.risk === 'sensitive'}>{r.risk}</span>
-            </div>
-            <div class="c-desc">{r.description}</div>
-
-            {#each paramsOf(r) as p (p.name)}
-              <label class="field">
-                <span class="fname">{p.name}{p.required ? ' *' : ''}</span>
-                {#if p.enum}
-                  <select value={getArg(r.name, p.name)} onchange={(e) => setArg(r.name, p.name, e.target.value)}>
-                    <option value="">—</option>
-                    {#each p.enum as e}<option value={e}>{e}</option>{/each}
-                  </select>
-                {:else if p.type === 'boolean'}
-                  <input type="checkbox" checked={!!getArg(r.name, p.name)} onchange={(e) => setArg(r.name, p.name, e.target.checked)} />
-                {:else if p.type === 'integer' || p.type === 'number'}
-                  <input type="number" value={getArg(r.name, p.name)} oninput={(e) => setArg(r.name, p.name, +e.target.value)} />
-                {:else}
-                  <input type="text" value={getArg(r.name, p.name)} oninput={(e) => setArg(r.name, p.name, e.target.value)} />
-                {/if}
-              </label>
-            {/each}
-
-            <button class="run" disabled={runs[r.name]?.state === 'run'} onclick={() => run(r)}>
-              <Play size={11} strokeWidth={2.5} />
-              {runs[r.name]?.state === 'run' ? 'running…' : 'Run'}
-            </button>
-
-            {#if runs[r.name] && runs[r.name].state !== 'run'}
-              <pre class="result" class:err={runs[r.name].state === 'err'}>{runs[r.name].output}</pre>
-            {/if}
+{#if tabs.length > 0}
+  <div class="npanel">
+    {#if openValid && openTab}
+      <aside class="panel">
+        <div class="panel-head">
+          <span class="label">{openTab === '·rfx' ? 'RFX · standalone' : openTab}</span>
+          <div class="head-btns">
+            <button class="icon" onclick={load} aria-label="reload"><RefreshCw size={12} /></button>
+            <button class="icon" onclick={() => pick(openTab)} aria-label="collapse"><ChevronRight size={13} /></button>
           </div>
-        {/each}
-      </div>
-    </aside>
-  {/if}
+        </div>
+
+        <div class="panel-body">
+          {#if openPack}
+            <RfxPackCard pack={openPack} members={membersOf(openPack.name)} />
+          {:else}
+            {#each defaults as r (r.name)}
+              <div class="card">
+                <div class="c-head">
+                  <span class="c-name">{r.name}</span>
+                  <span class="chip" class:chip-dangerous={r.risk === 'dangerous'} class:chip-sensitive={r.risk === 'sensitive'}>{r.risk}</span>
+                </div>
+                <div class="c-desc">{r.description}</div>
+
+                {#each paramsOf(r) as p (p.name)}
+                  <label class="field">
+                    <span class="fname">{p.name}{p.required ? ' *' : ''}</span>
+                    {#if p.enum}
+                      <select value={getArg(r.name, p.name)} onchange={(e) => setArg(r.name, p.name, e.target.value)}>
+                        <option value="">—</option>
+                        {#each p.enum as e}<option value={e}>{e}</option>{/each}
+                      </select>
+                    {:else if p.type === 'boolean'}
+                      <input type="checkbox" checked={!!getArg(r.name, p.name)} onchange={(e) => setArg(r.name, p.name, e.target.checked)} />
+                    {:else if p.type === 'integer' || p.type === 'number'}
+                      <input type="number" value={getArg(r.name, p.name)} oninput={(e) => setArg(r.name, p.name, +e.target.value)} />
+                    {:else}
+                      <input type="text" value={getArg(r.name, p.name)} oninput={(e) => setArg(r.name, p.name, e.target.value)} />
+                    {/if}
+                  </label>
+                {/each}
+
+                <button class="run" class:armed={armed === r.name}
+                  disabled={runs[r.name]?.state === 'run'} onclick={() => run(r)}>
+                  <Play size={11} strokeWidth={2.5} />
+                  {runs[r.name]?.state === 'run' ? 'running…' : armed === r.name ? 'confirm?' : 'Run'}
+                </button>
+
+                {#if runs[r.name] && runs[r.name].state !== 'run'}
+                  <pre class="result" class:err={runs[r.name].state === 'err'}>{runs[r.name].output}</pre>
+                {/if}
+              </div>
+            {/each}
+          {/if}
+        </div>
+      </aside>
+    {/if}
+
+    <nav class="strip" aria-label="RFX packs">
+      <div class="strip-mark"><Zap size={12} /></div>
+      {#each tabs as t (t.id)}
+        <button class="tab" class:on={openTab === t.id} onclick={() => pick(t.id)}
+          aria-label="{t.id} panel" aria-expanded={openTab === t.id}>
+          <span class="tab-name">{t.id === '·rfx' ? 'rfx' : t.id}</span>
+          <span class="tab-count">{t.count}</span>
+        </button>
+      {/each}
+    </nav>
+  </div>
 {/if}
 
 <style>
+  .npanel { display: flex; flex-shrink: 0; min-height: 0; }
+
+  /* ── the strip: always present, ~34px, Blender-N-panel tab rail ── */
   .strip {
-    display: flex; flex-direction: column; align-items: center; gap: 6px;
-    width: 30px; padding: 10px 0; border: none; cursor: pointer;
-    background: var(--surface-raised); border-left: 1px solid var(--line); color: var(--accent);
+    width: 34px; flex-shrink: 0; display: flex; flex-direction: column;
+    align-items: stretch; gap: 2px; padding: 8px 0;
+    border-left: 1px solid var(--line); background: var(--s1);
   }
-  .strip-count { font-size: 10px; color: var(--dim); }
-  .dock {
-    width: 292px; flex-shrink: 0; display: flex; flex-direction: column;
-    border-left: 1px solid var(--line); background: var(--surface-raised); overflow: hidden;
+  .strip-mark {
+    display: flex; justify-content: center; padding: 2px 0 8px;
+    color: var(--faint);
   }
-  .dock-head {
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    padding: 9px 0; border: none; cursor: pointer; background: transparent;
+    border-left: 2px solid transparent;
+    color: var(--dim);
+    transition: color .12s, background .12s;
+  }
+  .tab:hover { color: var(--text); background: color-mix(in srgb, #fff 3.5%, transparent); }
+  .tab.on {
+    color: var(--accent); background: var(--accent-soft);
+    border-left-color: var(--accent);
+  }
+  .tab-name {
+    writing-mode: vertical-rl; transform: rotate(180deg);
+    font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 600;
+    letter-spacing: .14em;
+  }
+  .tab-count {
+    font-family: var(--font-mono, monospace); font-size: 8.5px;
+    color: var(--faint); min-width: 14px; text-align: center;
+    padding: 1px 0; border-radius: 4px;
+    background: color-mix(in srgb, #fff 4%, transparent);
+  }
+  .tab.on .tab-count { color: var(--accent); background: transparent; }
+
+  /* ── the panel: opens inline next to the strip, one pack at a time ── */
+  .panel {
+    width: 292px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
+    border-left: 1px solid var(--line); background: var(--surface-raised, var(--s1));
+  }
+  .panel-head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 12px; border-bottom: 1px solid var(--line);
+    padding: 10px 12px; border-bottom: 1px solid var(--line); flex-shrink: 0;
   }
-  .dock-head-btns { display: flex; gap: 4px; }
+  .head-btns { display: flex; gap: 4px; }
   .icon {
     display: inline-flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; border: none; border-radius: 6px; cursor: pointer;
     background: transparent; color: var(--faint);
   }
   .icon:hover { color: var(--text); background: var(--s3); }
-  .cards { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+  .panel-body { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── default cards (standalone / no-ui reflexes) ── */
   .card {
     padding: 12px; border-radius: 10px;
     background: color-mix(in srgb, #fff 2.5%, transparent); box-shadow: inset 0 0 0 1px var(--line);
@@ -163,6 +228,7 @@
     font-size: 11px; font-weight: 600; padding: 6px 14px; border: none; border-radius: 7px;
     cursor: pointer; background: var(--accent); color: var(--accent-ink);
   }
+  .run.armed { background: var(--err); color: #fff; }
   .run:hover:not(:disabled) { filter: brightness(1.1); }
   .run:disabled { opacity: .5; cursor: wait; }
   .result {
