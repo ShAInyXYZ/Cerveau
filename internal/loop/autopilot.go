@@ -153,9 +153,15 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 		if _, detail, tripped := g.preThink(i); tripped {
 			return "", fmt.Errorf("guard: %s", detail)
 		}
-		msgs := []llm.Message{}
-		for _, it := range items {
-			msgs = append(msgs, it.Msg)
+		// Compress through the window manager exactly like a chat turn.
+		// Sending raw items let a long step grow past the model's context
+		// ("request (33144 tokens) exceeds the available context size") —
+		// tool results are demoted to event pointers, then oldest-first
+		// trimmed, so the step survives instead of dying at the ceiling.
+		msgs, rep := l.compress(ctx, items)
+		if rep.Zone == window.ZoneRed {
+			wr.Append(episodic.Note, map[string]string{"kind": "window",
+				"text": fmt.Sprintf("step window compressed: %d demoted, %d trimmed (%d tok)", rep.Demoted, rep.Trimmed, rep.Tokens)})
 		}
 		reply, usage, err := l.completeWithRetry(ctx, wr, msgs, l.registry().Specs(mode.Name), "", mode.ProseCap)
 		g.addTokens(usage.CompletionTokens)

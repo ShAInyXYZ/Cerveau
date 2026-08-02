@@ -69,3 +69,9 @@ func (c *HTTPCounter) fetch(ctx context.Context, text string) int {
 func estimate(text string) int {
 	return (len(text) + 3) / 4
 }
+
+// CounterFunc adapts a plain function to Counter (used by tests and by
+// callers that already have a tokenizer).
+type CounterFunc func(context.Context, string) int
+
+func (f CounterFunc) Count(ctx context.Context, text string) int { return f(ctx, text) }

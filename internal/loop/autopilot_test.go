@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"cerveau/internal/episodic"
 	"cerveau/internal/llm"
+	"cerveau/internal/window"
 	"cerveau/internal/tools"
 )
 
@@ -163,5 +165,39 @@ func TestAutopilotHandbackOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(res.Reply, "1 failed") || !strings.Contains(res.Reply, "1 skipped") {
 		t.Fatalf("reply = %q", res.Reply)
+	}
+}
+
+// A plan step's window must be COMPRESSED like a chat turn's. runStep used
+// to send raw items, so a long step grew until the request exceeded the
+// model's context and the run died with "exceeds the available context size".
+func TestStepWindowIsCompressed(t *testing.T) {
+	mgr := window.NewManager(4000, 500, window.CounterFunc(func(_ context.Context, s string) int {
+		return len(s) / 4
+	}))
+	items := []window.Item{{Msg: llm.Message{Role: "system", Content: "sys"}, Kind: "system"}}
+	for i := 0; i < 200; i++ {
+		items = append(items, window.Item{
+			Msg:  llm.Message{Role: "tool", Content: strings.Repeat("x", 4000)},
+			Kind: "tool", EvtID: "evt_" + strconv.Itoa(i),
+		})
+	}
+	raw := 0
+	for _, it := range items {
+		raw += len(it.Msg.Content) / 4
+	}
+	if raw <= 4000 {
+		t.Fatalf("test setup should overflow the budget, got %d", raw)
+	}
+	msgs, rep := mgr.Build(context.Background(), items)
+	sent := 0
+	for _, m := range msgs {
+		sent += len(m.Content) / 4
+	}
+	if sent >= raw {
+		t.Fatalf("window did not compress: sent %d of raw %d", sent, raw)
+	}
+	if rep.Demoted == 0 && rep.Trimmed == 0 {
+		t.Fatal("nothing was demoted or trimmed")
 	}
 }

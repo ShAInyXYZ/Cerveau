@@ -509,3 +509,17 @@ func turnBudget(ctx context.Context) time.Duration {
 	}
 	return maxTurnTime
 }
+
+// compress runs in-memory items through the window manager. buildMessages
+// replays from the episodic log; a plan step already holds its items, so it
+// needs the compression step alone.
+func (l *Loop) compress(ctx context.Context, items []window.Item) ([]llm.Message, window.Report) {
+	if l.win == nil {
+		msgs := make([]llm.Message, 0, len(items))
+		for _, it := range items {
+			msgs = append(msgs, it.Msg)
+		}
+		return msgs, window.Report{}
+	}
+	return l.win.Build(ctx, items)
+}
