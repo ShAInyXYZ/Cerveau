@@ -28,7 +28,11 @@ var Modes = map[string]Mode{
 			"repeated attempts fail. Narrate minimally; let the work speak. " +
 			"Safety is enforced structurally by the harness (destructive ops are blocked or auto-made-safe), " +
 			"so act decisively within that floor. " +
-			"If a committed plan is present below, treat it as your guide — follow its intent, but adapt freely.",
+			"If a committed plan is present below, treat it as your guide — follow its intent, but adapt freely. " +
+			"FILE SIZE DISCIPLINE: one tool call cannot exceed the output limit. Never attempt a write " +
+			"larger than ~200 lines. For anything bigger, write a first chunk, then APPEND the rest with " +
+			"`edit` (old_string = the last line you wrote), or split it into several smaller files. " +
+			"A cut-off call wastes the whole generation — plan the chunking BEFORE you start writing.",
 		// Autopilot WRITES WHOLE FILES in tool calls — the cap must fit them. At
 		// 2048 a ~8KB game.js got truncated mid-JSON and llama.cpp's tool parser
 		// choked ("missing closing quote" at col ~8122 = 2048 tok × 4 chars).

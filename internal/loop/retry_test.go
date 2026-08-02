@@ -216,3 +216,15 @@ func TestTruncatedArgsDiagnosis(t *testing.T) {
 		t.Fatal("schema error should not advise splitting")
 	}
 }
+
+// The split-correction text must tell the model to APPEND with edit, not
+// just "write smaller" — a CSS file cut at the cap needs continuation, and
+// re-writing the whole thing smaller is not possible.
+func TestSplitCorrectionMentionsAppend(t *testing.T) {
+	c := splitCorrection("write")
+	for _, want := range []string{"cut off", "edit", "smaller"} {
+		if !strings.Contains(strings.ToLower(c), want) {
+			t.Fatalf("correction missing %q: %s", want, c)
+		}
+	}
+}

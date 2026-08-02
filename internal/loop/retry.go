@@ -137,3 +137,16 @@ func malformedHint(args string) string {
 	}
 	return "arguments are not valid JSON — regenerate them following the tool's schema exactly"
 }
+
+// splitCorrection is the self-correction fed back when a tool call is cut off
+// at the token cap. It must name the CONTINUATION path (append with edit),
+// not only "write less" — a file that overflowed cannot be rewritten whole.
+func splitCorrection(tool string) string {
+	return "Your last " + tool + " call was CUT OFF mid-generation: its arguments exceeded the output limit. " +
+		"Do NOT resend the same call — it will be cut off again. Instead: " +
+		"(1) write a FIRST, SHORTER chunk of the file with `write`, then " +
+		"(2) APPEND each remaining chunk with `edit` (old_string = the last line you wrote, " +
+		"new_string = that line plus the next chunk), or " +
+		"(3) split the content across several smaller files. " +
+		"Keep every single call well under 4000 tokens of content."
+}

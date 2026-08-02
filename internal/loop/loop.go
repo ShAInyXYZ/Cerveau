@@ -54,8 +54,8 @@ func (l *Loop) envBlock(sessionID string) string {
 func (l *Loop) SetStackFunc(f func() string) { l.stackInfo = f }
 
 const (
-	maxIterations    = 8
-	maxTurnTime      = 4 * time.Minute
+	maxIterations = 8
+	maxTurnTime   = 4 * time.Minute
 	// a supervised plan step builds files; it needs a build-sized budget
 	maxStepTime      = 20 * time.Minute
 	maxTurnTokens    = 16384
@@ -306,10 +306,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				truncated++
 				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
 					"text": "tool call truncated at the token cap — asking the model to split the write"})
-				correction = "Your last tool call was cut off mid-generation because its arguments were too long. " +
-					"Do NOT retry the same single call. Split the work: write the file in several smaller pieces — " +
-					"a first `write` with the opening portion, then follow-up `write` calls appending path-suffixed parts, " +
-					"or restructure into multiple smaller files. Keep each tool call well under 6000 tokens."
+				correction = splitCorrection("tool")
 				continue
 			}
 			class := classifyLLMError(err)
@@ -346,6 +343,18 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 					what = "tool call arguments were cut off (output limit)"
 				}
 				wr.Append(episodic.Err, errorCard(ErrClassMalformed, what, tc.Function.Arguments, "0 retries", hint))
+				// Truncated args arrive here (valid transport, cut-off JSON).
+				// Feed the SAME self-correction the server-side path uses —
+				// a tool result alone doesn't reliably change the model's
+				// behaviour, and without this it resends until the error
+				// threshold kills the run.
+				if looksTruncated(tc.Function.Arguments) && truncated < 2 {
+					truncated++
+					wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+						"text": "tool call arguments cut off at the token cap — asking the model to split the write"})
+					correction = splitCorrection(tc.Function.Name)
+					continue
+				}
 				if detail, tripped := g.toolError(tc.Function.Name); tripped {
 					iterCancel()
 					return stop(&Result{Iterations: i}, StopErrors, detail), nil
@@ -484,7 +493,6 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 	msgs, rep := l.win.Build(ctx, items)
 	return msgs, rep, nil
 }
-
 
 // longTurnKey marks a turn as a supervised plan step (RFX_UI planner):
 // a build task that gets maxStepTime instead of the chat budget.
