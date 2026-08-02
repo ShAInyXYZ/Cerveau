@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -90,4 +91,49 @@ func (l *Loop) completeWithRetry(ctx context.Context, wr *episodic.Writer, messa
 		}
 	}
 	return llm.Message{}, llm.Usage{}, lastErr
+}
+
+// looksTruncated reports whether tool-call arguments are cut-off JSON rather
+// than merely wrong JSON: the generation hit its token cap mid-value, so
+// quotes/braces never close. Distinguishing the two matters — one is fixed by
+// splitting the write, the other by re-reading the schema.
+func looksTruncated(args string) bool {
+	s := strings.TrimSpace(args)
+	if s == "" || !strings.HasPrefix(s, "{") {
+		return false
+	}
+	if json.Valid([]byte(s)) {
+		return false
+	}
+	inStr, esc, depth := false, false, 0
+	for _, r := range s {
+		switch {
+		case esc:
+			esc = false
+		case r == '\\' && inStr:
+			esc = true
+		case r == '"':
+			inStr = !inStr
+		case inStr:
+			// inside a string: braces don't count
+		case r == '{', r == '[':
+			depth++
+		case r == '}', r == ']':
+			depth--
+		}
+	}
+	// unterminated string, or containers still open at EOF = cut off
+	return inStr || depth > 0
+}
+
+// malformedHint turns invalid tool-call arguments into advice the model can
+// act on. Truncation is the common local-model failure: the content was too
+// big for one call.
+func malformedHint(args string) string {
+	if looksTruncated(args) {
+		return "your arguments were CUT OFF at the output limit — the JSON never closed. " +
+			"Do NOT resend the same call: split the work into smaller calls " +
+			"(write part of the file, then append the rest with edit), or write a shorter file."
+	}
+	return "arguments are not valid JSON — regenerate them following the tool's schema exactly"
 }

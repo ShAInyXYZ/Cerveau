@@ -193,3 +193,26 @@ func TestErrorCardShape(t *testing.T) {
 		t.Fatalf("options = %v", opts)
 	}
 }
+
+// Args that were cut off at the token cap must be diagnosed as TRUNCATION
+// (split the write) rather than a generic schema mistake — the model wrote
+// valid JSON, it just never got to finish it.
+func TestTruncatedArgsDiagnosis(t *testing.T) {
+	cut := `{"path":"css/style.css","content":"body { margin:0; }` // no closing quote/brace
+	if !looksTruncated(cut) {
+		t.Fatal("cut-off args not detected as truncated")
+	}
+	hint := malformedHint(cut)
+	if !strings.Contains(hint, "split") {
+		t.Fatalf("hint should tell the model to split the write, got %q", hint)
+	}
+
+	// A genuinely malformed (but complete) call is NOT truncation.
+	bad := `{"path": 12, "content": }`
+	if looksTruncated(bad) {
+		t.Fatal("complete-but-invalid args wrongly flagged as truncated")
+	}
+	if strings.Contains(malformedHint(bad), "split") {
+		t.Fatal("schema error should not advise splitting")
+	}
+}

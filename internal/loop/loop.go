@@ -334,9 +334,18 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			args := json.RawMessage(tc.Function.Arguments)
 			wr.Append(episodic.ToolCall, map[string]any{"id": tc.ID, "name": tc.Function.Name, "args": json.RawMessage(tc.Function.Arguments)})
 			if !json.Valid(args) {
-				out := "malformed tool call: args are not valid JSON — regenerate with the correct schema"
+				// Truncated (hit the output cap) and malformed (wrong schema)
+				// need OPPOSITE advice — telling a model to "regenerate" a
+				// call that was simply too long makes it fail identically
+				// until the error threshold kills the run.
+				hint := malformedHint(tc.Function.Arguments)
+				out := "malformed tool call: " + hint
 				wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": false, "output": out})
-				wr.Append(episodic.Err, errorCard(ErrClassMalformed, "malformed tool call args", tc.Function.Arguments, "0 retries", "regenerate with the correct schema"))
+				what := "malformed tool call args"
+				if looksTruncated(tc.Function.Arguments) {
+					what = "tool call arguments were cut off (output limit)"
+				}
+				wr.Append(episodic.Err, errorCard(ErrClassMalformed, what, tc.Function.Arguments, "0 retries", hint))
 				if detail, tripped := g.toolError(tc.Function.Name); tripped {
 					iterCancel()
 					return stop(&Result{Iterations: i}, StopErrors, detail), nil
