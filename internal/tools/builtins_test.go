@@ -76,3 +76,36 @@ func TestReadOffsetContinues(t *testing.T) {
 		t.Fatal("offset ignored — same head returned again")
 	}
 }
+
+// A model that ignores the offset hint and re-reads the same path must not
+// get the identical head forever: the tool AUTO-ADVANCES to the next slice.
+// Advice alone did not work on a small local model — it kept repeating the
+// call until the loop guard killed the turn.
+func TestReadAutoAdvancesOnRepeat(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Repeat("A", readCapChars) + strings.Repeat("B", readCapChars) + "TAIL"
+	os.WriteFile(filepath.Join(dir, "big.txt"), []byte(body), 0o644)
+	r := NewRead(dir)
+	call := json.RawMessage(`{"path":"big.txt"}`)
+
+	first, _ := r.Execute(context.Background(), call)
+	if !strings.HasPrefix(first, "AAA") {
+		t.Fatalf("first read should start at 0: %q", first[:10])
+	}
+	second, _ := r.Execute(context.Background(), call)
+	if strings.HasPrefix(second, "AAA") {
+		t.Fatal("identical repeat returned the same head — no auto-advance")
+	}
+	if !strings.Contains(second, "continuing") || !strings.Contains(second, "BBB") {
+		t.Fatalf("second read should announce and return the next slice: %q", second[:60])
+	}
+	third, _ := r.Execute(context.Background(), call)
+	if !strings.Contains(third, "TAIL") {
+		t.Fatalf("third read should reach the tail: %q", third[:40])
+	}
+	// An EXPLICIT offset always wins over auto-advance.
+	explicit, _ := r.Execute(context.Background(), json.RawMessage(`{"path":"big.txt","offset":0}`))
+	if !strings.HasPrefix(explicit, "AAA") {
+		t.Fatalf("explicit offset:0 must return the head: %q", explicit[:10])
+	}
+}
