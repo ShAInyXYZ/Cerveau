@@ -389,6 +389,17 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			} else {
 				g.toolOK()
 			}
+			// Coach BEFORE persisting: the loop rebuilds its window from the
+			// episodic log each iteration, so a hint appended here is what the
+			// model actually reads next — and a model that emits several calls
+			// per iteration would never see a next-turn-only correction in time.
+			if g.repeatingResult(tc.Function.Name, args, out) {
+				hint := repeatHint(tc.Function.Name, out)
+				correction = hint
+				out += "\n\n[harness] " + hint
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+					"text": "identical tool result — coaching the model to change approach"})
+			}
 			wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": ok, "output": out})
 			// Loop detection on the RESULT: only a call that yields the SAME output
 			// repeatedly is a stuck loop. Re-running e.g. `npm run build` with a
@@ -396,6 +407,18 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			if detail, tripped := g.repeatedResult(tc.Function.Name, args, out); tripped {
 				iterCancel()
 				return stop(&Result{Iterations: i}, StopLoop, detail), nil
+			}
+			// One short of the kill: the model is repeating a call that keeps
+			// returning the same thing. Tell it WHY and what to do instead —
+			// re-reading a truncated head forever is the classic case.
+			if g.repeatingResult(tc.Function.Name, args, out) {
+				hint := repeatHint(tc.Function.Name, out)
+				correction = hint
+				// Also append it to THIS result: a model that emits several
+				// calls per iteration would otherwise queue a third identical
+				// one before ever seeing the next-turn correction.
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+					"text": "identical tool result — coaching the model to change approach"})
 			}
 		}
 		iterCancel()

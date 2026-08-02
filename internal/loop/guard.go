@@ -99,3 +99,14 @@ func (g *turnGuard) repeatedResult(name string, args json.RawMessage, result str
 	}
 	return "", false
 }
+
+// repeatingResult reports whether a call has just produced its SECOND
+// identical result — one short of the kill threshold. The loop uses it to
+// coach the model out of the loop instead of only killing it afterwards.
+func (g *turnGuard) repeatingResult(name string, args json.RawMessage, result string) bool {
+	buf := append([]byte(name), args...)
+	buf = append(buf, 0)
+	buf = append(buf, []byte(result)...)
+	sig := sha1.Sum(buf)
+	return g.seen[sig] >= 2 && g.seen[sig] < g.repeatLimit
+}

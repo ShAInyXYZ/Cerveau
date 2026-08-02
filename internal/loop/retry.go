@@ -150,3 +150,16 @@ func splitCorrection(tool string) string {
 		"(3) split the content across several smaller files. " +
 		"Keep every single call well under 4000 tokens of content."
 }
+
+// repeatHint coaches a model that has called the same tool twice and got the
+// same answer both times. Naming the specific escape route matters more than
+// "try something else" — the read-truncation loop is the common case.
+func repeatHint(tool, lastOutput string) string {
+	if tool == "read" && strings.Contains(lastOutput, "call read again with offset") {
+		return "You just read the same slice twice. The file is longer than one read: " +
+			"call read again with the OFFSET given in the notice to get the next slice, " +
+			"or use grep/find_symbol to jump straight to what you need."
+	}
+	return "That exact " + tool + " call returned the same result twice — repeating it will not help. " +
+		"Change the arguments, use a different tool, or act on what you already have."
+}
