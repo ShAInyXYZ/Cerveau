@@ -26,16 +26,26 @@ type turnGuard struct {
 	tokens      int
 	perToolErrs map[string]int
 	totalErrs   int
+	budget      time.Duration
 	seen        map[[20]byte]int // count of (name+args+result) triples seen
 }
 
-func newTurnGuard(maxIter int) *turnGuard {
+func newTurnGuard(maxIter int) *turnGuard { return newTurnGuardBudget(maxIter, maxTurnTime) }
+
+// newTurnGuardBudget allows a longer wall-clock budget for turns that are
+// KNOWN to be long-running — a plan step posted by a supervisor panel is a
+// build task, not a chat reply, and the conversational budget starves it.
+func newTurnGuardBudget(maxIter int, budget time.Duration) *turnGuard {
 	if maxIter <= 0 {
 		maxIter = maxIterations
 	}
+	if budget <= 0 {
+		budget = maxTurnTime
+	}
 	return &turnGuard{
+		budget:      budget,
 		maxIter:     maxIter,
-		deadline:    time.Now().Add(maxTurnTime),
+		deadline:    time.Now().Add(budget),
 		maxTokens:   maxTurnTokens,
 		repeatLimit: loopDetectRepeat,
 		perToolErrs: map[string]int{},
@@ -48,7 +58,7 @@ func (g *turnGuard) preThink(iter int) (string, string, bool) {
 		return StopIterations, fmt.Sprintf("iteration cap (%d) reached", g.maxIter), true
 	}
 	if time.Now().After(g.deadline) {
-		return StopTime, fmt.Sprintf("turn time budget (%s) exhausted", maxTurnTime), true
+		return StopTime, fmt.Sprintf("turn time budget (%s) exhausted", g.budget), true
 	}
 	if g.tokens > g.maxTokens {
 		return StopTokens, fmt.Sprintf("turn token budget (%d) exhausted at %d", g.maxTokens, g.tokens), true

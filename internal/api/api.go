@@ -524,13 +524,26 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Text string `json:"text"`
 		Mode string `json:"mode"`
+		// a supervised plan step (RFX_UI planner) is a build task — it runs
+		// on the long turn budget, not the conversational one
+		Step bool `json:"step"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text required"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	// A supervised plan step is a build task: it gets the long budget in the
+	// loop guard AND a matching HTTP ceiling (the 5m handler timeout would
+	// otherwise kill it first).
+	httpBudget := 5 * time.Minute
+	if body.Step {
+		httpBudget = 21 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), httpBudget)
 	defer cancel()
+	if body.Step {
+		ctx = loop.WithLongTurn(ctx)
+	}
 	if a.sctx != nil {
 		a.sctx.SessionID = id
 		a.sctx.LastEvtID = ""

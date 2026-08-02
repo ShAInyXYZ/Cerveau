@@ -239,11 +239,11 @@
   async function panelTurn(text, m) {
     if (!activeId || running) return false;
     if (m && m !== mode) mode = m;
-    await send(text);
+    await send(text, { step: true });   // build budget, not chat budget
     return true;
   }
 
-  async function send(text) {
+  async function send(text, opts = {}) {
     if (!activeId || running) return;
     const sid = activeId;
     running = true; runStarted = Date.now();
@@ -275,7 +275,7 @@
     });
 
     // 3) fire the turn
-    const res = await jpost(`/api/sessions/${sid}/chat`, { text, mode });
+    const res = await jpost(`/api/sessions/${sid}/chat`, { text, mode, step: !!opts.step });
     running = false; runStarted = null;
     closeStream?.(); closeStream = null;
     liveSteps = [];

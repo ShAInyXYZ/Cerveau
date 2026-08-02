@@ -56,6 +56,8 @@ func (l *Loop) SetStackFunc(f func() string) { l.stackInfo = f }
 const (
 	maxIterations    = 8
 	maxTurnTime      = 4 * time.Minute
+	// a supervised plan step builds files; it needs a build-sized budget
+	maxStepTime      = 20 * time.Minute
 	maxTurnTokens    = 16384
 	loopDetectRepeat = 3
 )
@@ -176,7 +178,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	if _, err := wr.Append(episodic.MsgUser, map[string]string{"text": userMsg}); err != nil {
 		return nil, err
 	}
-	g := newTurnGuard(mode.MaxIter)
+	g := newTurnGuardBudget(mode.MaxIter, turnBudget(ctx))
 	var winRep window.Report
 	var turnPulls, pendingPulls []memory.Pull
 	if l.recall != nil {
@@ -472,4 +474,21 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 	}
 	msgs, rep := l.win.Build(ctx, items)
 	return msgs, rep, nil
+}
+
+
+// longTurnKey marks a turn as a supervised plan step (RFX_UI planner):
+// a build task that gets maxStepTime instead of the chat budget.
+type longTurnKey struct{}
+
+// WithLongTurn returns a context whose turn runs on the long (step) budget.
+func WithLongTurn(ctx context.Context) context.Context {
+	return context.WithValue(ctx, longTurnKey{}, true)
+}
+
+func turnBudget(ctx context.Context) time.Duration {
+	if v, _ := ctx.Value(longTurnKey{}).(bool); v {
+		return maxStepTime
+	}
+	return maxTurnTime
 }

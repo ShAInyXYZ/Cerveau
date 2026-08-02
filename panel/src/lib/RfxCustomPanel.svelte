@@ -50,13 +50,21 @@
       const checkpoints = list.filter((e) => e.type === 'checkpoint')
         .map((e) => ({ ...(e.payload ?? {}), ts: e.ts }));
       const closes = list.filter((e) => e.type === 'turn.close');
+      // the stop reason lives in the error event, not turn.close
+      const errs = list.filter((e) => e.type === 'error');
+      const lastErr = errs.length ? (errs[errs.length - 1].payload ?? {}) : null;
       reply(source, id, {
         ok: true,
         session: sessionId,
         plan: state?.plan ?? null,
         checkpoints,
         running: !!state?.running,
-        lastClose: closes.length ? (closes[closes.length - 1].payload ?? {}) : null
+        lastClose: closes.length ? (closes[closes.length - 1].payload ?? {}) : null,
+        lastError: lastErr,
+        // index of the last event of each kind, so a panel can tell whether
+        // the error came BEFORE or AFTER the most recent completed turn
+        lastErrorAt: errs.length ? list.lastIndexOf(errs[errs.length - 1]) : -1,
+        lastCloseAt: closes.length ? list.lastIndexOf(closes[closes.length - 1]) : -1
       });
     } catch (e) {
       reply(source, id, { ok: false, error: String(e) });
