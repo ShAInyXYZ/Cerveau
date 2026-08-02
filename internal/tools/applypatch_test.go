@@ -84,3 +84,55 @@ func TestApplyPatchAmbiguousAndLimit(t *testing.T) {
 		t.Fatalf("hunk limit not enforced: %v", err)
 	}
 }
+
+// apply_patch validates against read output, which is now line-numbered.
+// A raw source old_string must still validate and apply — otherwise every
+// multi-file edit silently fails against the numbered content.
+func TestApplyPatchAgainstNumberedRead(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "m.js"), []byte("function f() {\n  cpu.setDifficulty(x);\n  cpu.reset();\n}\n"), 0o644)
+
+	reg := NewRegistry(
+		Entry{Tool: NewRead(dir)},
+		Entry{Tool: NewEdit(dir)},
+		Entry{Tool: NewWrite(dir)},
+	)
+	reg.SetWorkspace(dir)
+	ap := NewApplyPatch()
+	ap.SetRegistry(reg)
+
+	raw := json.RawMessage(`{"edits":[
+		{"path":"m.js","old_string":"cpu.setDifficulty(x);","new_string":"ai.setDifficulty(x);"},
+		{"path":"m.js","old_string":"cpu.reset();","new_string":"ai.reset();"}
+	]}`)
+	out, err := ap.Execute(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("apply_patch failed against numbered read: %v (%s)", err, out)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "m.js"))
+	if strings.Contains(string(got), "cpu.") {
+		t.Fatalf("edits not applied: %q", string(got))
+	}
+}
+
+// apply_patch must share edit's indentation tolerance: a hunk whose
+// old_string differs only in leading whitespace should validate and apply,
+// so a model doesn't succeed with edit but fail with apply_patch.
+func TestApplyPatchForgivesIndentation(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "m.js"), []byte("function f() {\n      deeplyIndented(x);\n}\n"), 0o644)
+	reg := NewRegistry(Entry{Tool: NewRead(dir)}, Entry{Tool: NewEdit(dir)}, Entry{Tool: NewWrite(dir)})
+	reg.SetWorkspace(dir)
+	ap := NewApplyPatch()
+	ap.SetRegistry(reg)
+
+	// old_string has zero leading spaces; file has six.
+	raw := json.RawMessage(`{"edits":[{"path":"m.js","old_string":"deeplyIndented(x);","new_string":"fixed(x);"}]}`)
+	if out, err := ap.Execute(context.Background(), raw); err != nil {
+		t.Fatalf("indentation-only mismatch should apply: %v (%s)", err, out)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "m.js"))
+	if !strings.Contains(string(got), "      fixed(x);") {
+		t.Fatalf("indentation not preserved: %q", string(got))
+	}
+}

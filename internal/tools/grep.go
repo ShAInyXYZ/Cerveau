@@ -25,7 +25,8 @@ func NewGrep(workspaceRoot string) *Grep { return &Grep{j: newJail(workspaceRoot
 func (t *Grep) Name() string { return "grep" }
 
 func (t *Grep) Description() string {
-	return "Search file contents in the workspace with a regex pattern. Returns matching lines with file:line."
+	return "Search file contents in the workspace with a regex pattern. Returns matching lines with file:line. " +
+		"Pass glob (e.g. \"*.js\") to search only matching filenames, and path to scope to a subdirectory."
 }
 
 func (t *Grep) Schema() map[string]any {
@@ -34,6 +35,7 @@ func (t *Grep) Schema() map[string]any {
 		"properties": map[string]any{
 			"pattern": map[string]any{"type": "string"},
 			"path":    map[string]any{"type": "string", "description": "subdirectory to search, default root"},
+			"glob":    map[string]any{"type": "string", "description": "only search files whose name matches this glob, e.g. *.js or *.go"},
 		},
 		"required": []string{"pattern"},
 	}
@@ -43,6 +45,7 @@ func (t *Grep) Execute(ctx context.Context, args json.RawMessage) (string, error
 	var a struct {
 		Pattern string `json:"pattern"`
 		Path    string `json:"path"`
+		Glob    string `json:"glob"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil || a.Pattern == "" {
 		return "", fmt.Errorf("pattern required")
@@ -73,6 +76,11 @@ func (t *Grep) Execute(ctx context.Context, args json.RawMessage) (string, error
 		if info.Size() > maxFileSize {
 			return nil
 		}
+		if a.Glob != "" {
+			if ok, _ := filepath.Match(a.Glob, info.Name()); !ok {
+				return nil
+			}
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil
@@ -94,7 +102,14 @@ func (t *Grep) Execute(ctx context.Context, args json.RawMessage) (string, error
 		return "", walkErr
 	}
 	if total == 0 {
-		return "no matches", nil
+		where := "the whole workspace"
+		if a.Path != "" {
+			where = a.Path
+		}
+		if a.Glob != "" {
+			where += " (files matching " + a.Glob + ")"
+		}
+		return fmt.Sprintf("no matches for /%s/ — searched %s. If you expected a hit, check the pattern (it is a regex) or widen the path/glob.", a.Pattern, where), nil
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil
 }

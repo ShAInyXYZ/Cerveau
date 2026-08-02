@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -110,10 +111,25 @@ func (t *Bash) Execute(ctx context.Context, args json.RawMessage) (string, error
 }
 
 func capOutput(text string) string {
-	if len(text) > bashCapChars {
-		return text[:bashCapChars] + fmt.Sprintf("\n...[truncated, %d bytes total]", len(text))
+	if len(text) <= bashCapChars {
+		return text
 	}
-	return text
+	// Keep the HEAD and the TAIL. A build or test failure prints its error on
+	// the last lines, so head-only truncation would throw away exactly what
+	// the model needs to self-correct. Weight toward the tail.
+	head := bashCapChars / 3
+	tail := bashCapChars - head
+	// Trim to line boundaries so neither fragment starts/ends mid-line.
+	h := text[:head]
+	if i := strings.LastIndexByte(h, '\n'); i > 0 {
+		h = h[:i]
+	}
+	tStart := len(text) - tail
+	tl := text[tStart:]
+	if i := strings.IndexByte(tl, '\n'); i >= 0 && i < len(tl)-1 {
+		tl = tl[i+1:]
+	}
+	return h + fmt.Sprintf("\n...[%d bytes omitted — showing the start and end]...\n", len(text)-len(h)-len(tl)) + tl
 }
 
 // looksLikeServer spots commands that never return, so the timeout can explain

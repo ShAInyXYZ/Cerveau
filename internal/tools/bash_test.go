@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -64,4 +66,23 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// When output overflows the cap, the TAIL must be kept: a build/test failure
+// puts its error at the end, and head-only truncation discards exactly the
+// lines the model needs to fix the problem.
+func TestBashCapKeepsTail(t *testing.T) {
+	var sb strings.Builder
+	for i := 0; i < 2000; i++ {
+		fmt.Fprintf(&sb, "progress line %d..............................\n", i)
+	}
+	sb.WriteString("FATAL: the actual error is on the last line\n")
+	capped := capOutput(sb.String())
+
+	if !strings.Contains(capped, "FATAL: the actual error is on the last line") {
+		t.Fatal("cap dropped the tail — the error line is gone")
+	}
+	if len(capped) > bashCapChars+200 {
+		t.Fatalf("cap not enforced: %d bytes", len(capped))
+	}
 }

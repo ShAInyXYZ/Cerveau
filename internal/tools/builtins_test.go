@@ -181,3 +181,32 @@ func TestEditFailureShowsNearestMatch(t *testing.T) {
 		t.Fatalf("failure should point at the nearest line: %v", err)
 	}
 }
+
+// grep should accept a glob filter so a model can scope to *.js instead of
+// walking (and dumping matches from) every file type.
+func TestGrepGlobFilter(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.js"), []byte("TARGET here\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.md"), []byte("TARGET there\n"), 0o644)
+	g := NewGrep(dir)
+
+	all, _ := g.Execute(context.Background(), json.RawMessage(`{"pattern":"TARGET"}`))
+	if !strings.Contains(all, "a.js") || !strings.Contains(all, "b.md") {
+		t.Fatalf("unfiltered grep should hit both: %q", all)
+	}
+	js, _ := g.Execute(context.Background(), json.RawMessage(`{"pattern":"TARGET","glob":"*.js"}`))
+	if !strings.Contains(js, "a.js") || strings.Contains(js, "b.md") {
+		t.Fatalf("glob *.js should hit only a.js: %q", js)
+	}
+}
+
+// A zero-match grep must help the model tell "wrong pattern" from "searched
+// the wrong place" instead of dead-ending on "no matches".
+func TestGrepEmptyIsActionable(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.js"), []byte("hello\n"), 0o644)
+	out, _ := NewGrep(dir).Execute(context.Background(), json.RawMessage(`{"pattern":"nowhere"}`))
+	if !strings.Contains(out, "no matches") || !strings.Contains(out, "searched") {
+		t.Fatalf("empty grep should say what it searched: %q", out)
+	}
+}

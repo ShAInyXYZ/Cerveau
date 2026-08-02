@@ -103,8 +103,11 @@ func (t *ApplyPatch) ExecuteMode(ctx context.Context, args json.RawMessage, mode
 		if err != nil {
 			return "", fmt.Errorf("hunk %d (%s): read failed: %w", i+1, h.Path, err)
 		}
-		if n := strings.Count(content, h.OldString); n != 1 {
-			return "", fmt.Errorf("hunk %d (%s): old_string matches %d times (must match exactly once) — no edits applied", i+1, h.Path, n)
+		// Validate with the SAME matcher edit applies (exact, or
+		// indentation-only) so a hunk cannot pass validation and then fail on
+		// apply, or vice versa.
+		if n := matchCountFlexible(content, h.OldString); n != 1 {
+			return "", fmt.Errorf("hunk %d (%s): old_string matches %d times (must match exactly once)%s — no edits applied", i+1, h.Path, n, nearestHint(content, h.OldString))
 		}
 		raw, _ := json.Marshal(map[string]string{"path": h.Path, "old_string": h.OldString, "new_string": h.NewString})
 		plan = append(plan, validated{h, "edit", raw})

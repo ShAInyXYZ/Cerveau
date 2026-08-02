@@ -194,6 +194,20 @@ func (t *Edit) Execute(ctx context.Context, args json.RawMessage) (string, error
 	return fmt.Sprintf("edited %s", a.Path), nil
 }
 
+// matchCountFlexible reports how many places old_string occurs, counting an
+// exact match OR an indentation-only match (each line trimmed). apply_patch
+// uses this so its all-or-nothing validation agrees with what edit will
+// actually do — otherwise a hunk validates one way and applies another.
+func matchCountFlexible(content, old string) int {
+	if n := strings.Count(content, old); n > 0 {
+		return n
+	}
+	if _, ok := replaceIgnoringIndent(content, old, old); ok {
+		return 1
+	}
+	return 0
+}
+
 // replaceIgnoringIndent matches old_string against the file with each line's
 // leading whitespace stripped, then splices new_string in using the file's
 // ORIGINAL indentation for the first line. Content is what the model
