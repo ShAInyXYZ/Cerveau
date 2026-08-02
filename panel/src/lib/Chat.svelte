@@ -1,12 +1,12 @@
 <script>
-  import { Button, Dot, Card, Notice } from '../kit/index.js';
+  import { Button, Dot, Notice } from '../kit/index.js';
   import { tooltip } from '../kit/tooltip.js';
   import Markdown from './Markdown.svelte';
   import ModeKnob from './ModeKnob.svelte';
   import AttachKnob from './AttachKnob.svelte';
   import WorkspacePath from './WorkspacePath.svelte';
   import { fmtTime } from './api.js';
-  import { Pause, Square, ArrowUp, Terminal, FileText, Search, Globe, Brain, ChevronRight, Check, X, Loader } from 'lucide-svelte';
+  import { Pause, Square, ArrowUp, Terminal, FileText, Search, Globe, Brain, ChevronRight, ChevronDown, ListChecks, Check, X, Loader } from 'lucide-svelte';
 
   let {
     messages = [], running = false, runStarted = null, mode = $bindable('discussion'),
@@ -53,6 +53,7 @@
   });
 
   let draft = $state('');
+  let planOpen = $state(true);   // the pinned plan strip starts open
   let scroller;
 
   const isAuto = $derived(mode === 'autopilot');
@@ -119,27 +120,6 @@
         </div>
       </div>
     {/each}
-
-    {#if report}
-      <Card tone="info" label="AUTOPILOT · {report.title}">
-        <div class="rcounts mono">
-          <span class="c ok">{report.done} DONE</span>
-          <span class="c err">{report.failed} FAIL</span>
-          <span class="c dim">{report.skipped} SKIP</span>
-          {#if report.handback}<span class="c warn">HANDBACK</span>{/if}
-        </div>
-        <div class="rsteps">
-          {#each report.steps as s, i}
-            <div class="rstep">
-              <Dot tone={s.status === 'done' ? 'ok' : s.status === 'failed' ? 'err' : 'off'} size={6} />
-              <span class="rnum tag">{String(i + 1).padStart(2, '0')}</span>
-              <span class="rtitle">{s.title}</span>
-              <span class="rstatus label">{s.status}</span>
-            </div>
-          {/each}
-        </div>
-      </Card>
-    {/if}
 
     {#if activeError}
       {@const e = activeError}
@@ -226,11 +206,45 @@
   </div>
 
   <div class="dockzone">
+   <div class="dockstack">
+    {#if !isInstant}
+      <div class="wsline"><WorkspacePath {workspace} onChanged={onWorkspaceChanged} /></div>
+    {/if}
+    {#if report}
+      {@const pending = report.steps.filter((s) => s.status !== 'done' && s.status !== 'failed').length}
+      {@const finished = pending === 0}
+      <div class="planstrip" class:done={finished}>
+        <button class="ps-head" onclick={() => (planOpen = !planOpen)}
+          use:tooltip={planOpen ? 'collapse the plan' : 'show the plan steps'}>
+          <ListChecks size={12} />
+          <span class="ps-title">{report.title}</span>
+          <span class="ps-counts mono">
+            <span class="c ok">{report.done}</span>
+            {#if report.failed}<span class="c err">{report.failed}</span>{/if}
+            {#if pending}<span class="c dim">{pending}</span>{/if}
+          </span>
+          {#if report.handback}<span class="ps-chip warn">handback</span>{/if}
+          {#if planOpen}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
+        </button>
+        {#if planOpen}
+          <div class="ps-steps">
+            {#each report.steps as s, i}
+              <div class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed'}>
+                <Dot tone={s.status === 'done' ? 'ok' : s.status === 'failed' ? 'err' : 'off'} size={5} />
+                <span class="rnum tag">{String(i + 1).padStart(2, '0')}</span>
+                <span class="ps-name">{s.title}</span>
+                <span class="rstatus label">{s.status}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
     <div class="dockrow">
       <ModeKnob bind:mode />
 
       <div class="bar">
-        {#if !isInstant}<div class="wschip"><WorkspacePath {workspace} onChanged={onWorkspaceChanged} /></div>{/if}
+
         <textarea
           class="input"
           bind:value={draft}
@@ -376,12 +390,46 @@
   }
 
   /* floating dock */
+  /* pinned plan strip — the plan must not scroll away mid-execution */
+  .planstrip {
+    align-self: stretch; margin: 0 0 8px; position: relative; z-index: 3; border-radius: 10px; overflow: hidden;
+    background: var(--s1); box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .planstrip.done { opacity: .72; }
+  .ps-head {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 11px; border: none; cursor: pointer;
+    background: transparent; color: var(--dim); text-align: left;
+  }
+  .ps-head:hover { color: var(--text); }
+  .ps-title {
+    flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ps-counts { display: flex; gap: 6px; font-size: 10px; }
+  .ps-chip {
+    font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px;
+  }
+  .ps-chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  .ps-steps { padding: 0 11px 8px; display: flex; flex-direction: column; gap: 3px; }
+  .ps-step { display: flex; align-items: baseline; gap: 7px; font-size: 11px; }
+  .ps-name {
+    flex: 1; min-width: 0; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ps-step.on .ps-name { color: var(--text); }
+  .ps-step.bad .ps-name { color: color-mix(in srgb, var(--err) 80%, var(--text)); }
+
   .dockzone {
     flex-shrink: 0;
     padding: 0 26px 20px;
     display: flex; justify-content: center;
     background: linear-gradient(to top, var(--bg) 60%, transparent);
   }
+  /* the plan strip stacks ABOVE the composer, both sharing its width */
+  .dockstack { width: 100%; max-width: 980px; display: flex; flex-direction: column; }
+  .wsline { align-self: flex-end; margin-bottom: 6px; }
   .wsrow {
     width: 100%; max-width: 760px;
     display: flex; justify-content: flex-end;
@@ -407,6 +455,7 @@
   /* workspace label: a small self-contained chip sitting just above the bar, right-aligned */
   .wschip {
     position: absolute; right: 8px; bottom: calc(100% + 6px);
+    /* the pinned plan strip owns the space directly above the bar */
     max-width: 90%;
     background: var(--surface-raised);
     border-radius: 8px;
