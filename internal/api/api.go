@@ -582,7 +582,7 @@ func (a *API) SessionReport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 		return
 	}
-	rep := loop.BuildReport(events)
+	rep := loop.BuildReportAt(events, a.cfg.Workspace)
 	if rep == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no plan in this session"})
 		return

@@ -2,6 +2,9 @@ package loop
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"cerveau/internal/episodic"
 )
@@ -24,7 +27,16 @@ type Report struct {
 	FinishedAt  string       `json:"finished_at"`
 }
 
-func BuildReport(events []episodic.Event) *Report {
+// BuildReport keeps the event-only view (callers without a workspace).
+func BuildReport(events []episodic.Event) *Report { return BuildReportAt(events, "") }
+
+// BuildReportAt derives step status from checkpoints AND, when a workspace
+// is given, from the filesystem. Checkpoints are only written when a step
+// COMPLETES, so a step cut short by a guard leaves real files and no event —
+// the chat's plan strip would show "pending" for work that is plainly done.
+// Same reconciliation the planner panel does, applied at the source so both
+// surfaces agree.
+func BuildReportAt(events []episodic.Event, workspace string) *Report {
 	planIdx := -1
 	var plan Plan
 	var planEvtID string
@@ -83,6 +95,16 @@ func BuildReport(events []episodic.Event) *Report {
 		if !ok {
 			sr = StepReport{Title: ps.Title, Status: "pending"}
 		}
+		// Disk reconciliation: a pending step whose declared files all exist
+		// really is done — the checkpoint just never got written.
+		if sr.Status == "pending" && workspace != "" && len(ps.Files) > 0 {
+			if have := filesPresent(workspace, ps.Files); have == len(ps.Files) {
+				sr.Status = "done"
+				sr.Summary = "verified on disk"
+			} else if have > 0 {
+				sr.Status = "partial"
+			}
+		}
 		rep.Steps = append(rep.Steps, sr)
 		switch sr.Status {
 		case "done":
@@ -94,4 +116,24 @@ func BuildReport(events []episodic.Event) *Report {
 		}
 	}
 	return rep
+}
+
+// filesPresent counts how many workspace-relative paths exist. Containment
+// mirrors the file-tool jail: a path escaping the workspace never counts.
+func filesPresent(workspace string, paths []string) int {
+	root, err := filepath.Abs(workspace)
+	if err != nil {
+		root = workspace
+	}
+	n := 0
+	for _, p := range paths {
+		full := filepath.Join(root, filepath.Clean("/"+p))
+		if full != root && !strings.HasPrefix(full, root+string(filepath.Separator)) {
+			continue
+		}
+		if fi, err := os.Stat(full); err == nil && !fi.IsDir() {
+			n++
+		}
+	}
+	return n
 }

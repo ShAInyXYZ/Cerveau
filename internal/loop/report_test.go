@@ -2,6 +2,8 @@ package loop
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -49,5 +51,37 @@ func TestBuildReport(t *testing.T) {
 func TestBuildReportNoPlan(t *testing.T) {
 	if BuildReport(nil) != nil {
 		t.Fatal("expected nil report without plan")
+	}
+}
+
+// A step whose declared files all exist is DONE even when no checkpoint was
+// ever written (the turn was cut short by a guard). Without this the chat's
+// plan strip shows "pending" for work that is visibly finished on disk.
+func TestReportReconcilesWithDisk(t *testing.T) {
+	ws := t.TempDir()
+	os.MkdirAll(filepath.Join(ws, "js"), 0o755)
+	os.WriteFile(filepath.Join(ws, "js", "a.js"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(ws, "js", "b.js"), []byte("y"), 0o644)
+
+	plan := Plan{Title: "P", Steps: []PlanStep{
+		{Title: "one", Files: []string{"js/a.js", "js/b.js"}},
+		{Title: "two", Files: []string{"js/c.js"}},
+		{Title: "three"},
+	}}
+	raw, _ := json.Marshal(plan)
+	events := []episodic.Event{{ID: "evt_1", Type: episodic.Plan, Payload: raw}}
+
+	rep := BuildReportAt(events, ws)
+	if rep == nil {
+		t.Fatal("no report")
+	}
+	if rep.Steps[0].Status != "done" {
+		t.Fatalf("step with all files present should be done, got %q", rep.Steps[0].Status)
+	}
+	if rep.Steps[1].Status == "done" {
+		t.Fatalf("step with missing files must not be done, got %q", rep.Steps[1].Status)
+	}
+	if rep.Done != 1 {
+		t.Fatalf("done count = %d, want 1", rep.Done)
 	}
 }

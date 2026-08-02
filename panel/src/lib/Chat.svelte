@@ -229,8 +229,9 @@
         {#if planOpen}
           <div class="ps-steps">
             {#each report.steps as s, i}
-              <div class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed'}>
-                <Dot tone={s.status === 'done' ? 'ok' : s.status === 'failed' ? 'err' : 'off'} size={5} />
+              <div class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed'}
+                class:part={s.status === 'partial'}>
+                <Dot tone={s.status === 'done' ? 'ok' : s.status === 'failed' ? 'err' : s.status === 'partial' ? 'warn' : 'off'} size={5} />
                 <span class="rnum tag">{String(i + 1).padStart(2, '0')}</span>
                 <span class="ps-name">{s.title}</span>
                 <span class="rstatus label">{s.status}</span>
@@ -392,7 +393,7 @@
   /* floating dock */
   /* pinned plan strip — the plan must not scroll away mid-execution */
   .planstrip {
-    align-self: stretch; margin: 0 0 8px; position: relative; z-index: 3; border-radius: 10px; overflow: hidden;
+    align-self: stretch; margin: 0 0 8px; position: relative; z-index: 1; border-radius: 10px; overflow: hidden;
     background: var(--s1); box-shadow: inset 0 0 0 1px var(--line);
   }
   .planstrip.done { opacity: .72; }
@@ -420,6 +421,7 @@
   }
   .ps-step.on .ps-name { color: var(--text); }
   .ps-step.bad .ps-name { color: color-mix(in srgb, var(--err) 80%, var(--text)); }
+  .ps-step.part .ps-name { color: var(--warn); }
 
   .dockzone {
     flex-shrink: 0;
@@ -429,7 +431,7 @@
   }
   /* the plan strip stacks ABOVE the composer, both sharing its width */
   .dockstack { width: 100%; max-width: 980px; display: flex; flex-direction: column; }
-  .wsline { align-self: flex-end; margin-bottom: 6px; }
+  .wsline { align-self: flex-end; margin-bottom: 6px; position: relative; z-index: 4; }
   .wsrow {
     width: 100%; max-width: 760px;
     display: flex; justify-content: flex-end;
