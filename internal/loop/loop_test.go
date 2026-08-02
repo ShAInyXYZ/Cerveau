@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"cerveau/internal/episodic"
@@ -100,7 +101,9 @@ func TestLoopToolCallThenAnswer(t *testing.T) {
 	if err := json.Unmarshal(events[3].Payload, &resultPayload); err != nil {
 		t.Fatal(err)
 	}
-	if !resultPayload.OK || resultPayload.Output != "file-content-123" {
+	// read output is line-numbered ("1\tfile-content-123") so the model can
+	// target edits by location instead of re-reading to find them.
+	if !resultPayload.OK || !strings.Contains(resultPayload.Output, "file-content-123") {
 		t.Fatalf("tool result = %+v", resultPayload)
 	}
 }

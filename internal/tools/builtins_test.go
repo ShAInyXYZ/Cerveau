@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +62,7 @@ func TestReadOffsetContinues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(head, "offset") {
+	if !strings.Contains(head, "slice") {
 		t.Fatalf("truncation notice must tell the model how to continue: %q", head[len(head)-160:])
 	}
 
@@ -69,11 +70,8 @@ func TestReadOffsetContinues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(tail, "BBB") {
-		t.Fatalf("offset read did not return the continuation: %q", tail[:40])
-	}
-	if strings.HasPrefix(tail, "AAA") {
-		t.Fatal("offset ignored — same head returned again")
+	if !strings.Contains(tail, "BBB") {
+		t.Fatalf("offset read did not return the continuation: %q", tail[:60])
 	}
 }
 
@@ -89,11 +87,11 @@ func TestReadAutoAdvancesOnRepeat(t *testing.T) {
 	call := json.RawMessage(`{"path":"big.txt"}`)
 
 	first, _ := r.Execute(context.Background(), call)
-	if !strings.HasPrefix(first, "AAA") {
-		t.Fatalf("first read should start at 0: %q", first[:10])
+	if !strings.Contains(first, "1\tAAA") {
+		t.Fatalf("first read should start at line 1 of the head: %q", first[:20])
 	}
 	second, _ := r.Execute(context.Background(), call)
-	if strings.HasPrefix(second, "AAA") {
+	if strings.Contains(second, "1\tAAA") {
 		t.Fatal("identical repeat returned the same head — no auto-advance")
 	}
 	if !strings.Contains(second, "continuing") || !strings.Contains(second, "BBB") {
@@ -105,7 +103,81 @@ func TestReadAutoAdvancesOnRepeat(t *testing.T) {
 	}
 	// An EXPLICIT offset always wins over auto-advance.
 	explicit, _ := r.Execute(context.Background(), json.RawMessage(`{"path":"big.txt","offset":0}`))
-	if !strings.HasPrefix(explicit, "AAA") {
-		t.Fatalf("explicit offset:0 must return the head: %q", explicit[:10])
+	if !strings.Contains(explicit, "1\tAAA") {
+		t.Fatalf("explicit offset:0 must return the head: %q", explicit[:20])
+	}
+}
+
+// read must show LINE NUMBERS: without them a model cannot target an edit by
+// location and re-reads whole files to reconstruct where it is.
+func TestReadShowsLineNumbers(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.js"), []byte("alpha\nbeta\ngamma\n"), 0o644)
+	out, err := NewRead(dir).Execute(context.Background(), json.RawMessage(`{"path":"a.js"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"1\talpha", "2\tbeta", "3\tgamma"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing numbered line %q in:\n%s", want, out)
+		}
+	}
+}
+
+// read must be able to return a WINDOW around a location, so checking one
+// function does not cost a whole-file read.
+func TestReadLineRange(t *testing.T) {
+	dir := t.TempDir()
+	var sb strings.Builder
+	for i := 1; i <= 40; i++ {
+		fmt.Fprintf(&sb, "line%d\n", i)
+	}
+	os.WriteFile(filepath.Join(dir, "b.js"), []byte(sb.String()), 0o644)
+
+	out, err := NewRead(dir).Execute(context.Background(), json.RawMessage(`{"path":"b.js","from_line":10,"to_line":13}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "10\tline10") || !strings.Contains(out, "13\tline13") {
+		t.Fatalf("range not honoured:\n%s", out)
+	}
+	if strings.Contains(out, "line9\n") || strings.Contains(out, "\tline14") {
+		t.Fatalf("range leaked outside 10-13:\n%s", out)
+	}
+}
+
+// edit must tolerate INDENTATION drift: a model that reproduces a line with
+// slightly different leading whitespace should still land the edit. Exact
+// byte matching is the main reason it re-reads files before every change.
+func TestEditForgivesIndentation(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "m.js"), []byte("function f() {\n    cpu.setDifficulty(x);\n}\n"), 0o644)
+	e := NewEdit(dir)
+
+	// old_string has NO leading spaces; the file has four.
+	out, err := e.Execute(context.Background(), json.RawMessage(
+		`{"path":"m.js","old_string":"cpu.setDifficulty(x);","new_string":"ai.setDifficulty(x);"}`))
+	if err != nil {
+		t.Fatalf("indentation-only mismatch should still edit: %v (%s)", err, out)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "m.js"))
+	if !strings.Contains(string(got), "    ai.setDifficulty(x);") {
+		t.Fatalf("indentation not preserved: %q", string(got))
+	}
+}
+
+// A failed edit must say WHERE the near-miss is, so the model can fix its
+// old_string instead of re-reading the whole file to hunt for it.
+func TestEditFailureShowsNearestMatch(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "m.js"), []byte("a\nb\n  cpu.setDifficulty(menuState.difficulty);\nc\n"), 0o644)
+	e := NewEdit(dir)
+	_, err := e.Execute(context.Background(), json.RawMessage(
+		`{"path":"m.js","old_string":"cpu.setDifficulty(WRONG)","new_string":"x"}`))
+	if err == nil {
+		t.Fatal("expected a failure for a non-matching old_string")
+	}
+	if !strings.Contains(err.Error(), "line 3") {
+		t.Fatalf("failure should point at the nearest line: %v", err)
 	}
 }

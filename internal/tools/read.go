@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -29,16 +30,19 @@ func NewRead(workspaceRoot string) *Read {
 func (t *Read) Name() string { return "read" }
 
 func (t *Read) Description() string {
-	return "Read a file from the workspace. Path is relative to the workspace root. " +
-		"Large files are returned in slices — pass offset to continue from where the last read stopped."
+	return "Read a file from the workspace, with line numbers. Path is relative to the workspace root. " +
+		"Use from_line/to_line to read just the part you care about instead of the whole file. " +
+		"Large files are returned in slices — call again to continue from where the last read stopped."
 }
 
 func (t *Read) Schema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"path":   map[string]any{"type": "string", "description": "workspace-relative file path"},
-			"offset": map[string]any{"type": "integer", "description": "character offset to start from (default 0); use the value the truncation notice gives you to read the next slice"},
+			"path":      map[string]any{"type": "string", "description": "workspace-relative file path"},
+			"from_line": map[string]any{"type": "integer", "description": "first line to return (1-based). Use with to_line to read only the region you need"},
+			"to_line":   map[string]any{"type": "integer", "description": "last line to return (1-based, inclusive)"},
+			"offset":    map[string]any{"type": "integer", "description": "character offset to start from (default 0); repeating a read without it auto-continues"},
 		},
 		"required": []string{"path"},
 	}
@@ -46,8 +50,10 @@ func (t *Read) Schema() map[string]any {
 
 func (t *Read) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var a struct {
-		Path   string `json:"path"`
-		Offset *int   `json:"offset"`
+		Path     string `json:"path"`
+		Offset   *int   `json:"offset"`
+		FromLine int    `json:"from_line"`
+		ToLine   int    `json:"to_line"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil || a.Path == "" {
 		return "", fmt.Errorf("path required")
@@ -61,6 +67,35 @@ func (t *Read) Execute(ctx context.Context, args json.RawMessage) (string, error
 		return "", err
 	}
 	full_ := string(data)
+
+	// A LINE RANGE is the targeted path: the model names the region it cares
+	// about and pays for nothing else. This is what makes an edit possible
+	// without re-reading the file to rebuild its position.
+	if a.FromLine > 0 || a.ToLine > 0 {
+		lines := strings.Split(full_, "\n")
+		from := a.FromLine
+		if from < 1 {
+			from = 1
+		}
+		to := a.ToLine
+		if to < 1 || to > len(lines) {
+			to = len(lines)
+		}
+		if from > len(lines) {
+			return fmt.Sprintf("[from_line %d is past the end — %s has %d lines]", from, a.Path, len(lines)), nil
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "[%s lines %d-%d of %d]\n", a.Path, from, to, len(lines))
+		for i := from; i <= to; i++ {
+			fmt.Fprintf(&sb, "%d\t%s\n", i, lines[i-1])
+		}
+		out := sb.String()
+		if len(out) > readCapChars {
+			out = out[:readCapChars] + "\n...[range too large — narrow from_line/to_line]"
+		}
+		return out, nil
+	}
+
 	var off int
 	auto := false
 	switch {
@@ -105,5 +140,26 @@ func (t *Read) Execute(ctx context.Context, args json.RawMessage) (string, error
 			out += fmt.Sprintf("\n...[end of file, %d chars total]", len(full_))
 		}
 	}
-	return head + out, nil
+	return head + numberLines(out, 1+strings.Count(full_[:off], "\n")), nil
+}
+
+// numberLines prefixes each line with its 1-based number so the model can
+// target an edit by location instead of re-reading to find where it is.
+// The trailing notice lines (which start with "...[") are left alone.
+func numberLines(s string, start int) string {
+	lines := strings.Split(s, "\n")
+	var sb strings.Builder
+	n := start
+	for i, l := range lines {
+		if strings.HasPrefix(l, "...[") || strings.HasPrefix(l, "[continuing") {
+			sb.WriteString(l)
+		} else {
+			fmt.Fprintf(&sb, "%d\t%s", n, l)
+			n++
+		}
+		if i < len(lines)-1 {
+			sb.WriteByte('\n')
+		}
+	}
+	return sb.String()
 }
