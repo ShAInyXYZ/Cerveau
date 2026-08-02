@@ -311,3 +311,39 @@ func TestPanelSizeCap(t *testing.T) {
 		t.Fatalf("no oversized-panel notice: %v", l.Notices())
 	}
 }
+
+// A pack may declare panel capabilities (session read / turn post). They
+// are opt-in per pack and surface to the host, which enforces them.
+func TestPackUICapabilities(t *testing.T) {
+	doc := testPackYAML + "ui:\n  session: true\n  turn: true\n  widgets: []\n"
+	p, err := ParsePack([]byte(doc), "pack.yaml")
+	if err != nil {
+		t.Fatalf("ParsePack: %v", err)
+	}
+	if err := ValidatePack(p); err != nil {
+		t.Fatalf("ValidatePack: %v", err)
+	}
+	if !p.UI.Session || !p.UI.Turn {
+		t.Fatalf("capabilities not parsed: %+v", p.UI)
+	}
+}
+
+// A pack with a panel but no reflexes is valid — a pure supervisor UI
+// (e.g. planner) has nothing to run of its own.
+func TestUIOnlyPackLoads(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "planner")
+	os.MkdirAll(filepath.Join(pd, "ui"), 0o755)
+	writeFile(t, pd, "pack.yaml", strings.Replace(testPackYAML, "pack: github", "pack: planner", 1)+
+		"ui:\n  session: true\n  turn: true\n  widgets: []\n")
+	writeFile(t, filepath.Join(pd, "ui"), "panel.html", "<div>planner</div>")
+
+	l := NewLoader(dir, knownCore)
+	packs := l.Packs()
+	if len(packs) != 1 || packs[0].Panel == "" {
+		t.Fatalf("ui-only pack not loaded: %+v", packs)
+	}
+	if len(l.All()) != 0 {
+		t.Fatalf("expected zero reflexes, got %v", l.All())
+	}
+}

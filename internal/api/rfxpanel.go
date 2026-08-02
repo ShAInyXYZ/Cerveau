@@ -66,6 +66,23 @@ body { font: 12px/1.5 system-ui, sans-serif; }
       });
     },
     on(cb) { subs.push(cb); },
+    // session(): read the CURRENT session's plan, checkpoints and run
+    // state (host-fetched). Requires ui.session in pack.yaml.
+    session() {
+      return new Promise((resolve) => {
+        const id = ++seq; pending.set(id, resolve);
+        parent.postMessage({ rfx: "session", id }, "*");
+      });
+    },
+    // turn(text, mode): post a turn into the current session — exactly
+    // what the user could type. Requires ui.turn in pack.yaml; the host
+    // owns it and it shows in the chat stream like any other turn.
+    turn(text, mode) {
+      return new Promise((resolve) => {
+        const id = ++seq; pending.set(id, resolve);
+        parent.postMessage({ rfx: "turn", id, text, mode }, "*");
+      });
+    },
     // resize is de-bounced against feedback loops: measuring the body while
     // the body fills the iframe inflates every readout — panels should pass
     // a CONTENT height, and identical-ish requests are dropped here.

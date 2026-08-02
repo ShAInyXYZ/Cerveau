@@ -1,7 +1,7 @@
 <script>
   import { Zap, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
-  import { jpost } from './api.js';
+  import { j, jpost, fetchEvents } from './api.js';
 
   // RfxCustomPanel — RFX-UI tier 2: the pack ships its own ui/panel.html
   // (any HTML/CSS/JS) rendered in a SANDBOXED iframe. Full presentation
@@ -12,7 +12,7 @@
   //     and dangerous targets need the host confirm strip below — chrome
   //     the panel cannot draw over.
   // Presentation is free. Capability still belongs to RFX.
-  let { pack, members } = $props();
+  let { pack, members, sessionId = null, onTurn = null } = $props();
 
   let open = $state(true);
   let frameH = $state(260);
@@ -33,13 +33,61 @@
     }
   }
 
+  const reply = (src, id, body) => src.postMessage({ rfx: 'result', id, ...body }, '*');
+
+  // session(): read-only projection of the CURRENT session — plan +
+  // checkpoints + running state. Capability-gated by ui.session; never any
+  // session but the active one.
+  async function readSession(id, source) {
+    if (!pack.ui?.session) return reply(source, id, { ok: false, error: 'pack does not declare ui.session' });
+    if (!sessionId) return reply(source, id, { ok: false, error: 'no active session' });
+    try {
+      // /events is JSONL, not JSON — fetchEvents parses it line by line
+      const [state, list] = await Promise.all([
+        j(`/api/sessions/${sessionId}/state`),
+        fetchEvents(`/api/sessions/${sessionId}/events`)
+      ]);
+      const checkpoints = list.filter((e) => e.type === 'checkpoint')
+        .map((e) => ({ ...(e.payload ?? {}), ts: e.ts }));
+      const closes = list.filter((e) => e.type === 'turn.close');
+      reply(source, id, {
+        ok: true,
+        session: sessionId,
+        plan: state?.plan ?? null,
+        checkpoints,
+        running: !!state?.running,
+        lastClose: closes.length ? (closes[closes.length - 1].payload ?? {}) : null
+      });
+    } catch (e) {
+      reply(source, id, { ok: false, error: String(e) });
+    }
+  }
+
+  // turn(): post a turn into the current session — the same thing the user
+  // could type. Capability-gated by ui.turn; the host owns the call and it
+  // lands in the chat stream visibly.
+  async function postTurn(id, text, mode, source) {
+    if (!pack.ui?.turn) return reply(source, id, { ok: false, error: 'pack does not declare ui.turn' });
+    if (!sessionId) return reply(source, id, { ok: false, error: 'no active session' });
+    const t = (text ?? '').trim();
+    if (!t) return reply(source, id, { ok: false, error: 'empty turn' });
+    try {
+      const res = await onTurn?.(t, mode);
+      reply(source, id, { ok: res !== false });
+    } catch (e) {
+      reply(source, id, { ok: false, error: String(e) });
+    }
+  }
+
   function onMessage(e) {
     if (!iframeEl || e.source !== iframeEl.contentWindow) return;
     const m = e.data ?? {};
     if (m.rfx === 'resize') {
-      frameH = Math.max(120, Math.min(640, +m.h || 260));
+      frameH = Math.max(120, Math.min(720, +m.h || 260));
       return;
     }
+    if (m.rfx === 'session') { readSession(m.id, e.source); return; }
+    if (m.rfx === 'turn') { postTurn(m.id, m.text, m.mode, e.source); return; }
     if (m.rfx !== 'run') return;
     const target = members.find((x) => x.name === m.name);
     if (!target) {
@@ -79,7 +127,7 @@
   <button class="phead" onclick={() => (open = !open)}>
     <PackIcon size={13} />
     <span class="pname">{pack.name}</span>
-    <span class="pver">v{pack.version} · custom panel</span>
+    <span class="pver">v{pack.version} · {members.length ? 'custom panel' : 'supervisor'}</span>
     <span class="chip" class:chip-dangerous={maxRisk === 'dangerous'} class:chip-sensitive={maxRisk === 'sensitive'}>{maxRisk}</span>
     {#if open}<ChevronUp size={13} />{:else}<ChevronDown size={13} />{/if}
   </button>

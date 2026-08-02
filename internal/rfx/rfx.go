@@ -585,7 +585,14 @@ type Widget struct {
 }
 
 // PackUI is the ui: block of a pack (docs/RFX-UI.md §2).
+//
+// session/turn are PANEL CAPABILITIES, opt-in per pack: session lets the
+// panel read the current session's plan + checkpoints; turn lets it post a
+// turn into that session (what the user could type). Both are mediated by
+// the host — declaring them only makes the doors visible.
 type PackUI struct {
+	Session bool     `yaml:"session" json:"session,omitempty"`
+	Turn    bool     `yaml:"turn"    json:"turn,omitempty"`
 	Widgets []Widget `yaml:"widgets" json:"widgets"`
 }
 

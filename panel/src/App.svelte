@@ -233,6 +233,16 @@
   }
 
 
+  // A panel (ui.turn) asking for a turn: identical to the user typing it —
+  // same send() path, same mode, visible in the stream. Refused while a run
+  // is in flight so a watchdog can never stack turns.
+  async function panelTurn(text, m) {
+    if (!activeId || running) return false;
+    if (m && m !== mode) mode = m;
+    await send(text);
+    return true;
+  }
+
   async function send(text) {
     if (!activeId || running) return;
     const sid = activeId;
@@ -333,7 +343,7 @@
           onAttach={(kind) => console.log('attach requested:', kind)}
           onWorkspaceChanged={onWorkspaceChanged} />
         {#key health?.workspace}
-          <RfxDock />
+          <RfxDock sessionId={activeId} onTurn={panelTurn} />
         {/key}
       </div>
     {/if}

@@ -28,6 +28,7 @@ type rfxPackView struct {
 	Description string     `json:"description"`
 	Icon        string     `json:"icon,omitempty"`
 	HasPanel    bool       `json:"has_panel,omitempty"`
+	UIOnly      bool       `json:"ui_only,omitempty"`
 	Docs        []string   `json:"docs"`
 	UI          rfx.PackUI `json:"ui,omitempty"`
 }
@@ -39,9 +40,17 @@ func (a *API) ListRfx(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"packs": []any{}, "reflexes": []any{}})
 		return
 	}
+	// a pack with a panel but no reflexes is a pure-UI supervisor (planner)
+	uiOnly := map[string]bool{}
+	for _, p := range a.rfxLoader.Packs() {
+		uiOnly[p.Pack] = true
+	}
+	for _, d := range a.rfxLoader.All() {
+		delete(uiOnly, d.Pack)
+	}
 	packs := []rfxPackView{}
 	for _, p := range a.rfxLoader.Packs() {
-		packs = append(packs, rfxPackView{p.Pack, p.Version, p.Author, p.Description, p.Icon, p.Panel != "", p.Docs, p.UI})
+		packs = append(packs, rfxPackView{p.Pack, p.Version, p.Author, p.Description, p.Icon, p.Panel != "", uiOnly[p.Pack], p.Docs, p.UI})
 	}
 	reflexes := []rfxReflexView{}
 	for _, d := range a.rfxLoader.All() {

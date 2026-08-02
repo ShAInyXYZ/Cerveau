@@ -10,6 +10,7 @@
   // tab per pack (plus one for standalone reflexes). Clicking a tab expands
   // that pack's panel INLINE next to the strip; clicking it again collapses
   // back to the bare strip. Only one pack is open at a time.
+  let { sessionId = null, onTurn = null } = $props();
   let data = $state({ packs: [], reflexes: [] });
   let runs = $state({});
   let args = $state({});
@@ -24,7 +25,7 @@
   load();
 
   const enabled = $derived((data.reflexes ?? []).filter((r) => r.enabled));
-  const uiPacks = $derived((data.packs ?? []).filter((p) => (p.ui?.widgets ?? []).length > 0));
+  const uiPacks = $derived((data.packs ?? []).filter((p) => (p.ui?.widgets ?? []).length > 0 || p.has_panel));
   const membersOf = $derived((name) => enabled.filter((r) => r.pack === name));
   // the card gets ALL members — it greys buttons whose target is disabled
   const allMembersOf = $derived((name) => (data.reflexes ?? []).filter((r) => r.pack === name));
@@ -33,7 +34,8 @@
 
   // tabs: packs with a live panel + one "rfx" tab for the standalone group
   const tabs = $derived([
-    ...uiPacks.filter((p) => membersOf(p.name).length > 0)
+    // a UI-only pack (panel, zero talents) is a supervisor — it still gets a tab
+    ...uiPacks.filter((p) => membersOf(p.name).length > 0 || p.ui_only)
       .map((p) => ({ id: p.name, count: membersOf(p.name).length, icon: p.icon })),
     ...(defaults.length ? [{ id: '·rfx', count: defaults.length, icon: 'zap' }] : [])
   ]);
@@ -87,7 +89,7 @@
       <aside class="panel anim-rise">
         <div class="panel-body">
           {#if openPack?.has_panel}
-            <RfxCustomPanel pack={openPack} members={allMembersOf(openPack.name)} />
+            <RfxCustomPanel pack={openPack} members={allMembersOf(openPack.name)} {sessionId} {onTurn} />
           {:else if openPack}
             <RfxPackCard pack={openPack} members={allMembersOf(openPack.name)} />
           {:else}
