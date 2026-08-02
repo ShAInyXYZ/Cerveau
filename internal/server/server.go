@@ -40,6 +40,7 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("POST /api/rfx/toggle", a.ToggleRfx)
 	mux.HandleFunc("POST /api/rfx/run", a.RunRfx)
 	mux.HandleFunc("GET /api/rfx/panel/{pack}", a.PanelRfx)
+	mux.HandleFunc("POST /api/files/probe", a.ProbeFiles)
 	mux.HandleFunc("POST /api/config/workspace", a.ChangeWorkspace)
 	mux.HandleFunc("POST /api/config/pick-workspace", a.PickWorkspace)
 	mux.HandleFunc("POST /api/codegraph/index", a.ReindexCode)

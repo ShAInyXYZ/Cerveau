@@ -74,6 +74,14 @@ body { font: 12px/1.5 system-ui, sans-serif; }
         parent.postMessage({ rfx: "session", id }, "*");
       });
     },
+    // files(paths): ground truth for the workspace — which declared paths
+    // actually exist. Requires ui.session; read-only (stat, never open).
+    files(paths) {
+      return new Promise((resolve) => {
+        const id = ++seq; pending.set(id, resolve);
+        parent.postMessage({ rfx: "files", id, paths: paths || [] }, "*");
+      });
+    },
     // turn(text, mode): post a turn into the current session — exactly
     // what the user could type. Requires ui.turn in pack.yaml; the host
     // owns it and it shows in the chat stream like any other turn.

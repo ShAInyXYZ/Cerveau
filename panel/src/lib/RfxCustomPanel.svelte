@@ -71,6 +71,18 @@
     }
   }
 
+  // files(): ask the core which declared paths exist in the ACTIVE
+  // workspace. Same capability gate as session (both are reads).
+  async function probeFiles(id, paths, source) {
+    if (!pack.ui?.session) return reply(source, id, { ok: false, error: 'pack does not declare ui.session' });
+    try {
+      const res = await jpost('/api/files/probe', { paths: paths ?? [] });
+      reply(source, id, { ok: true, workspace: res?.workspace ?? '', files: res?.files ?? [] });
+    } catch (e) {
+      reply(source, id, { ok: false, error: String(e) });
+    }
+  }
+
   // turn(): post a turn into the current session — the same thing the user
   // could type. Capability-gated by ui.turn; the host owns the call and it
   // lands in the chat stream visibly.
@@ -95,6 +107,7 @@
       return;
     }
     if (m.rfx === 'session') { readSession(m.id, e.source); return; }
+    if (m.rfx === 'files') { probeFiles(m.id, m.paths, e.source); return; }
     if (m.rfx === 'turn') { postTurn(m.id, m.text, m.mode, e.source); return; }
     if (m.rfx !== 'run') return;
     const target = members.find((x) => x.name === m.name);
