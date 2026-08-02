@@ -194,6 +194,7 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 			} else {
 				g.toolOK()
 			}
+			g.progress() // a tool returned — the turn is moving, not stalled
 			wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": execErr == nil, "output": out})
 			items = append(items, window.Item{Msg: llm.Message{Role: "tool", ToolCallID: tc.ID, Content: out}, Kind: "tool"})
 			// loop detection on the RESULT (same call + same output = stuck)

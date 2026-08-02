@@ -535,9 +535,12 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 	// A supervised plan step is a build task: it gets the long budget in the
 	// loop guard AND a matching HTTP ceiling (the 5m handler timeout would
 	// otherwise kill it first).
-	httpBudget := 5 * time.Minute
+	// The loop guard now measures IDLE time, so a productive turn has no
+	// fixed duration. The HTTP ceiling is only a backstop against a wedged
+	// request — it must be generous enough never to cut live work short.
+	httpBudget := 30 * time.Minute
 	if body.Step {
-		httpBudget = 21 * time.Minute
+		httpBudget = 2 * time.Hour
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), httpBudget)
 	defer cancel()

@@ -27,14 +27,17 @@ type turnGuard struct {
 	perToolErrs map[string]int
 	totalErrs   int
 	budget      time.Duration
+	started     time.Time
 	seen        map[[20]byte]int // count of (name+args+result) triples seen
 }
 
 func newTurnGuard(maxIter int) *turnGuard { return newTurnGuardBudget(maxIter, maxTurnTime) }
 
-// newTurnGuardBudget allows a longer wall-clock budget for turns that are
-// KNOWN to be long-running — a plan step posted by a supervisor panel is a
-// build task, not a chat reply, and the conversational budget starves it.
+// newTurnGuardBudget sets the IDLE budget: how long a turn may go without
+// making progress. It is deliberately not a total-duration cap — a slow
+// local model doing real work would be killed exactly like one spinning in
+// a loop. Every tool result, every successful call resets the clock (see
+// progress()), so only a genuinely stuck turn trips it.
 func newTurnGuardBudget(maxIter int, budget time.Duration) *turnGuard {
 	if maxIter <= 0 {
 		maxIter = maxIterations
@@ -44,6 +47,7 @@ func newTurnGuardBudget(maxIter int, budget time.Duration) *turnGuard {
 	}
 	return &turnGuard{
 		budget:      budget,
+		started:     time.Now(),
 		maxIter:     maxIter,
 		deadline:    time.Now().Add(budget),
 		maxTokens:   maxTurnTokens,
@@ -58,13 +62,19 @@ func (g *turnGuard) preThink(iter int) (string, string, bool) {
 		return StopIterations, fmt.Sprintf("iteration cap (%d) reached", g.maxIter), true
 	}
 	if time.Now().After(g.deadline) {
-		return StopTime, fmt.Sprintf("turn time budget (%s) exhausted", g.budget), true
+		return StopTime, fmt.Sprintf("no progress for %s — turn stalled (total elapsed %s)",
+			g.budget, time.Since(g.started).Round(time.Second)), true
 	}
 	if g.tokens > g.maxTokens {
 		return StopTokens, fmt.Sprintf("turn token budget (%d) exhausted at %d", g.maxTokens, g.tokens), true
 	}
 	return "", "", false
 }
+
+// progress restarts the idle clock: the turn just did something real (a
+// tool returned, a file changed). Duration is not the failure signal —
+// standing still is.
+func (g *turnGuard) progress() { g.deadline = time.Now().Add(g.budget) }
 
 func (g *turnGuard) addTokens(n int) { g.tokens += n }
 
