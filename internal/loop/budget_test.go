@@ -2,6 +2,8 @@ package loop
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -66,5 +68,22 @@ func TestTimeGuardResetsOnProgress(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 	if _, _, tripped := g2.preThink(9); !tripped {
 		t.Fatal("turn that stopped progressing should trip")
+	}
+}
+
+// Regression: progress() must be wired into EVERY loop that runs tools, not
+// just the autopilot one. It was added to autopilot.go only, so chat turns
+// (which planner uses) kept a hard deadline from turn start and were killed
+// mid-work — "no progress for 4m0s" after seven successful tool calls.
+func TestProgressWiredInAllToolLoops(t *testing.T) {
+	for _, f := range []string{"loop.go", "autopilot.go"} {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(src), "g.progress()") {
+			t.Fatalf("%s runs tools but never calls g.progress() — its turns are "+
+				"killed on total duration instead of idleness", f)
+		}
 	}
 }

@@ -326,6 +326,11 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			iterCancel()
 			return nil, err
 		}
+		// The model produced a reply with tool calls: that is progress too. On a
+		// local model a single generation can take ~35s, so counting only tool
+		// RESULTS would still let a slow-but-working turn drift toward the idle
+		// deadline.
+		g.progress()
 		steered := false
 		for _, tc := range reply.ToolCalls {
 			args := json.RawMessage(tc.Function.Arguments)
@@ -400,6 +405,10 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
 					"text": "identical tool result — coaching the model to change approach"})
 			}
+			// Real work happened: restart the IDLE clock. A turn is stopped for
+			// standing still, never for taking a while — the repeat detector
+			// below is what catches genuine spinning.
+			g.progress()
 			wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": ok, "output": out})
 			// Loop detection on the RESULT: only a call that yields the SAME output
 			// repeatedly is a stuck loop. Re-running e.g. `npm run build` with a
