@@ -51,7 +51,14 @@ func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Repor
 	counts := make([]int, len(items))
 	total := 0
 	for i, it := range items {
+		// Tool-call ARGUMENTS are part of the request too, and for a
+		// whole-file write they dwarf the assistant's text (which is often
+		// empty). Counting only Content let a 33k request look like 1k and
+		// sail past the budget into "exceeds the available context size".
 		n := m.counter.Count(ctx, it.Msg.Content) + 4
+		for _, tc := range it.Msg.ToolCalls {
+			n += m.counter.Count(ctx, tc.Function.Arguments) + m.counter.Count(ctx, tc.Function.Name)
+		}
 		counts[i] = n
 		total += n
 	}
@@ -70,6 +77,31 @@ func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Repor
 				out[i].Msg.Content = pointerText(out[i].EvtID)
 				total -= counts[i] - m.counter.Count(ctx, out[i].Msg.Content)
 				rep.Demoted++
+				continue
+			}
+			// A replayed assistant turn whose tool call carried a huge payload
+			// (a whole-file write) is history: the model does not need the
+			// arguments again, only that the call happened. Stub them.
+			if out[i].Kind == "assistant" && len(out[i].Msg.ToolCalls) > 0 {
+				before := counts[i]
+				calls := make([]llm.ToolCall, len(out[i].Msg.ToolCalls))
+				copy(calls, out[i].Msg.ToolCalls)
+				shrunk := false
+				for j := range calls {
+					if m.counter.Count(ctx, calls[j].Function.Arguments) > 200 {
+						calls[j].Function.Arguments = `{"_elided":"arguments dropped from the window — see the episodic log"}`
+						shrunk = true
+					}
+				}
+				if shrunk {
+					out[i].Msg.ToolCalls = calls
+					after := m.counter.Count(ctx, out[i].Msg.Content) + 4
+					for _, tc := range calls {
+						after += m.counter.Count(ctx, tc.Function.Arguments) + m.counter.Count(ctx, tc.Function.Name)
+					}
+					total -= before - after
+					rep.Demoted++
+				}
 			}
 		}
 	}

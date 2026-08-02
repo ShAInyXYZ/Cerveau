@@ -91,3 +91,34 @@ func TestPointerTextReferencesEvent(t *testing.T) {
 		t.Fatalf("pointer = %q", p)
 	}
 }
+
+// An assistant message's TOOL CALL ARGUMENTS count toward the window. They
+// are often far larger than its text content (whole-file writes), and
+// ignoring them let the manager believe a 33k request fit in a 32k budget.
+func TestToolCallArgsAreCounted(t *testing.T) {
+	big := strings.Repeat("x", 40000) // ~10k tokens of arguments
+	items := []Item{
+		{Msg: llm.Message{Role: "system", Content: "sys"}, Kind: "system"},
+		{Msg: llm.Message{
+			Role:    "assistant",
+			Content: "", // no text at all — only the call
+			ToolCalls: []llm.ToolCall{{
+				ID:       "c1",
+				Function: llm.FunctionCall{Name: "write", Arguments: big},
+			}},
+		}, Kind: "assistant", EvtID: "evt_1"},
+	}
+	m := NewManager(4000, 500, CounterFunc(func(_ context.Context, s string) int { return len(s) / 4 }))
+	msgs, rep := m.Build(context.Background(), items)
+	// Counted => over budget => the oversized arguments get elided.
+	if rep.Demoted == 0 {
+		t.Fatal("oversized tool call arguments were neither counted nor demoted")
+	}
+	for _, msg := range msgs {
+		for _, tc := range msg.ToolCalls {
+			if len(tc.Function.Arguments) > 500 {
+				t.Fatalf("arguments still %d chars in the sent window", len(tc.Function.Arguments))
+			}
+		}
+	}
+}
