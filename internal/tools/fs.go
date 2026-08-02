@@ -130,7 +130,8 @@ func (t *Edit) Description() string {
 	return "Replace a string in a workspace file — the targeted way to change code. " +
 		"old_string must appear exactly once; leading indentation does NOT have to match " +
 		"(the file's own indentation is preserved). Prefer this over rewriting a file: " +
-		"read the region with from_line/to_line, then edit just those lines."
+		"read the region with from_line/to_line, then edit just those lines. " +
+		"To DELETE code, set new_string to an empty string — the matched text (and its line, if now blank) is removed."
 }
 
 func (t *Edit) Schema() map[string]any {
@@ -155,7 +156,7 @@ func (t *Edit) Execute(ctx context.Context, args json.RawMessage) (string, error
 		return "", fmt.Errorf("path, old_string and new_string required")
 	}
 	if a.Old == a.New {
-		return "", fmt.Errorf("old_string and new_string are identical")
+		return "", fmt.Errorf("old_string and new_string are identical — this edit would change nothing; the code is already in the state you want, so no edit is needed")
 	}
 	full, err := t.j.resolve(a.Path)
 	if err != nil {
@@ -176,7 +177,7 @@ func (t *Edit) Execute(ctx context.Context, args json.RawMessage) (string, error
 	var out string
 	switch {
 	case count == 1:
-		out = strings.Replace(content, a.Old, a.New, 1)
+		out = spliceReplace(content, a.Old, a.New)
 	default:
 		// Exact match failed. A model reproducing a line from memory usually
 		// gets the CONTENT right and the INDENTATION wrong; demanding byte
@@ -208,6 +209,32 @@ func matchCountFlexible(content, old string) int {
 	return 0
 }
 
+// spliceReplace replaces the single occurrence of old with new. When new is
+// empty (a deletion) and old sat alone on its line, the whole line — its
+// leading indentation and trailing newline included — is removed, so a
+// deletion never leaves a dangling blank line behind. Any other replacement
+// is a plain substring swap.
+func spliceReplace(content, old, new string) string {
+	if new != "" {
+		return strings.Replace(content, old, new, 1)
+	}
+	idx := strings.Index(content, old)
+	if idx < 0 {
+		return content
+	}
+	lineStart := strings.LastIndexByte(content[:idx], '\n') + 1
+	lineEnd := idx + len(old)
+	if nl := strings.IndexByte(content[lineEnd:], '\n'); nl >= 0 {
+		lineEnd += nl + 1
+	}
+	// If old was the only non-whitespace on its line, remove the whole line.
+	if strings.TrimSpace(content[lineStart:idx]) == "" &&
+		strings.TrimSpace(content[idx+len(old):lineEnd]) == "" {
+		return content[:lineStart] + content[lineEnd:]
+	}
+	return content[:idx] + content[idx+len(old):]
+}
+
 // replaceIgnoringIndent matches old_string against the file with each line's
 // leading whitespace stripped, then splices new_string in using the file's
 // ORIGINAL indentation for the first line. Content is what the model
@@ -229,13 +256,15 @@ func replaceIgnoringIndent(content, old, new string) (string, bool) {
 		if !hit {
 			continue
 		}
-		indent := fileLines[start][:len(fileLines[start])-len(strings.TrimLeft(fileLines[start], " \t"))]
-		newLines := strings.Split(strings.TrimRight(new, "\n"), "\n")
-		for j := range newLines {
-			newLines[j] = indent + strings.TrimLeft(newLines[j], " \t")
-		}
 		merged := append([]string{}, fileLines[:start]...)
-		merged = append(merged, newLines...)
+		if new != "" { // deletion drops the lines entirely
+			indent := fileLines[start][:len(fileLines[start])-len(strings.TrimLeft(fileLines[start], " \t"))]
+			newLines := strings.Split(strings.TrimRight(new, "\n"), "\n")
+			for j := range newLines {
+				newLines[j] = indent + strings.TrimLeft(newLines[j], " \t")
+			}
+			merged = append(merged, newLines...)
+		}
 		merged = append(merged, fileLines[start+len(oldLines):]...)
 		return strings.Join(merged, "\n"), true
 	}

@@ -210,3 +210,39 @@ func TestGrepEmptyIsActionable(t *testing.T) {
 		t.Fatalf("empty grep should say what it searched: %q", out)
 	}
 }
+
+// edit must be able to DELETE code: an empty new_string removes the matched
+// text (and the line it sat on if that leaves it blank). Without this the
+// model cannot remove a bad call — it was the block on fixing input.update().
+func TestEditDeletesLine(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "m.js"), []byte("a();\n  input.update();\nb();\n"), 0o644)
+	e := NewEdit(dir)
+	out, err := e.Execute(context.Background(), json.RawMessage(
+		`{"path":"m.js","old_string":"input.update();","new_string":""}`))
+	if err != nil {
+		t.Fatalf("delete should succeed: %v (%s)", err, out)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "m.js"))
+	if strings.Contains(string(got), "input.update") {
+		t.Fatalf("call not removed: %q", string(got))
+	}
+	// the now-empty line should be gone, not left as blank whitespace
+	if strings.Contains(string(got), "\n  \n") || strings.Contains(string(got), "\n\n") {
+		t.Fatalf("left a blank line behind: %q", string(got))
+	}
+	if !strings.Contains(string(got), "a();\nb();\n") {
+		t.Fatalf("surrounding code disturbed: %q", string(got))
+	}
+}
+
+// The identical-strings error must tell the model what to do, not dead-end.
+func TestEditIdenticalIsActionable(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "m.js"), []byte("x();\n"), 0o644)
+	_, err := NewEdit(dir).Execute(context.Background(), json.RawMessage(
+		`{"path":"m.js","old_string":"x();","new_string":"x();"}`))
+	if err == nil || !strings.Contains(err.Error(), "already") {
+		t.Fatalf("identical error should explain the no-op: %v", err)
+	}
+}
