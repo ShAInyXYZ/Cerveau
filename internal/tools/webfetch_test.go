@@ -145,14 +145,23 @@ func TestWebFetchFriendlyErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := fetchArgs(t, NewWebFetch(), `{"url":"`+srv.URL+`/gone"}`)
-	if err == nil || !strings.Contains(err.Error(), "404") || !strings.Contains(err.Error(), "not exist") {
-		t.Errorf("404 should say the page does not exist: %v", err)
+	// A 404 is INFORMATION, not a malfunction: it must come back as a normal
+	// result so exploratory URL misses never consume the guard's error budget
+	// (three guessed-wrong Wikipedia URLs killed a whole research turn).
+	out, err := fetchArgs(t, NewWebFetch(), `{"url":"`+srv.URL+`/gone"}`)
+	if err != nil {
+		t.Errorf("404 must be a result, not an error (guard budget): %v", err)
+	}
+	if !strings.Contains(out, "404") || !strings.Contains(out, "not exist") {
+		t.Errorf("404 result should say the page does not exist: %q", out)
 	}
 
-	_, err = fetchArgs(t, NewWebFetch(), `{"url":"`+srv.URL+`/challenge"}`)
-	if err == nil || !strings.Contains(err.Error(), "blocks automated access") {
-		t.Errorf("bot challenge should be identified plainly: %v", err)
+	out, err = fetchArgs(t, NewWebFetch(), `{"url":"`+srv.URL+`/challenge"}`)
+	if err != nil {
+		t.Errorf("bot challenge must be a result, not an error: %v", err)
+	}
+	if !strings.Contains(out, "blocks automated access") {
+		t.Errorf("bot challenge should be identified plainly: %q", out)
 	}
 }
 

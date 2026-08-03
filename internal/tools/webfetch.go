@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -84,6 +85,10 @@ func (t *WebFetch) Execute(ctx context.Context, args json.RawMessage) (string, e
 	}
 
 	rawHTML, note, err := t.fetchHTML(ctx, a.URL)
+	var po *pageOutcomeErr
+	if errors.As(err, &po) {
+		return po.msg, nil // an informative page-level fact, not a malfunction
+	}
 	if err != nil {
 		return "", err
 	}
@@ -122,16 +127,20 @@ func (t *WebFetch) fetchHTML(ctx context.Context, url string) (string, string, e
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, webFetchMaxBody))
 	switch {
+	// Page-level outcomes are RESULTS, not errors: "this URL has no page" and
+	// "this site refuses bots" are facts the model should read and route
+	// around — surfacing them as tool errors made three guessed-wrong URLs
+	// trip the guard's failure threshold and kill a whole research turn.
 	case resp.StatusCode == 404 || resp.StatusCode == 410:
-		return "", "", fmt.Errorf("http 404: the page does not exist — check the URL")
+		return "", "", pageOutcome("http 404: the page does not exist — this exact URL has no page; try a different URL")
 	case resp.StatusCode == 403 || resp.StatusCode == 429 || resp.StatusCode == 503:
 		if isBotChallenge(string(body)) {
-			return "", "", fmt.Errorf("http %d: %s blocks automated access (bot protection challenge). "+
-				"This is the site's choice and Cerveau does not evade it — try the site's official API or ask the user to open it in a browser", resp.StatusCode, hostOf(url))
+			return "", "", pageOutcome(fmt.Sprintf("http %d: %s blocks automated access (bot protection challenge). "+
+				"Cerveau does not evade this — try the site's official API or a different source", resp.StatusCode, hostOf(url)))
 		}
-		return "", "", fmt.Errorf("http %d: %s refused the request", resp.StatusCode, hostOf(url))
+		return "", "", pageOutcome(fmt.Sprintf("http %d: %s refused the request — try a different source", resp.StatusCode, hostOf(url)))
 	case resp.StatusCode >= 400:
-		return "", "", fmt.Errorf("http %d from %s", resp.StatusCode, hostOf(url))
+		return "", "", pageOutcome(fmt.Sprintf("http %d from %s — try a different source", resp.StatusCode, hostOf(url)))
 	}
 
 	// transcode whatever charset the server sent into UTF-8 for the parsers
@@ -313,6 +322,13 @@ func isBotChallenge(body string) bool {
 	}
 	return false
 }
+
+// pageOutcomeErr marks a page-level fact (404, bot-blocked) that should reach
+// the model as a normal result rather than a tool failure.
+type pageOutcomeErr struct{ msg string }
+
+func (e *pageOutcomeErr) Error() string { return e.msg }
+func pageOutcome(msg string) error      { return &pageOutcomeErr{msg: msg} }
 
 func hostOf(url string) string {
 	if u, err := nurl.Parse(url); err == nil && u.Host != "" {
