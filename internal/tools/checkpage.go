@@ -44,7 +44,7 @@ func (t *CheckPage) Schema() map[string]any {
 		"properties": map[string]any{
 			"path":   map[string]any{"type": "string", "description": "workspace-relative HTML file to load"},
 			"url":    map[string]any{"type": "string", "description": "full URL to load instead of a file (e.g. a serve tool URL)"},
-			"expect": map[string]any{"type": "string", "description": "element that must exist in the rendered DOM: a tag name like canvas, or #id"},
+			"expect": map[string]any{"type": "string", "description": "element that must exist in the rendered DOM: a tag (canvas), #id, .class, or tag.class"},
 		},
 	}
 }
@@ -157,11 +157,17 @@ func checkExpect(report, dom, expect string) string {
 	if expect == "" {
 		return strings.TrimRight(report, "\n")
 	}
+	// Accept the selector shapes models actually write: tag, #id, .class,
+	// and tag.class — checked against the rendered DOM textually.
 	var present bool
-	if strings.HasPrefix(expect, "#") {
-		present = strings.Contains(dom, `id="`+strings.TrimPrefix(expect, "#")+`"`)
+	sel := expect
+	if i := strings.IndexByte(sel, '.'); i >= 0 && !strings.HasPrefix(sel, "#") {
+		tag, class := sel[:i], sel[i+1:]
+		present = classInDOM(dom, class) && (tag == "" || strings.Contains(dom, "<"+tag))
+	} else if strings.HasPrefix(sel, "#") {
+		present = strings.Contains(dom, `id="`+strings.TrimPrefix(sel, "#")+`"`)
 	} else {
-		present = strings.Contains(dom, "<"+expect)
+		present = strings.Contains(dom, "<"+sel)
 	}
 	if present {
 		report += fmt.Sprintf("expected element %q: found in the rendered DOM.", expect)
@@ -170,3 +176,18 @@ func checkExpect(report, dom, expect string) string {
 	}
 	return report
 }
+
+// classInDOM reports whether any element carries the class (word match inside
+// a class attribute, so "app" matches class="app shell").
+func classInDOM(dom, class string) bool {
+	for _, m := range reClassAttr.FindAllStringSubmatch(dom, -1) {
+		for _, c := range strings.Fields(m[1]) {
+			if c == class {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+var reClassAttr = regexp.MustCompile(`class="([^"]*)"`)

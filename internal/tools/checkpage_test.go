@@ -76,3 +76,17 @@ func TestCheckPageMissingExpect(t *testing.T) {
 		t.Errorf("missing element should be flagged: %q", out)
 	}
 }
+
+// Models write CSS-ish selectors (div.app, .app) — the expect check must
+// understand class selectors, not report false misses on healthy pages.
+func TestCheckPageClassSelector(t *testing.T) {
+	dom := `<html><body><div class="app shell"><canvas id="game"></canvas></div></body></html>`
+	for _, sel := range []string{"div.app", ".app", "#game", "canvas"} {
+		if got := checkExpect("", dom, sel); !strings.Contains(got, "found in the rendered DOM") {
+			t.Errorf("selector %q should be found: %q", sel, got)
+		}
+	}
+	if got := checkExpect("", dom, ".missing"); !strings.Contains(got, "NOT found") {
+		t.Errorf(".missing should not be found: %q", got)
+	}
+}
