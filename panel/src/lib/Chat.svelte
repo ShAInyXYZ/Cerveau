@@ -56,6 +56,47 @@
   let planOpen = $state(true);   // the pinned plan strip starts open
   let scroller;
 
+  // ── plan completion: celebrate briefly, then archive the strip ──
+  // A finished plan (all steps done, none failed) shows a "complete" state,
+  // then collapses and is archived — the report stays in the session log,
+  // but a per-session flag hides the strip so it doesn't linger or return.
+  let planPhase = $state('live');   // live → celebrate → collapsing → archived
+  let celebrated = false;           // plain guard — NOT reactive, so setting
+                                    // planPhase can't re-trigger the effect
+  const archiveKey = (id) => `crv:plan-archived:${id}`;
+  const planId = $derived(report?.plan_event_id ?? report?.title ?? '');
+  const planComplete = $derived(
+    !!report && report.steps.length > 0 &&
+    report.steps.every((s) => s.status === 'done')
+  );
+  const reduceMotion = typeof matchMedia !== 'undefined'
+    && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // The timer sequence runs OUTSIDE any effect (report polls constantly, so an
+  // effect would re-run and cancel its own timers). The effect only decides
+  // when to kick it off, exactly once per plan.
+  function runCompletionSequence() {
+    const stamp = () => { try { localStorage.setItem(archiveKey(planId), '1'); } catch {} };
+    if (reduceMotion) { planPhase = 'archived'; stamp(); return; }
+    planPhase = 'celebrate';
+    setTimeout(() => (planPhase = 'collapsing'), 2400);
+    setTimeout(() => { planPhase = 'archived'; stamp(); }, 2920);
+  }
+
+  $effect(() => {
+    if (!report) { planPhase = 'live'; celebrated = false; return; }
+    try {
+      if (planId && localStorage.getItem(archiveKey(planId)) === '1') {
+        planPhase = 'archived';
+        return;
+      }
+    } catch { /* private mode — just show it */ }
+    if (planComplete && !celebrated) {
+      celebrated = true;
+      runCompletionSequence();
+    }
+  });
+
   const isAuto = $derived(mode === 'autopilot');
 
   // Show only the latest MEANINGFUL error. Drop retry chatter and bare
@@ -210,33 +251,44 @@
     {#if !isInstant}
       <div class="wsline"><WorkspacePath {workspace} onChanged={onWorkspaceChanged} /></div>
     {/if}
-    {#if report}
+    {#if report && planPhase !== 'archived'}
       {@const pending = report.steps.filter((s) => s.status !== 'done' && s.status !== 'failed').length}
       {@const finished = pending === 0}
-      <div class="planstrip" class:done={finished}>
-        <button class="ps-head" onclick={() => (planOpen = !planOpen)}
-          use:tooltip={planOpen ? 'collapse the plan' : 'show the plan steps'}>
-          <ListChecks size={12} />
-          <span class="ps-title">{report.title}</span>
-          <span class="ps-counts mono">
-            <span class="c ok">{report.done}</span>
-            {#if report.failed}<span class="c err">{report.failed}</span>{/if}
-            {#if pending}<span class="c dim">{pending}</span>{/if}
-          </span>
-          {#if report.handback}<span class="ps-chip warn">handback</span>{/if}
-          {#if planOpen}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
-        </button>
-        {#if planOpen}
-          <div class="ps-steps">
-            {#each report.steps as s, i}
-              <div class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed'}
-                class:part={s.status === 'partial'}>
-                <Dot tone={s.status === 'done' ? 'ok' : s.status === 'failed' ? 'err' : s.status === 'partial' ? 'warn' : 'off'} size={5} />
-                <span class="rnum tag">{String(i + 1).padStart(2, '0')}</span>
-                <span class="ps-name">{s.title}</span>
-                <span class="rstatus label">{s.status}</span>
+      <div class="planwrap" class:collapsing={planPhase === 'collapsing'}>
+        {#if planPhase === 'celebrate'}
+          <div class="planstrip done celebrate">
+            <div class="ps-done">
+              <span class="ps-check"><Check size={13} strokeWidth={3} /></span>
+              <span class="ps-done-text">Plan complete — all {report.steps.length} steps done</span>
+            </div>
+          </div>
+        {:else}
+          <div class="planstrip" class:done={finished}>
+            <button class="ps-head" onclick={() => (planOpen = !planOpen)}
+              use:tooltip={planOpen ? 'collapse the plan' : 'show the plan steps'}>
+              <ListChecks size={12} />
+              <span class="ps-title">{report.title}</span>
+              <span class="ps-counts mono">
+                <span class="c ok">{report.done}</span>
+                {#if report.failed}<span class="c err">{report.failed}</span>{/if}
+                {#if pending}<span class="c dim">{pending}</span>{/if}
+              </span>
+              {#if report.handback}<span class="ps-chip warn">handback</span>{/if}
+              {#if planOpen}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
+            </button>
+            {#if planOpen}
+              <div class="ps-steps">
+                {#each report.steps as s, i}
+                  <div class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed'}
+                    class:part={s.status === 'partial'}>
+                    <Dot tone={s.status === 'done' ? 'ok' : s.status === 'failed' ? 'err' : s.status === 'partial' ? 'warn' : 'off'} size={5} />
+                    <span class="rnum tag">{String(i + 1).padStart(2, '0')}</span>
+                    <span class="ps-name">{s.title}</span>
+                    <span class="rstatus label">{s.status}</span>
+                  </div>
+                {/each}
               </div>
-            {/each}
+            {/if}
           </div>
         {/if}
       </div>
@@ -392,14 +444,49 @@
 
   /* floating dock */
   /* pinned plan strip — the plan must not scroll away mid-execution */
+  /* wrapper carries the bar-matching inset and drives the collapse. */
+  .planwrap {
+    align-self: stretch; margin: 0 66px 8px; position: relative; z-index: 1;
+    overflow: hidden;
+  }
+  .planwrap.collapsing {
+    animation: plan-collapse .5s cubic-bezier(.4, 0, .2, 1) forwards;
+  }
+  @keyframes plan-collapse {
+    from { max-height: 200px; opacity: 1; transform: none; margin-bottom: 8px; }
+    60%  { opacity: 0; }
+    to   { max-height: 0; opacity: 0; transform: translateY(-4px); margin-bottom: 0; }
+  }
   .planstrip {
-    /* match the chat bar (.bar), not the whole dockrow: the bar is inset by
-       the 54px mode knob + 12px gap on the left and the attach button on the
-       right, so mirror that inset here. */
-    align-self: stretch; margin: 0 66px 8px; position: relative; z-index: 1; border-radius: 10px; overflow: hidden;
+    border-radius: 10px; overflow: hidden;
     background: var(--s1); box-shadow: inset 0 0 0 1px var(--line);
   }
   .planstrip.done { opacity: .72; }
+
+  /* completion state — a brief, restrained flourish, not confetti */
+  .planstrip.celebrate {
+    opacity: 1;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent);
+    animation: plan-glow 1.6s ease-out;
+  }
+  @keyframes plan-glow {
+    0%   { box-shadow: inset 0 0 0 1px var(--line); }
+    25%  { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 70%, transparent),
+                       0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent); }
+    100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent); }
+  }
+  .ps-done { display: flex; align-items: center; gap: 9px; padding: 9px 12px; }
+  .ps-check {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    background: var(--ok, #4bb894); color: var(--bg);
+    animation: plan-pop .4s cubic-bezier(.2, 1.4, .4, 1) both;
+  }
+  @keyframes plan-pop { from { transform: scale(0); } to { transform: scale(1); } }
+  .ps-done-text { font-size: 12px; font-weight: 600; color: var(--ok, #4bb894); }
+  @media (prefers-reduced-motion: reduce) {
+    .planwrap.collapsing, .planstrip.celebrate, .ps-check { animation: none; }
+  }
   .ps-head {
     display: flex; align-items: center; gap: 8px; width: 100%;
     padding: 7px 11px; border: none; cursor: pointer;
