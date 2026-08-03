@@ -393,7 +393,10 @@
   /* floating dock */
   /* pinned plan strip — the plan must not scroll away mid-execution */
   .planstrip {
-    align-self: stretch; margin: 0 0 8px; position: relative; z-index: 1; border-radius: 10px; overflow: hidden;
+    /* match the chat bar (.bar), not the whole dockrow: the bar is inset by
+       the 54px mode knob + 12px gap on the left and the attach button on the
+       right, so mirror that inset here. */
+    align-self: stretch; margin: 0 66px 8px; position: relative; z-index: 1; border-radius: 10px; overflow: hidden;
     background: var(--s1); box-shadow: inset 0 0 0 1px var(--line);
   }
   .planstrip.done { opacity: .72; }
@@ -433,7 +436,7 @@
   /* the plan strip and the composer share ONE width, so they read as a
      single stacked unit — the stack matches the composer row (760px). */
   .dockstack { width: 100%; max-width: 760px; display: flex; flex-direction: column; }
-  .wsline { align-self: flex-end; margin-bottom: 6px; position: relative; z-index: 4; }
+  .wsline { align-self: flex-end; margin: 0 66px 6px 0; position: relative; z-index: 4; }
   .wsrow {
     width: 100%; max-width: 760px;
     display: flex; justify-content: flex-end;
