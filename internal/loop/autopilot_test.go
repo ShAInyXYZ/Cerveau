@@ -230,3 +230,38 @@ func TestOutOfPlanNote(t *testing.T) {
 		t.Errorf("plan without files should be silent, got %q", n)
 	}
 }
+
+// A plan written as a FILE (the model's stubborn habit) must be auto-committed
+// as a structured plan event, so the plan card and the Planner RFX see it —
+// harness translation instead of prompt pleading.
+func TestAutoCommitPlanFile(t *testing.T) {
+	dir := t.TempDir()
+	wr, err := episodic.Open(dir + "/events.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := "# Chess Build\n## Engine\nWrite `src/engine.ts`\n## Renderer\nBoard and pieces\n"
+	args := []byte(`{"path":"docs/plan.md","content":` + strconv.Quote(md) + `}`)
+
+	plan, note := autoCommitPlanFile(wr, "write", args)
+	if plan == nil {
+		t.Fatal("plan-like write should auto-commit")
+	}
+	if plan.Title != "Chess Build" || len(plan.Steps) != 2 {
+		t.Errorf("parsed plan wrong: %+v", plan)
+	}
+	if note == "" || !strings.Contains(note, "plan") {
+		t.Errorf("the auto-commit must be disclosed: %q", note)
+	}
+
+	// and it must be discoverable exactly like a hand-committed plan
+	got, _, err := LatestPlan(dir + "/events.jsonl")
+	if err != nil || got == nil || got.Title != "Chess Build" {
+		t.Fatalf("LatestPlan should find the auto-committed plan: %+v %v", got, err)
+	}
+
+	// ordinary writes never auto-commit
+	if p, _ := autoCommitPlanFile(wr, "write", []byte(`{"path":"main.go","content":"package main"}`)); p != nil {
+		t.Error("code writes must not commit plans")
+	}
+}

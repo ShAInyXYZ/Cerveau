@@ -10,6 +10,7 @@ import (
 	"cerveau/internal/episodic"
 	"cerveau/internal/llm"
 	"cerveau/internal/memory"
+	"cerveau/internal/tools"
 	"cerveau/internal/window"
 )
 
@@ -276,4 +277,39 @@ func outOfPlanNote(p *Plan, tool string, args []byte) string {
 	return fmt.Sprintf("note: %s is not in the committed plan (declared files: %s). "+
 		"If this extra file is intentional, continue; otherwise keep to the planned layout.",
 		a.Path, strings.Join(files, ", "))
+}
+
+// autoCommitPlanFile is the harness-side answer to the model's stubbornest
+// habit: writing its plan to a .md file instead of calling commit_plan. If a
+// write is plan-shaped (plan-named markdown with parseable steps) and it
+// parses, the harness commits the structured plan itself — the file still
+// lands on disk, AND the plan card + Planner see a real plan event. The
+// translation is disclosed in the returned note. Prompt pleading demonstrably
+// failed here twice; translation always runs.
+func autoCommitPlanFile(wr *episodic.Writer, tool string, args []byte) (*Plan, string) {
+	if tool != "write" {
+		return nil, ""
+	}
+	var a struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+	if json.Unmarshal(args, &a) != nil || !tools.PlanLike(a.Path, a.Content) {
+		return nil, ""
+	}
+	title, parsed := tools.ParsePlanMarkdown(a.Content)
+	if title == "" {
+		title = a.Path
+	}
+	steps := make([]PlanStep, 0, len(parsed))
+	for _, p := range parsed {
+		steps = append(steps, PlanStep{Title: p.Title, Detail: p.Detail, Files: p.Files, Risk: p.Risk})
+	}
+	plan := &Plan{Title: title, Steps: steps, AutonomyBudget: "low"}
+	if _, err := wr.Append(episodic.Plan, map[string]any{
+		"title": plan.Title, "steps": plan.Steps, "autonomy_budget": plan.AutonomyBudget,
+	}); err != nil {
+		return nil, ""
+	}
+	return plan, fmt.Sprintf("note: %s looked like a plan, so it was ALSO committed as a structured plan (%d steps) — it now appears in the plan card. Next time call commit_plan directly.", a.Path, len(steps))
 }

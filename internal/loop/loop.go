@@ -422,6 +422,16 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			// standing still, never for taking a while — the repeat detector
 			// below is what catches genuine spinning.
 			g.progress()
+			// The model's stubbornest habit: writing its plan to a .md file
+			// instead of calling commit_plan. Translate, don't plead — a
+			// plan-shaped write is ALSO committed as a structured plan event,
+			// so the plan card and the Planner see it. Disclosed.
+			if ok && activePlan == nil {
+				if p, note := autoCommitPlanFile(wr, tc.Function.Name, args); p != nil {
+					activePlan = p
+					out += "\n\n[harness] " + note
+				}
+			}
 			// Surface architecture drift: a write outside the plan's declared
 			// files gets a visible note (appended BEFORE persisting, same
 			// reasoning as the repeat coaching above).

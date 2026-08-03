@@ -20,14 +20,18 @@ func NewCommitPlan(open func(string) (*episodic.Writer, error), sctx *SessionCon
 func (t *CommitPlan) Name() string { return "commit_plan" }
 
 func (t *CommitPlan) Description() string {
-	return "Crystallize the agreed plan into a structured artifact stored in the session log. Autopilot executes it later."
+	return "Commit the plan so it appears as a tracked plan card and Autopilot can execute it step by step. " +
+		"EASIEST: pass your whole plan as markdown in the `markdown` field (## headings, numbered list, or checkboxes " +
+		"— they become steps automatically). Or pass structured title+steps. Never write a plan to a .md file " +
+		"or narrate it in prose — an uncommitted plan cannot be tracked."
 }
 
 func (t *CommitPlan) Schema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"title": map[string]any{"type": "string"},
+			"title":    map[string]any{"type": "string"},
+			"markdown": map[string]any{"type": "string", "description": "the plan as markdown — ## headings, a numbered list, or checkboxes become steps; backticked file paths become each step's files"},
 			"steps": map[string]any{
 				"type": "array",
 				"items": map[string]any{
@@ -47,14 +51,15 @@ func (t *CommitPlan) Schema() map[string]any {
 				"description": "low: hand back on any step failure. high: log and continue.",
 			},
 		},
-		"required": []string{"title", "steps"},
+		"required": []string{},
 	}
 }
 
 func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var plan struct {
-		Title string `json:"title"`
-		Steps []struct {
+		Title    string `json:"title"`
+		Markdown string `json:"markdown"`
+		Steps    []struct {
 			Title  string   `json:"title"`
 			Detail string   `json:"detail"`
 			Files  []string `json:"files"`
@@ -65,8 +70,28 @@ func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string,
 	if err := json.Unmarshal(args, &plan); err != nil {
 		return "", fmt.Errorf("bad plan: %w", err)
 	}
+	// Markdown path: the model hands over its plan as it naturally wrote it,
+	// and the parser does the structuring — a small model reliably emits
+	// markdown but flubs nested JSON arrays.
+	if len(plan.Steps) == 0 && plan.Markdown != "" {
+		mdTitle, parsed := ParsePlanMarkdown(plan.Markdown)
+		if plan.Title == "" {
+			plan.Title = mdTitle
+		}
+		for _, p := range parsed {
+			plan.Steps = append(plan.Steps, struct {
+				Title  string   `json:"title"`
+				Detail string   `json:"detail"`
+				Files  []string `json:"files"`
+				Risk   string   `json:"risk"`
+			}{Title: p.Title, Detail: p.Detail, Files: p.Files, Risk: p.Risk})
+		}
+	}
+	if plan.Title == "" && len(plan.Steps) > 0 {
+		plan.Title = "Plan"
+	}
 	if plan.Title == "" || len(plan.Steps) == 0 {
-		return "", fmt.Errorf("plan needs a title and at least one step")
+		return "", fmt.Errorf("plan needs steps — pass your plan text in the markdown field (## headings, a numbered list, or checkboxes)")
 	}
 	if plan.AutonomyBudget == "" {
 		plan.AutonomyBudget = "low"
