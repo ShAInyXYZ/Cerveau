@@ -102,7 +102,10 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 	cctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, chrome,
-		"--headless=new", "--no-sandbox", "--disable-gpu",
+		"--headless=new", "--no-sandbox",
+		// software WebGL: --disable-gpu would make every Three.js/canvas app
+		// report "WebGL context could not be created" — a false failure.
+		"--use-angle=swiftshader", "--enable-unsafe-swiftshader",
 		"--enable-logging=stderr", "--v=0",
 		"--virtual-time-budget=6000", // let scripts, timers and module loads run
 		"--dump-dom", target,
