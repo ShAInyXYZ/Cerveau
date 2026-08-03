@@ -58,9 +58,7 @@ func (t *Bash) Execute(ctx context.Context, args json.RawMessage) (string, error
 	// success because the chain exits 0 before the kill). Refuse up front;
 	// hint-after-failure proved too weak, the model burned turns on it.
 	if backgroundsServer(a.Command) {
-		return "", fmt.Errorf("refused: this backgrounds a server, which cannot survive a bash call " +
-			"(its process group is killed when the call ends). Use the `serve` tool instead: " +
-			`serve {"action":"start","dir":"<subdir>","port":<port>}`)
+		return "", fmt.Errorf("refused: bash cannot host servers (the process group is killed when the call ends). For a STATIC site: use the serve tool. For a vite/npm DEV server: build once with bash (e.g. npx vite build), then serve the output with the serve tool: serve {\"action\":\"start\",\"dir\":\"<project>/dist\"}")
 	}
 
 	cmd := exec.Command("bash", "-c", a.Command)
@@ -107,7 +105,7 @@ func (t *Bash) Execute(ctx context.Context, args json.RawMessage) (string, error
 	text := capOutput(buf.String())
 	if timedOut {
 		if looksLikeServer(a.Command) {
-			return text, fmt.Errorf("command timed out — this looks like a long-lived server, which bash cannot run (it is killed when the call ends). Use the `serve` tool to start a web server for the workspace")
+			return text, fmt.Errorf("command timed out — this looks like a long-lived server, which bash cannot run (it is killed when the call ends). For a STATIC site: use the serve tool. For a vite/npm DEV server: build once (npx vite build), then serve the output: serve {\"action\":\"start\",\"dir\":\"<project>/dist\"}")
 		}
 		return text, fmt.Errorf("command timed out after %s", bashTimeout)
 	}

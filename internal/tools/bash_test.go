@@ -102,6 +102,21 @@ func TestBashRefusesBackgroundedServer(t *testing.T) {
 	}
 }
 
+// A DEV server (vite, npm run dev) can't be replaced by the static serve tool
+// directly — the refusal must teach the actual recipe: build once, then serve
+// the output directory. "Use serve" alone sent a model in circles 5 times.
+func TestBashRefusalTeachesBuildRecipe(t *testing.T) {
+	b := NewBash(t.TempDir())
+	_, err := b.Execute(context.Background(), json.RawMessage(
+		`{"command":"cd app && npx vite --port 8000 &"}`))
+	if err == nil {
+		t.Fatal("backgrounded vite should be refused")
+	}
+	if !strings.Contains(err.Error(), "build") || !strings.Contains(err.Error(), "dist") {
+		t.Errorf("refusal must teach build-then-serve-dist: %v", err)
+	}
+}
+
 // && is not a background operator — plain build chains must still run.
 func TestBashAllowsAndAndChains(t *testing.T) {
 	b := NewBash(t.TempDir())
