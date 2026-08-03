@@ -20,6 +20,10 @@ var (
 	rePlanNumbered = regexp.MustCompile(`(?m)^\s*\d+[.)]\s+(.+)$`)
 	rePlanCheckbox = regexp.MustCompile(`(?m)^\s*[-*]\s*\[[ xX]?\]\s+(.+)$`)
 	reBacktickPath = regexp.MustCompile("`([\\w./-]+\\.[\\w]+)`")
+	// plain (unbackticked) path-shaped tokens: either dir/file.ext, or a bare
+	// filename with a code-ish extension. Bare words like "cannon-es" or
+	// version numbers never match.
+	rePlainPath = regexp.MustCompile(`(?m)(?:^|[\s(])([\w.-]+(?:/[\w.-]+)+\.(?:js|ts|html|css|json|svelte|go|py|md)|(?:index|main|app|style|styles)\.(?:js|ts|html|css))(?:$|[\s),])`)
 )
 
 // ParsePlanMarkdown turns a markdown plan — the model's NATURAL output — into
@@ -92,6 +96,12 @@ func backtickedFiles(s string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, m := range reBacktickPath.FindAllStringSubmatch(s, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			out = append(out, m[1])
+		}
+	}
+	for _, m := range rePlainPath.FindAllStringSubmatch(s, -1) {
 		if !seen[m[1]] {
 			seen[m[1]] = true
 			out = append(out, m[1])

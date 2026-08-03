@@ -95,9 +95,10 @@ func BuildReportAt(events []episodic.Event, workspace string) *Report {
 		if !ok {
 			sr = StepReport{Title: ps.Title, Status: "pending"}
 		}
-		// Disk reconciliation: a pending step whose declared files all exist
-		// really is done — the checkpoint just never got written.
-		if sr.Status == "pending" && workspace != "" && len(ps.Files) > 0 {
+		// Disk reconciliation: a pending or partial step whose declared files
+		// all exist really is done — the checkpoint just never got written
+		// (chat-mode turns write no step checkpoints at all).
+		if (sr.Status == "pending" || sr.Status == "partial") && workspace != "" && len(ps.Files) > 0 {
 			if have := filesPresent(workspace, ps.Files); have == len(ps.Files) {
 				sr.Status = "done"
 				sr.Summary = "verified on disk"

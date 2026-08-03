@@ -206,3 +206,31 @@ func TestTokenBudgetExtends(t *testing.T) {
 		t.Fatal("exhausted with no extensions left must trip preThink")
 	}
 }
+
+// The iteration cap must extend for a PROGRESSING turn, exactly like the token
+// budget: a 20-minute build legitimately spends 40+ iterations; the repeat
+// detector and idle timeout catch true spinning. Bounded extensions keep the
+// runaway backstop.
+func TestIterationCapExtends(t *testing.T) {
+	g := newTurnGuard(40)
+	if _, _, tripped := g.preThink(40); tripped {
+		t.Fatal("at the cap should still run")
+	}
+	if _, _, tripped := g.preThink(41); !tripped {
+		t.Fatal("past the cap should trip without an extension")
+	}
+	if !g.extendIter() {
+		t.Fatal("first extension should be granted")
+	}
+	if _, _, tripped := g.preThink(41); tripped {
+		t.Fatal("extension should raise the cap")
+	}
+	for i := 0; i < maxIterExtensions-1; i++ {
+		if !g.extendIter() {
+			t.Fatalf("extension %d should be granted", i+2)
+		}
+	}
+	if g.extendIter() {
+		t.Fatal("extensions beyond the cap must be refused")
+	}
+}

@@ -83,3 +83,29 @@ func TestCommitPlanFromMarkdown(t *testing.T) {
 		t.Errorf("should commit 2 parsed steps: %q", out)
 	}
 }
+
+// The Equilibrium plan listed its file tree as plain text (js/physics.js,
+// index.html — no backticks), so no step declared files and the plan card
+// stayed 0/N forever. Plain path-shaped tokens must be captured too.
+func TestParsePlanPlainFilePaths(t *testing.T) {
+	_, steps := ParsePlanMarkdown(`# Game
+## File Structure
+index.html
+js/physics.js
+js/main.js
+## Vision
+A physics puzzler with budget pressure and 60fps targets.
+`)
+	if len(steps) != 2 {
+		t.Fatalf("steps: %+v", steps)
+	}
+	got := strings.Join(steps[0].Files, ",")
+	for _, want := range []string{"index.html", "js/physics.js", "js/main.js"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("plain path %q not captured: %q", want, got)
+		}
+	}
+	if len(steps[1].Files) != 0 {
+		t.Errorf("prose step should have no files, got %+v", steps[1].Files)
+	}
+}

@@ -63,7 +63,10 @@ const (
 	// a fresh slice, this many times, before the guard finally stops it. Big
 	// multi-file builds routinely need 2-3 slices; a runaway loop still dies.
 	maxTokenExtensions = 3
-	loopDetectRepeat   = 3
+	// Same doctrine for the iteration cap: a progressing turn earns more
+	// slices; a spinning one is caught by the repeat/idle/error guards.
+	maxIterExtensions = 3
+	loopDetectRepeat  = 3
 )
 
 type Loop struct {
@@ -273,7 +276,15 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				"text": "token budget checkpoint — budget refreshed; continue the work already in progress, do not restart it"})
 		}
 		if reason, detail, tripped := g.preThink(i); tripped {
-			return stop(&Result{Iterations: i - 1}, reason, detail), nil
+			// The iteration cap measures effort, not stuckness — a turn that is
+			// still making real progress earns another slice (bounded); the
+			// repeat/idle/error guards catch genuine spinning.
+			if reason == StopIterations && g.extendIter() {
+				wr.Append(episodic.Note, map[string]string{"kind": "iteration_checkpoint",
+					"text": "iteration checkpoint — cap raised for a progressing turn; continue the work in progress"})
+			} else {
+				return stop(&Result{Iterations: i - 1}, reason, detail), nil
+			}
 		}
 		iterCtx, iterCancel := context.WithCancel(runCtx)
 		h.setInFlight(iterCancel)

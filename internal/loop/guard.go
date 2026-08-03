@@ -25,6 +25,7 @@ type turnGuard struct {
 
 	tokens      int
 	extensions  int // token-budget checkpoints already granted this turn
+	iterExts    int // iteration-cap extensions already granted this turn
 	perToolErrs map[string]int
 	totalErrs   int
 	budget      time.Duration
@@ -59,8 +60,8 @@ func newTurnGuardBudget(maxIter int, budget time.Duration) *turnGuard {
 }
 
 func (g *turnGuard) preThink(iter int) (string, string, bool) {
-	if iter > g.maxIter {
-		return StopIterations, fmt.Sprintf("iteration cap (%d) reached", g.maxIter), true
+	if iter > g.maxIter+g.iterExts*g.maxIter {
+		return StopIterations, fmt.Sprintf("iteration cap (%d) reached", g.maxIter+g.iterExts*g.maxIter), true
 	}
 	if time.Now().After(g.deadline) {
 		return StopTime, fmt.Sprintf("no progress for %s — turn stalled (total elapsed %s)",
@@ -81,6 +82,19 @@ func (g *turnGuard) addTokens(n int) { g.tokens += n }
 
 // tokensExhausted reports whether the current budget slice is spent.
 func (g *turnGuard) tokensExhausted() bool { return g.tokens > g.maxTokens }
+
+// extendIter raises the iteration cap by one more slice, up to
+// maxIterExtensions per turn. Like the token budget, iterations measure
+// EFFORT, not stuckness — the repeat detector, error threshold and idle
+// timeout catch genuine spinning, so a long productive build should not die
+// at an arbitrary count. The extension bound is the runaway backstop.
+func (g *turnGuard) extendIter() bool {
+	if g.iterExts >= maxIterExtensions {
+		return false
+	}
+	g.iterExts++
+	return true
+}
 
 // extendTokens grants a fresh budget slice, up to maxTokenExtensions per turn.
 // Exhaustion is a CHECKPOINT, not a failure: everything the turn did is in the
