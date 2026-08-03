@@ -13,13 +13,20 @@
   } = $props();
 
   const components = $derived(health?.components ?? []);
+  // version comes from the core (/api/health system.version, e.g. "0.3.0-alpha")
+  // — hardcoding it here is how the header stayed on V0.2 for a whole release.
+  const rev = $derived.by(() => {
+    const v = health?.system?.version ?? '';
+    const m = v.match(/^(\d+)\.(\d+)/);
+    return m ? `V${m[1]}.${m[2]}` : 'V0.3';
+  });
 </script>
 
 <header class="bar">
   <div class="brand">
     <span class="logo">{@html logo}</span>
     <span class="word">CERVEAU</span>
-    <span class="rev"><DotMatrix text="V0.2" dot={1.4} gap={1.3} /></span>
+    <span class="rev"><DotMatrix text={rev} dot={1.4} gap={1.3} /></span>
   </div>
 
   <div class="spacer"></div>
