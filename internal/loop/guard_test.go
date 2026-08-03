@@ -177,3 +177,32 @@ func TestFinalAnswerStopReason(t *testing.T) {
 		t.Fatalf("res = %+v", res)
 	}
 }
+
+// Exhausting the token budget should be a CHECKPOINT, not a death: the guard
+// grants a bounded number of budget extensions (the work is persisted in the
+// episodic log, so continuing is safe). Only when the extensions run out does
+// it trip for good — that's the runaway backstop.
+func TestTokenBudgetExtends(t *testing.T) {
+	g := newTurnGuard(100)
+	g.addTokens(maxTurnTokens + 1)
+	if !g.tokensExhausted() {
+		t.Fatal("budget should read exhausted")
+	}
+	// three extensions granted...
+	for i := 0; i < maxTokenExtensions; i++ {
+		if !g.extendTokens() {
+			t.Fatalf("extension %d should be granted", i+1)
+		}
+		if g.tokensExhausted() {
+			t.Fatal("after an extension the budget must be fresh")
+		}
+		g.addTokens(maxTurnTokens + 1)
+	}
+	// ...then it's over
+	if g.extendTokens() {
+		t.Fatal("extensions beyond the cap must be refused")
+	}
+	if _, _, tripped := g.preThink(1); !tripped {
+		t.Fatal("exhausted with no extensions left must trip preThink")
+	}
+}

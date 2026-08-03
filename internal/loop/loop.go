@@ -57,9 +57,13 @@ const (
 	maxIterations = 8
 	maxTurnTime   = 4 * time.Minute
 	// a supervised plan step builds files; it needs a build-sized budget
-	maxStepTime      = 20 * time.Minute
-	maxTurnTokens    = 16384
-	loopDetectRepeat = 3
+	maxStepTime   = 20 * time.Minute
+	maxTurnTokens = 16384
+	// A turn that exhausts its token budget is checkpointed and continued with
+	// a fresh slice, this many times, before the guard finally stops it. Big
+	// multi-file builds routinely need 2-3 slices; a runaway loop still dies.
+	maxTokenExtensions = 3
+	loopDetectRepeat   = 3
 )
 
 type Loop struct {
@@ -260,6 +264,13 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		}
 		if h.paused.Load() {
 			return &Result{Iterations: i - 1, StopReason: "paused", Reply: "paused — resume anytime, the log is the state", Window: &winRep}, nil
+		}
+		// Token exhaustion is a checkpoint, not a death: grant a fresh slice
+		// (bounded) and tell the model to CONTINUE — its work so far is in the
+		// episodic log and the window rebuild compresses it back in.
+		if g.tokensExhausted() && g.extendTokens() {
+			wr.Append(episodic.Note, map[string]string{"kind": "token_checkpoint",
+				"text": "token budget checkpoint — budget refreshed; continue the work already in progress, do not restart it"})
 		}
 		if reason, detail, tripped := g.preThink(i); tripped {
 			return stop(&Result{Iterations: i - 1}, reason, detail), nil

@@ -151,6 +151,12 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 	g := newTurnGuard(0)
 	lastText := ""
 	for i := 1; i <= 4; i++ {
+		// Same checkpoint-instead-of-death as the chat loop: a step that
+		// builds several files legitimately spends more than one budget slice.
+		if g.tokensExhausted() && g.extendTokens() {
+			wr.Append(episodic.Note, map[string]string{"kind": "token_checkpoint",
+				"text": "token budget checkpoint — budget refreshed; continue the step in progress, do not restart it"})
+		}
 		if _, detail, tripped := g.preThink(i); tripped {
 			return "", fmt.Errorf("guard: %s", detail)
 		}

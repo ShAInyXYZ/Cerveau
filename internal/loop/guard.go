@@ -24,6 +24,7 @@ type turnGuard struct {
 	repeatLimit int
 
 	tokens      int
+	extensions  int // token-budget checkpoints already granted this turn
 	perToolErrs map[string]int
 	totalErrs   int
 	budget      time.Duration
@@ -77,6 +78,22 @@ func (g *turnGuard) preThink(iter int) (string, string, bool) {
 func (g *turnGuard) progress() { g.deadline = time.Now().Add(g.budget) }
 
 func (g *turnGuard) addTokens(n int) { g.tokens += n }
+
+// tokensExhausted reports whether the current budget slice is spent.
+func (g *turnGuard) tokensExhausted() bool { return g.tokens > g.maxTokens }
+
+// extendTokens grants a fresh budget slice, up to maxTokenExtensions per turn.
+// Exhaustion is a CHECKPOINT, not a failure: everything the turn did is in the
+// episodic log, so continuing with a rebuilt (compressed) window is safe. The
+// extension cap is the runaway backstop.
+func (g *turnGuard) extendTokens() bool {
+	if g.extensions >= maxTokenExtensions {
+		return false
+	}
+	g.extensions++
+	g.tokens = 0
+	return true
+}
 
 func (g *turnGuard) toolError(name string) (string, bool) {
 	g.totalErrs++
