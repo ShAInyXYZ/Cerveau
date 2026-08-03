@@ -216,6 +216,23 @@ func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMe
 		args = rewritten
 	}
 	out, err := r.dispatch(ctx, e, name, args, mode)
+	// Guidebook: mechanical failures (busy port, invalid regex) are repaired
+	// and retried by the core itself — the model never burns an iteration on a
+	// solved problem. Each repair is disclosed in the output. Real errors fall
+	// through untouched.
+	var fixNotes []string
+	for attempt := 0; err != nil && attempt < maxAutoFixes; attempt++ {
+		newArgs, note, ok := guidebookRepair(name, args, err.Error())
+		if !ok {
+			break
+		}
+		args = newArgs
+		fixNotes = append(fixNotes, note)
+		out, err = r.dispatch(ctx, e, name, args, mode)
+	}
+	if err == nil && len(fixNotes) > 0 {
+		out = "[auto-fixed] " + strings.Join(fixNotes, "; ") + "\n" + out
+	}
 	if err == nil && r.postExec != nil {
 		r.postExec(name, args)
 	}
