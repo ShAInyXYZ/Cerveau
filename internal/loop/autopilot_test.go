@@ -201,3 +201,32 @@ func TestStepWindowIsCompressed(t *testing.T) {
 		t.Fatal("nothing was demoted or trimmed")
 	}
 }
+
+// A write to a file the committed plan never declared must produce a visible
+// note — architecture drift (extra files) was silent before, and the model
+// split one-file builds into modules without anyone noticing until runtime.
+func TestOutOfPlanNote(t *testing.T) {
+	p := &Plan{Title: "game", Steps: []PlanStep{
+		{Title: "build", Files: []string{"snake/index.html"}},
+	}}
+	// declared file: no note
+	if n := outOfPlanNote(p, "write", []byte(`{"path":"snake/index.html","content":"x"}`)); n != "" {
+		t.Errorf("declared file should be silent, got %q", n)
+	}
+	// undeclared file: note names both the file and the plan's files
+	n := outOfPlanNote(p, "write", []byte(`{"path":"snake/game.js","content":"x"}`))
+	if !strings.Contains(n, "snake/game.js") || !strings.Contains(n, "not in the committed plan") {
+		t.Errorf("undeclared write should be flagged, got %q", n)
+	}
+	// non-write tools: never a note
+	if n := outOfPlanNote(p, "read", []byte(`{"path":"other.js"}`)); n != "" {
+		t.Errorf("read should never be flagged, got %q", n)
+	}
+	// no plan, or a plan with no declared files: silent
+	if n := outOfPlanNote(nil, "write", []byte(`{"path":"a.js"}`)); n != "" {
+		t.Errorf("nil plan should be silent, got %q", n)
+	}
+	if n := outOfPlanNote(&Plan{Title: "x"}, "write", []byte(`{"path":"a.js"}`)); n != "" {
+		t.Errorf("plan without files should be silent, got %q", n)
+	}
+}

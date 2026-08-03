@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -50,6 +51,16 @@ func (t *Bash) Execute(ctx context.Context, args json.RawMessage) (string, error
 	}
 	if err := json.Unmarshal(args, &a); err != nil || a.Command == "" {
 		return "", fmt.Errorf("command required")
+	}
+
+	// A server backgrounded with `&` dies with the process group the moment
+	// this call returns — running it is ALWAYS wasted work (and often reports
+	// success because the chain exits 0 before the kill). Refuse up front;
+	// hint-after-failure proved too weak, the model burned turns on it.
+	if backgroundsServer(a.Command) {
+		return "", fmt.Errorf("refused: this backgrounds a server, which cannot survive a bash call " +
+			"(its process group is killed when the call ends). Use the `serve` tool instead: " +
+			`serve {"action":"start","dir":"<subdir>","port":<port>}`)
 	}
 
 	cmd := exec.Command("bash", "-c", a.Command)
@@ -136,6 +147,19 @@ func capOutput(text string) string {
 	}
 	return h + fmt.Sprintf("\n...[%d bytes omitted — showing the start and end]...\n", len(text)-len(h)-len(tl)) + tl
 }
+
+// backgroundsServer reports whether the command starts a server detached with
+// a single `&` (job control) — the doomed pattern. `&&`, `2>&1` and `>&` are
+// not background operators and must stay allowed.
+func backgroundsServer(cmd string) bool {
+	if !looksLikeServer(cmd) {
+		return false
+	}
+	return bgAmp.MatchString(cmd)
+}
+
+// a lone & at end-of-command or before a separator; not &&, not >&, not 2>&1
+var bgAmp = regexp.MustCompile(`[^&>\d]&(\s*$|\s*;|\s+[^&])`)
 
 // looksLikeServer spots commands that never return, so the timeout can explain
 // itself instead of just "timed out".

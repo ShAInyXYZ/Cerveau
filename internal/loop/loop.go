@@ -166,9 +166,11 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	// In autopilot, a plan committed earlier (in Discussion) is injected as GUIDANCE
 	// — the agent follows its intent but adapts freely. No plan is fine: it plans
 	// and executes from the task directly.
+	var activePlan *Plan
 	if mode.Name == "autopilot" {
 		if plan, _, perr := LatestPlan(l.path(sessionID)); perr == nil && plan != nil {
 			systemPrompt += "\n\n" + plan.AsGuidance()
+			activePlan = plan
 		}
 	}
 	wr, err := l.open(sessionID)
@@ -409,6 +411,12 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			// standing still, never for taking a while — the repeat detector
 			// below is what catches genuine spinning.
 			g.progress()
+			// Surface architecture drift: a write outside the plan's declared
+			// files gets a visible note (appended BEFORE persisting, same
+			// reasoning as the repeat coaching above).
+			if note := outOfPlanNote(activePlan, tc.Function.Name, args); note != "" {
+				out += "\n\n[harness] " + note
+			}
 			wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": ok, "output": out})
 			// Loop detection on the RESULT: only a call that yields the SAME output
 			// repeatedly is a stuck loop. Re-running e.g. `npm run build` with a

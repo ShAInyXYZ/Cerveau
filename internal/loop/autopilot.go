@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"cerveau/internal/episodic"
@@ -235,4 +236,38 @@ func renderReport(plan *Plan, results []StepResult, handback bool) string {
 		sb.WriteString("\nHanded back early: a step failed under a low autonomy budget. Adjust the plan or re-run.")
 	}
 	return sb.String()
+}
+
+// outOfPlanNote flags a write that creates a file the committed plan never
+// declared. Architecture drift (the model inventing extra files) was invisible
+// before — a one-file build silently became four files and only failed at
+// runtime. The note doesn't block the write (plans adapt); it makes the drift
+// something the model and the user can SEE and correct.
+func outOfPlanNote(p *Plan, tool string, args []byte) string {
+	if p == nil || tool != "write" {
+		return ""
+	}
+	declared := map[string]bool{}
+	for _, s := range p.Steps {
+		for _, f := range s.Files {
+			declared[f] = true
+		}
+	}
+	if len(declared) == 0 {
+		return "" // a plan without file declarations constrains nothing
+	}
+	var a struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal(args, &a) != nil || a.Path == "" || declared[a.Path] {
+		return ""
+	}
+	files := make([]string, 0, len(declared))
+	for f := range declared {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	return fmt.Sprintf("note: %s is not in the committed plan (declared files: %s). "+
+		"If this extra file is intentional, continue; otherwise keep to the planned layout.",
+		a.Path, strings.Join(files, ", "))
 }

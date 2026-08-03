@@ -86,3 +86,31 @@ func TestBashCapKeepsTail(t *testing.T) {
 		t.Fatalf("cap not enforced: %d bytes", len(capped))
 	}
 }
+
+// A backgrounded server must be REFUSED before running — the hint-after-failure
+// approach burned whole turns (the model ran it, waited out the kill, and the
+// server died anyway). Structural rule: refuse up front, point at serve.
+func TestBashRefusesBackgroundedServer(t *testing.T) {
+	b := NewBash(t.TempDir())
+	_, err := b.Execute(context.Background(), json.RawMessage(
+		`{"command":"cd app && python3 -m http.server 8888 &"}`))
+	if err == nil {
+		t.Fatal("backgrounded server should be refused")
+	}
+	if !strings.Contains(err.Error(), "serve") {
+		t.Errorf("refusal should point at the serve tool: %v", err)
+	}
+}
+
+// && is not a background operator — plain build chains must still run.
+func TestBashAllowsAndAndChains(t *testing.T) {
+	b := NewBash(t.TempDir())
+	out, err := b.Execute(context.Background(), json.RawMessage(
+		`{"command":"echo one && echo two"}`))
+	if err != nil {
+		t.Fatalf("&& chain should run: %v", err)
+	}
+	if !strings.Contains(out, "two") {
+		t.Errorf("chain output missing: %q", out)
+	}
+}

@@ -29,10 +29,16 @@ var Modes = map[string]Mode{
 			"Safety is enforced structurally by the harness (destructive ops are blocked or auto-made-safe), " +
 			"so act decisively within that floor. " +
 			"If a committed plan is present below, treat it as your guide — follow its intent, but adapt freely. " +
+			"PLAN FIRST: if the user asks you to plan (or plan-then-build), call the commit_plan tool BEFORE " +
+			"writing any code — a plan narrated in prose or written to a file is invisible to the harness and " +
+			"cannot be tracked. commit_plan, then execute it. " +
+			"VERIFY WEB PAGES: after building or fixing an HTML/JS page, run check_page on it — it reports " +
+			"runtime console errors you cannot see from the source. Do not claim a page works without it. " +
 			"FILE SIZE DISCIPLINE: one tool call cannot exceed the output limit. Never attempt a write " +
 			"larger than ~200 lines. For anything bigger, write a first chunk, then APPEND the rest with " +
-			"`edit` (old_string = the last line you wrote), or split it into several smaller files. " +
-			"A cut-off call wastes the whole generation — plan the chunking BEFORE you start writing.",
+			"`edit` (old_string = the last line you wrote). Do NOT solve size by splitting into extra files — " +
+			"the user's requested file layout is a hard constraint; chunked writes to the SAME file are how " +
+			"you handle size. A cut-off call wastes the whole generation — plan the chunking BEFORE writing.",
 		// Autopilot WRITES WHOLE FILES in tool calls — the cap must fit them. At
 		// 2048 a ~8KB game.js got truncated mid-JSON and llama.cpp's tool parser
 		// choked ("missing closing quote" at col ~8122 = 2048 tok × 4 chars).
