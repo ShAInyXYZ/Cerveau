@@ -21,6 +21,51 @@
 
 ## 📌 Patch notes
 
+### 🧭 v0.3 — "Guidebook" · 2026-08-03
+
+<p>
+  <img src="https://img.shields.io/badge/self--repair-guidebook-C0304A?style=flat-square&labelColor=17140F" alt="guidebook"/>
+  <img src="https://img.shields.io/badge/tools-serve_·_check__page_·_web__fetch-E88BA0?style=flat-square&labelColor=17140F" alt="new tools"/>
+  <img src="https://img.shields.io/badge/guards-idle_based-C0304A?style=flat-square&labelColor=17140F" alt="idle guards"/>
+</p>
+
+**The harness stops failing on solved problems.** A week of building real
+apps through Cerveau turned every failure into a structural fix — the
+release's doctrine: *advice in a prompt is a suggestion the model may
+ignore; a rule in the core always runs.*
+
+- **The guidebook** — the core's book of self-fixes. A mechanical failure
+  (busy port → next port, invalid regex → literal search) is repaired and
+  retried by the registry itself, disclosed as `[auto-fixed] …`. Real
+  errors still reach the model untouched. Add a rule = add a table entry.
+- **`serve`** — long-lived static servers the agent can actually start
+  (bash kills its whole process group on return, so `… &` servers died
+  instantly). Start/stop/list, workspace-jailed, returns the URL.
+- **`check_page`** — headless-browser feedback: console errors, uncaught
+  exceptions, did-my-element-render (tag / `#id` / `.class`), software
+  WebGL for Three.js apps. The model debugged and fixed its own broken
+  game with it — CORS diagnosis to working canvas in one turn.
+- **`web_fetch` v2** — the industry single-page pipeline in-process:
+  Readability → markdown (code blocks + tables intact), outline-first for
+  big pages with `section=`/`start_index` drill-down sized to the 32K
+  window. Honest UA (a test fails if it ever impersonates a browser);
+  404/bot-blocks return as *facts to route around*, never burning the
+  error budget. Design record in `docs/WEBFETCH.md`.
+- **Plans reach the plan card no matter what** — `commit_plan` accepts
+  plain markdown (headings/lists/checkboxes become steps), and a plan
+  written to a `.md` file is auto-committed as a structured plan event,
+  disclosed. The Planner pack finally always has something to supervise.
+- **Guards measure stuckness, not effort** — the turn timer is an idle
+  timeout that resets on every tool result; token exhaustion checkpoints
+  and continues (3 slices) instead of killing mid-build; `rm -rf` is
+  judged against the *real* workspace boundary instead of "starts with
+  /"; error messages that name a wall now also name the door
+  (dev server → build once, serve the dist).
+- **Targeted editing** — line-numbered reads, `from_line`/`to_line`
+  ranges, indent-tolerant matching, deletion via empty `new_string`,
+  nearest-match hints on a miss. The model lands edits on the first try
+  instead of re-reading whole files.
+
 ### 🎛️ v0.2.1 — "RFX_UI" · 2026-08-02
 
 <p>
