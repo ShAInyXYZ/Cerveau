@@ -95,13 +95,18 @@ func (t *Bash) Execute(ctx context.Context, args json.RawMessage) (string, error
 
 	text := capOutput(buf.String())
 	if timedOut {
-		hint := ""
 		if looksLikeServer(a.Command) {
-			hint = " — looks like a long-lived server; start it in the background or use a one-shot build instead"
+			return text, fmt.Errorf("command timed out — this looks like a long-lived server, which bash cannot run (it is killed when the call ends). Use the `serve` tool to start a web server for the workspace")
 		}
-		return text, fmt.Errorf("command timed out after %s%s", bashTimeout, hint)
+		return text, fmt.Errorf("command timed out after %s", bashTimeout)
 	}
 	if runErr != nil {
+		// A backgrounded server (`... &`) is killed with the process group the
+		// moment this call ends — point the model at the serve tool instead of
+		// letting it retry the same doomed command.
+		if strings.Contains(a.Command, "&") && looksLikeServer(a.Command) {
+			return text, fmt.Errorf("exit: %w — a backgrounded server cannot survive a bash call (its process group is killed). Use the `serve` tool to run a static server instead", runErr)
+		}
 		return text, fmt.Errorf("exit: %w", runErr)
 	}
 	if text == "" {
@@ -135,7 +140,7 @@ func capOutput(text string) string {
 // looksLikeServer spots commands that never return, so the timeout can explain
 // itself instead of just "timed out".
 func looksLikeServer(cmd string) bool {
-	for _, s := range []string{"npm run dev", "npm start", "vite", "next dev", "serve", "--watch", "nodemon", "http-server"} {
+	for _, s := range []string{"npm run dev", "npm start", "vite", "next dev", "serve", "--watch", "nodemon", "http-server", "http.server", "python -m http", "python3 -m http", "live-server"} {
 		if bytes.Contains([]byte(cmd), []byte(s)) {
 			return true
 		}

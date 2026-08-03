@@ -146,6 +146,9 @@ func main() {
 			{Tool: tools.NewWrite(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot, tools.ModeBrainstorming}, IngressCap: 2000, RetryClass: "args"},
 			{Tool: apPatch, RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot, tools.ModeBrainstorming}, IngressCap: 3000, RetryClass: "args"},
 			{Tool: tools.NewBash(ws), RiskTier: tools.RiskDangerous, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "transient"},
+			// serve: long-lived static server for the workspace — the one thing
+			// bash cannot do (it kills its process group). Safe: static files only.
+			{Tool: tools.NewServe(ws), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeAutopilot}, IngressCap: 1000, RetryClass: "args"},
 			{Tool: tools.NewCommitPlan(a.Writer, sctx), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeDiscussion}, IngressCap: 2000, RetryClass: "args"},
 			{Tool: tools.NewAskUser(a.QuestionBroker(), sctx), RiskTier: tools.RiskSafe, IngressCap: 1000, RetryClass: "args"},
 			{Tool: tools.NewWebFetch(), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeBrainstorming}, IngressCap: 8000, RetryClass: "transient"},
