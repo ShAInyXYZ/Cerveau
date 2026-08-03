@@ -120,3 +120,57 @@ func TestOrdinaryCodeFileNotBackedUp(t *testing.T) {
 		}
 	}
 }
+
+// The rm rule must judge against the ACTUAL workspace boundary, not "starts
+// with a slash": an absolute path inside the workspace is a normal delete;
+// outside it (or root, home, bare globs, traversal) stays catastrophic.
+func TestRmWorkspaceBoundary(t *testing.T) {
+	g := New("/ws/project")
+
+	allowed := []string{
+		`rm -rf /ws/project/dist`,
+		`rm -rf /ws/project/a.html /ws/project/b.html`,
+		`rm -rf build/`,
+		`rm -f old.txt`,
+		`rm -rf dist/*`,
+	}
+	for _, cmd := range allowed {
+		if err := g.Check("bash", bashArgs(cmd)); err != nil {
+			t.Errorf("should be allowed (inside workspace): %q → %v", cmd, err)
+		}
+	}
+
+	blocked := []string{
+		`rm -rf /`,
+		`rm -rf /etc`,
+		`rm -rf /ws/other`,
+		`rm -rf ~`,
+		`rm -rf $HOME`,
+		`rm -rf *`,
+		`rm -rf ../sibling`,
+		`rm -rf /ws/project/../other`,
+	}
+	for _, cmd := range blocked {
+		if err := g.Check("bash", bashArgs(cmd)); err == nil {
+			t.Errorf("should be blocked: %q", cmd)
+		}
+	}
+}
+
+// The guard must follow runtime workspace changes — it was frozen at startup,
+// so after a workspace switch it judged against a stale root.
+func TestGuardSetWorkspace(t *testing.T) {
+	g := New("/old/root")
+	if err := g.Check("bash", bashArgs(`rm -rf /new/root/file.txt`)); err == nil {
+		t.Fatal("path outside current workspace should be blocked")
+	}
+	g.SetWorkspace("/new/root")
+	if err := g.Check("bash", bashArgs(`rm -rf /new/root/file.txt`)); err != nil {
+		t.Fatalf("after SetWorkspace the path is inside: %v", err)
+	}
+}
+
+func bashArgs(cmd string) json.RawMessage {
+	b, _ := json.Marshal(map[string]string{"command": cmd})
+	return b
+}

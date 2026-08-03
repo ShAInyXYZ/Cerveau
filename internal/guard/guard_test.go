@@ -76,11 +76,17 @@ func TestSensitiveBlocked(t *testing.T) {
 // makes these commands *blocked*, that is a scope change to discuss — not a bug
 // fix — because it will also start blocking legitimate in-tree cleanup.
 func TestRelativeDestructiveRmIsDeliberatelyAllowed(t *testing.T) {
+	// SCOPE CHANGE (deliberate): rmViolation now RESOLVES paths against the
+	// workspace instead of regex-guessing, so `rm -rf ../sibling` is blocked
+	// for real (see TestRmWorkspaceBoundary) — the old "a regex can't honestly
+	// bound this" rationale no longer applies to resolvable paths. What
+	// REMAINS a documented gap is cwd manipulation (`cd /etc && rm -rf .`):
+	// the checker resolves targets against the workspace root, not a tracked
+	// cwd. Real containment is the roadmap's Landlock jail, not this rule.
 	g := New("/tmp/ws")
 	knownGaps := []string{
-		`{"command":"rm -rf ./build"}`,
-		`{"command":"rm -rf ../sibling"}`,
-		`{"command":"cd /etc && rm -rf ."}`,
+		`{"command":"rm -rf ./build"}`,      // in-tree cleanup — legitimate
+		`{"command":"cd /etc && rm -rf ."}`, // cwd evasion — Landlock's job
 	}
 	for _, c := range knownGaps {
 		if err := check(t, g, "bash", c); err != nil {

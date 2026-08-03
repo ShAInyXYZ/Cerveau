@@ -3,7 +3,11 @@ package guard
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
+	"sync"
 )
 
 const (
@@ -19,20 +23,35 @@ type rule struct {
 }
 
 type Guard struct {
+	mu        sync.RWMutex
 	workspace string
 	cmdRules  []rule
 	pathRules []rule
+}
+
+// SetWorkspace follows a runtime workspace switch. The guard used to be
+// frozen at its startup root, so after a switch it judged rm paths against a
+// STALE workspace and blocked legitimate in-project deletes as "outside the
+// workspace".
+func (g *Guard) SetWorkspace(ws string) {
+	g.mu.Lock()
+	g.workspace = ws
+	g.mu.Unlock()
+}
+
+func (g *Guard) ws() string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.workspace
 }
 
 func New(workspace string) *Guard {
 	return &Guard{
 		workspace: workspace,
 		cmdRules: []rule{
-			// Recursive/force rm targeting anything outside the workspace: an
-			// absolute path (/, /etc, /usr...), a home-relative path (~, $HOME),
-			// or a bare glob (*). The earlier version anchored on the target
-			// ending in / ~ or *, so `rm -rf /etc` slipped straight through.
-			{TierCatastrophic, regexp.MustCompile(`\brm\s+(-\w*[rf]\w*\s+)+\s*(/|~|\$HOME\b|\$\{HOME\}|\*)`), "recursive force-delete outside the workspace", "never allowed — delete inside the workspace only"},
+			// rm -r/-f is judged by rmViolation (workspace-aware, in Check):
+			// the old regex here branded ANY absolute path catastrophic, which
+			// blocked legitimate in-project deletes like rm -rf <ws>/dist.
 			{TierCatastrophic, regexp.MustCompile(`:\(\)\s*\{`), "fork bomb", "never allowed"},
 			{TierCatastrophic, regexp.MustCompile(`\bdd\b[^|]*\bof=/dev/`), "dd writing to a device", "never allowed"},
 			{TierCatastrophic, regexp.MustCompile(`\bmkfs[.\s]`), "filesystem format", "never allowed"},
@@ -63,6 +82,9 @@ func (g *Guard) Check(tool string, args json.RawMessage) error {
 		}
 		if err := json.Unmarshal(args, &a); err != nil {
 			return fmt.Errorf("bad args: %w", err)
+		}
+		if why := rmViolation(g.ws(), a.Command); why != "" {
+			return deny(&rule{TierCatastrophic, nil, "recursive force-delete outside the workspace", why})
 		}
 		if r := match(g.cmdRules, a.Command); r != nil {
 			return deny(r)
@@ -107,4 +129,63 @@ func (e *TierError) Error() string {
 
 func deny(r *rule) error {
 	return &TierError{Tier: r.tier, Reason: r.reason, Hint: r.hint}
+}
+
+// rmInvocation finds rm calls that carry -r or -f flags and captures their
+// target list (up to a shell separator).
+var rmInvocation = regexp.MustCompile(`(?:^|[;&|]\s*|\bsudo\s+)rm\s+((?:-\S+\s+)*)([^|;&]*)`)
+
+// rmViolation judges an rm against the REAL workspace boundary. An absolute
+// path inside the workspace is an ordinary delete; root, home, bare globs,
+// traversal, unresolvable variables, and anything outside the workspace are
+// catastrophic. Empty string = no violation.
+func rmViolation(workspace, cmd string) string {
+	if workspace == "" {
+		return ""
+	}
+	wsAbs, err := filepath.Abs(workspace)
+	if err != nil {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	for _, m := range rmInvocation.FindAllStringSubmatch(cmd, -1) {
+		flags, rest := m[1], m[2]
+		if !strings.ContainsAny(flags, "rf") && !strings.Contains(flags, "-R") {
+			continue // plain rm without -r/-f keeps its old (unguarded) behavior
+		}
+		for _, tok := range strings.Fields(rest) {
+			tok = strings.Trim(tok, `"'`)
+			if tok == "" || strings.HasPrefix(tok, "-") {
+				continue
+			}
+			// expand the only variables we can verify
+			switch {
+			case tok == "~" || tok == "$HOME" || tok == "${HOME}":
+				tok = home
+			case strings.HasPrefix(tok, "~/"):
+				tok = filepath.Join(home, tok[2:])
+			case strings.HasPrefix(tok, "$HOME/"):
+				tok = filepath.Join(home, tok[6:])
+			case strings.Contains(tok, "$"):
+				return fmt.Sprintf("cannot verify %q (shell variable) — use an explicit path inside the workspace", tok)
+			}
+			// a bare glob deletes the whole cwd — treat like deleting the workspace root
+			if tok == "*" || tok == "/*" {
+				return "bare glob would delete everything at the root — name the paths explicitly"
+			}
+			glob := strings.Split(tok, "*")[0] // judge the fixed prefix of a glob
+			full := glob
+			if !filepath.IsAbs(full) {
+				full = filepath.Join(wsAbs, full)
+			}
+			full = filepath.Clean(full)
+			if full != wsAbs && !strings.HasPrefix(full, wsAbs+string(filepath.Separator)) {
+				return fmt.Sprintf("%q resolves outside the workspace (%s) — delete inside the workspace only", tok, wsAbs)
+			}
+			if full == wsAbs && strings.Contains(tok, "*") {
+				return "glob at the workspace root would delete everything — name the paths explicitly"
+			}
+		}
+	}
+	return ""
 }
