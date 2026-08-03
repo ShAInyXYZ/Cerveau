@@ -430,7 +430,9 @@
     background: linear-gradient(to top, var(--bg) 60%, transparent);
   }
   /* the plan strip stacks ABOVE the composer, both sharing its width */
-  .dockstack { width: 100%; max-width: 980px; display: flex; flex-direction: column; }
+  /* the plan strip and the composer share ONE width, so they read as a
+     single stacked unit — the stack matches the composer row (760px). */
+  .dockstack { width: 100%; max-width: 760px; display: flex; flex-direction: column; }
   .wsline { align-self: flex-end; margin-bottom: 6px; position: relative; z-index: 4; }
   .wsrow {
     width: 100%; max-width: 760px;
@@ -438,7 +440,7 @@
     padding: 0 6px 6px 0;
   }
   .dockrow {
-    width: 100%; max-width: 760px;
+    width: 100%;
     display: flex; align-items: center; gap: 12px;
   }
   /* knob sits OUTSIDE the bar, on the left */
