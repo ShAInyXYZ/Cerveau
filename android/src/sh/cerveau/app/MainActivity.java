@@ -156,7 +156,16 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
-        if (req == REQ_UNLOCK && res == RESULT_OK) openPanel(text("", MUTED));
+        if (req == REQ_UNLOCK && res == RESULT_OK) { openPanel(text("", MUTED)); return; }
+        if (req == REQ_SCAN && res == RESULT_OK && data != null) {
+            String payload = data.getStringExtra("SCAN_RESULT");
+            if (payload == null) return;
+            String g = gateFromPayload(payload), c = codeFromPayload(payload);
+            if (c != null && codeFieldRef != null) codeFieldRef.setText(c);
+            // a scanned payload carries the gate directly — remember it so the
+            // link-code lookup can be skipped entirely
+            if (g != null) prefs.edit().putString("scanned_gate", g).apply();
+        }
     }
 
     // ── state 2: not paired → the pairing form ───────────────────────
@@ -196,56 +205,75 @@ public class MainActivity extends Activity {
      * showing it on its own screen (over the tailnet). The user reads it there
      * and types it here — the code authorizes THIS device's public key.
      */
+    private static final int REQ_SCAN = 4712;
+    /** set while the pair step is on screen so the scan result can fill it */
+    private EditText linkFieldRef, codeFieldRef;
+
     private void showPairStep() {
         LinearLayout root = column();
         root.addView(brandMark());
         root.addView(label("PAIR", TEXT, 20));
-        TextView where = text("looking for your machine…", MUTED);
-        root.addView(where);
+        root.addView(text("on your machine: open Cerveau → tap the phone icon", MUTED));
 
-        EditText codeField = field("6-character code", "");
+        // Two ways in, both from the same invitation:
+        //   • the short link code (EQEF) — resolves the gate for us
+        //   • the 6-char code shown under it
+        EditText linkField = field("link code (4 chars, e.g. EQEF)", "");
+        linkField.setAllCaps(true);
+        EditText codeField = field("pairing code (6 chars)", "");
         codeField.setAllCaps(true);
-        final String[] gate = { null };
-        new Thread(() -> {
-            String g = Gate.discover(GATE_PORT, 6000);
-            gate[0] = g;
-            ui.post(() -> where.setText(g == null
-                    ? "scan the pairing code from your machine\n(open Cerveau on it → Pair a phone)"
-                    : "on your machine, open\n" + g + "/pair\nand type the 6-character code it shows"));
-        }).start();
-        Button confirm = button("CONFIRM");
+        linkFieldRef = linkField; codeFieldRef = codeField;
+
+        Button confirm = button("PAIR");
         TextView status = text("", MUTED);
+
+        // Scanning is delegated to whatever scanner the phone already has —
+        // decoding QR by hand in raw Java would be a lot of subtle code for
+        // something the OS ecosystem already does well. Typing always works.
+        TextView scan = text("or scan the QR instead", ACCENT);
+        scan.setPadding(0, dp(14), 0, dp(4));
+        scan.setOnClickListener(v -> launchScanner(status));
 
         confirm.setOnClickListener(v -> {
             hideKeyboard(v);
-            String typed = codeField.getText().toString().trim();
-            // Accept either the 6-char code or a full pairing payload/URL
-            // (cerveau://pair?gate=…&code=… or https://gate/p/XXXX) so a
-            // scanned or pasted invitation works without any typing.
-            final String pastedGate = gateFromPayload(typed);
-            String code = codeFromPayload(typed);
-            if (code == null) code = typed.toUpperCase();
-            if (code.length() != 6) { fail(status, confirm, "the code is 6 characters"); return; }
-            final String finalCode = code;
+            final String slug = linkField.getText().toString().trim().toUpperCase();
+            final String typed = codeField.getText().toString().trim().toUpperCase();
+            if (slug.isEmpty() && typed.isEmpty()) {
+                fail(status, confirm, "enter the link code, the pairing code, or scan");
+                return;
+            }
             status.setTextColor(Color.parseColor(MUTED));
-            status.setText("handshaking…");
+            status.setText("pairing…");
             confirm.setEnabled(false);
             new Thread(() -> {
                 if (!Gate.tailnetUp()) {
                     ui.post(() -> fail(status, confirm,
-                            "tailscale is not up on this phone\nstart it, then retry"));
+                            "not on your private network\nconnect tailscale, then pair"));
                     return;
                 }
                 try {
-                    String g = pastedGate != null ? pastedGate : gate[0];
-                    if (g == null) g = Gate.discover(GATE_PORT, 6000);
-                    if (g == null) {
-                        ui.post(() -> fail(status, confirm, "cannot reach your machine"));
+                    String gate = null, code = typed;
+
+                    // A link code resolves BOTH the gate and the code, so the
+                    // phone never has to know an address in advance.
+                    if (!slug.isEmpty()) {
+                        String[] r = resolveSlug(slug);
+                        if (r != null) { gate = r[0]; if (code.isEmpty()) code = r[1]; }
+                    }
+                    if (gate == null) gate = prefs.getString("scanned_gate", null);
+                    if (gate == null) gate = Gate.discover(GATE_PORT, 6000);
+                    if (gate == null) {
+                        ui.post(() -> fail(status, confirm,
+                                "could not resolve that link code\ncheck it, or scan the QR"));
                         return;
                     }
-                    final String resolved = g;
+                    if (code.length() != 6) {
+                        ui.post(() -> fail(status, confirm, "the pairing code is 6 characters"));
+                        return;
+                    }
                     DeviceKey.ensure();
-                    String[] got = pair(resolved, finalCode, DeviceKey.publicKeyB64());
+                    final String resolvedGate = gate;
+                    String[] got = pair(resolvedGate, code, DeviceKey.publicKeyB64());
                     if (got == null) {
                         int tries = prefs.getInt("tries", 0) + 1;
                         prefs.edit().putInt("tries", tries).apply();
@@ -259,7 +287,7 @@ public class MainActivity extends Activity {
                                 "wrong or expired code — " + (MAX_TRIES - tries) + " tries left"));
                         return;
                     }
-                    prefs.edit().putString("url", resolved)
+                    prefs.edit().putString("url", resolvedGate)
                             .putString("device_id", got[1])
                             .putInt("tries", 0).apply();
                     Vault.store(this, prefs, got[0]);
@@ -274,17 +302,51 @@ public class MainActivity extends Activity {
             }).start();
         });
 
+        root.addView(linkField);
         root.addView(codeField);
         root.addView(confirm);
+        root.addView(scan);
         root.addView(status);
         TextView back = text("back", FAINT);
-        back.setPadding(0, dp(24), 0, 0);
+        back.setPadding(0, dp(22), 0, 0);
         back.setOnClickListener(v -> showPortal());
         root.addView(back);
         setContentView(scroll(root));
     }
 
+    /** Ask any installed scanner app for a QR; result lands in onActivityResult. */
+    private void launchScanner(TextView status) {
+        Intent i = new Intent("com.google.zxing.client.android.SCAN");
+        i.putExtra("SCAN_MODE", "QR_CODE_MODE");
+        try {
+            startActivityForResult(i, REQ_SCAN);
+        } catch (Exception e) {
+            status.setTextColor(Color.parseColor(MUTED));
+            status.setText("no scanner app installed — type the codes instead");
+        }
+    }
 
+    /** Resolve a 4-char link code into {gate, code} via the invitation. */
+    private String[] resolveSlug(String slug) {
+        // The slug is only meaningful ON the gate, so we must already be able
+        // to reach one: try discovery, then ask it to resolve.
+        String gate = Gate.discover(GATE_PORT, 6000);
+        if (gate == null) return null;
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(gate + "/p/" + slug).openConnection();
+            c.setRequestProperty("Accept", "application/json");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(8000);
+            if (c.getResponseCode() != 200) return null;
+            JSONObject j = new JSONObject(readAll(c.getInputStream()));
+            return new String[]{ j.getString("gate"), j.getString("code") };
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
 
     private void showLockedOut() {
         LinearLayout root = column();

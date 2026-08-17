@@ -85,6 +85,14 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 			gate := gateOrigin(r)
 			if strings.HasPrefix(path, "/p/") {
 				if inv, ok := invites.bySlug(strings.TrimPrefix(path, "/p/")); ok {
+					// The phone asks for JSON to resolve a typed slug into
+					// {gate, code}; a browser gets the page.
+					if strings.Contains(r.Header.Get("Accept"), "application/json") {
+						w.Header().Set("Content-Type", "application/json")
+						w.Header().Set("Cache-Control", "no-store")
+						fmt.Fprintf(w, `{"gate":%q,"code":%q}`, inv.Gate, inv.Code)
+						return
+					}
 					servePairInvite(w, inv)
 					return
 				}
