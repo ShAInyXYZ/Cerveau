@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -134,6 +135,14 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 			inner.ServeHTTP(w, r) // unpaired localhost setup — same as before auth existed
 			return
 		}
+		// Pairing a phone must not lock the user out of their own machine.
+		// A request arriving over LOOPBACK is physically local — the same
+		// trust root the pairing ID itself relies on (you must be at the
+		// console to read it). Remote requests still need the full proof.
+		if isLocalRequest(r) {
+			inner.ServeHTTP(w, r)
+			return
+		}
 		// Static UI assets (panel JS/CSS/icons/manifest) carry no session data
 		// and must load so the panel can show its lock screen.
 		if !strings.HasPrefix(path, "/api/") {
@@ -202,4 +211,33 @@ func servePair(cfg authCfg, limiter *pairLimiter, invites *pairSessions, w http.
 	_ = os.Remove(pairIDFile()) // one-shot: no pairing twice from the same ID
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"token":%q,"device_id":%q}`, token, devID)
+}
+
+// isLocalRequest reports whether the connection came from this machine.
+//
+// Deliberately based on the TCP peer only: X-Forwarded-* headers are set by
+// proxies and by anything upstream, so honoring them here would let a remote
+// caller claim locality and bypass the gate entirely. The NAS proxies remote
+// phones in over the tailnet and its connection is NOT loopback — which is
+// exactly right, since those requests must prove token + device signature.
+// ForwardedMarker is set by the ignite doorbell on everything it proxies in
+// from the tailnet. The core would otherwise see those requests as loopback
+// (the proxy runs on this machine) and grant them local trust — which would
+// hand every remote phone an unauthenticated bypass of the whole gate.
+const ForwardedMarker = "X-Cerveau-Forwarded"
+
+func isLocalRequest(r *http.Request) bool {
+	// proxied-in traffic is never local, whatever the socket says
+	if r.Header.Get(ForwardedMarker) != "" {
+		return false
+	}
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

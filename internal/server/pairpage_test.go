@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -112,5 +113,54 @@ func TestPairSessionAfterUseMintsFresh(t *testing.T) {
 	next := s.current("https://gate.example:7443")
 	if next.Code == first.Code {
 		t.Error("a used invitation must not be reissued")
+	}
+}
+
+// Pairing a phone must not lock the user out of their OWN machine. A request
+// arriving over loopback is physically local — the same trust root the
+// pairing ID relies on — so it passes without the remote token.
+func TestLoopbackIsAlwaysTrusted(t *testing.T) {
+	local := []string{"127.0.0.1:54321", "[::1]:54321", "localhost:7700"}
+	for _, addr := range local {
+		if !isLocalRequest(&http.Request{RemoteAddr: addr}) {
+			t.Errorf("%s must be treated as local", addr)
+		}
+	}
+	remote := []string{"100.106.133.82:41000", "192.168.100.5:41000", "8.8.8.8:443"}
+	for _, addr := range remote {
+		if isLocalRequest(&http.Request{RemoteAddr: addr}) {
+			t.Errorf("%s must NOT be treated as local", addr)
+		}
+	}
+}
+
+// A forwarded header must never be able to fake locality: the NAS proxies
+// remote phones in over the tailnet, and its connection is not loopback, but
+// a hostile header must not turn a remote request into a trusted one.
+func TestForwardedHeaderCannotForgeLocality(t *testing.T) {
+	r := &http.Request{
+		RemoteAddr: "100.106.133.82:41000",
+		Header:     http.Header{"X-Forwarded-For": []string{"127.0.0.1"}},
+	}
+	if isLocalRequest(r) {
+		t.Error("X-Forwarded-For must not grant local trust")
+	}
+}
+
+// The doorbell proxies remote phones in from the tailnet, so the core sees a
+// LOOPBACK connection for traffic that is not local at all. ignite stamps a
+// marker header; the gate must honour it and refuse local trust.
+func TestProxiedTrafficIsNotLocal(t *testing.T) {
+	r := &http.Request{
+		RemoteAddr: "127.0.0.1:41000",
+		Header:     http.Header{ForwardedMarker: []string{"1"}},
+	}
+	if isLocalRequest(r) {
+		t.Error("traffic forwarded by the doorbell must never count as local")
+	}
+	// and a plain local request still is
+	plain := &http.Request{RemoteAddr: "127.0.0.1:41000", Header: http.Header{}}
+	if !isLocalRequest(plain) {
+		t.Error("a direct loopback request must remain local")
 	}
 }

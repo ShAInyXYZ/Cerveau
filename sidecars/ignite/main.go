@@ -24,8 +24,8 @@ import (
 const coreURL = "http://127.0.0.1:7700"
 
 var (
-	proxy  *httputil.ReverseProxy
-	mu     sync.Mutex
+	proxy   *httputil.ReverseProxy
+	mu      sync.Mutex
 	lastTry time.Time
 )
 
@@ -66,9 +66,21 @@ display:flex;height:100vh;margin:0;align-items:center;justify-content:center}
 <script>setTimeout(()=>location.reload(),2000)</script></body></html>`)
 }
 
+// must match internal/server.ForwardedMarker
+const forwardedMarker = "X-Cerveau-Forwarded"
+
 func main() {
 	u, _ := url.Parse(coreURL)
 	proxy = httputil.NewSingleHostReverseProxy(u)
+	// The core sees THIS proxy's connection, which is loopback, and would
+	// otherwise grant remote callers the local trust reserved for someone
+	// physically at the machine. Stamp every forwarded request so the gate
+	// can tell them apart.
+	inner := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		inner(r)
+		r.Header.Set(forwardedMarker, "1")
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		ensureStarted()
@@ -76,6 +88,9 @@ func main() {
 			wakingPage(w)
 			return
 		}
+		// A client must never be able to strip or forge the marker: delete
+		// any copy it supplied before the Director sets the real one.
+		r.Header.Del(forwardedMarker)
 		proxy.ServeHTTP(w, r)
 	})
 	http.HandleFunc("/ignite/state", func(w http.ResponseWriter, r *http.Request) {
