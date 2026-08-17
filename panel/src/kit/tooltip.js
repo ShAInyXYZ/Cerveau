@@ -115,7 +115,16 @@ export function tooltip(node, opts) {
     }
   }
 
-  node.addEventListener('mouseenter', show);
+  // Touch devices synthesise mouseenter AFTER a tap and never send
+  // mouseleave, so a tooltip shown that way stays painted on screen —
+  // it sat on top of the workspace picker until the view changed.
+  // A pointer event tells us which kind of input this is.
+  let coarse = false;
+  function onPointerDown(e) { coarse = e.pointerType !== 'mouse'; }
+  function showIfHover() { if (!coarse) show(); }
+
+  node.addEventListener('pointerdown', onPointerDown);
+  node.addEventListener('mouseenter', showIfHover);
   node.addEventListener('mouseleave', hide);
   node.addEventListener('focusin', show);
   node.addEventListener('focusout', hide);
@@ -125,7 +134,8 @@ export function tooltip(node, opts) {
     update(o) { cfg = normalize(o); },
     destroy() {
       hide();
-      node.removeEventListener('mouseenter', show);
+      node.removeEventListener('pointerdown', onPointerDown);
+      node.removeEventListener('mouseenter', showIfHover);
       node.removeEventListener('mouseleave', hide);
       node.removeEventListener('focusin', show);
       node.removeEventListener('focusout', hide);

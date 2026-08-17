@@ -43,6 +43,8 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("POST /api/files/probe", a.ProbeFiles)
 	mux.HandleFunc("POST /api/config/workspace", a.ChangeWorkspace)
 	mux.HandleFunc("POST /api/config/pick-workspace", a.PickWorkspace)
+	// remote folder picking: the native dialog is useless from a phone
+	mux.HandleFunc("GET /api/fs/list", a.FSList)
 	mux.HandleFunc("POST /api/codegraph/index", a.ReindexCode)
 	mux.HandleFunc("GET /api/system/stats", a.SystemStats)
 	mux.Handle("/", panel.Handler())

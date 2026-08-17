@@ -1,18 +1,40 @@
-<script>
+<script lang="ts">
   import { jpost } from './api';
   import { tooltip } from '../kit/tooltip.js';
   import { FolderCog } from 'lucide-svelte';
+  import WorkspacePicker from './WorkspacePicker.svelte';
 
-  let { workspace = '', onChanged } = $props();
+  let { workspace = '', onChanged } = $props<{
+    workspace?: string;
+    onChanged?: (path: string) => void;
+  }>();
   let picking = $state(false);
+  let browsing = $state(false);
+
+  // The native dialog opens on the MACHINE — invisible and unclickable from a
+  // phone — so anything that isn't a desktop-width screen uses the in-panel
+  // browser instead. Both reach the same place.
+  const narrow = typeof matchMedia !== 'undefined'
+    && matchMedia('(max-width: 900px)').matches;
 
   async function pick() {
     if (picking) return;
+    if (narrow) {
+      // dismiss the hover tooltip before the sheet covers the button,
+      // otherwise it stays painted on top of the dialog
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      browsing = true;
+      return;
+    }
     picking = true;
-    // server opens the OS native folder dialog (crv runs locally)
-    const res = await jpost('/api/config/pick-workspace', {});
+    const res = await jpost<{ workspace?: string }>('/api/config/pick-workspace', {});
     picking = false;
     if (res?.workspace) onChanged?.(res.workspace);
+  }
+
+  async function pickPath(path: string) {
+    const res = await jpost<{ ok?: string }>('/api/config/workspace', { path });
+    if (res?.ok) onChanged?.(path);
   }
 </script>
 
@@ -22,6 +44,8 @@
   <span class="label">WS</span>
   <span class="wppath mono">{picking ? 'choosing…' : (workspace || '—')}</span>
 </button>
+
+<WorkspacePicker bind:open={browsing} current={workspace} onPick={pickPath} />
 
 <style>
   .wpbtn {
