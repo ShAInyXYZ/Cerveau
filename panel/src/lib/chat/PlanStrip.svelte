@@ -101,6 +101,9 @@
 {/if}
 
 <style>
+  /* one plan row — the unit the 5-row window is measured in */
+  .planwrap { --ps-row: 17px; }
+
   /* the strip mirrors the chat bar's inset (knob + gap), from shared tokens */
   .planwrap {
     align-self: stretch; margin: 0 var(--dock-inset) 8px;
@@ -159,8 +162,19 @@
     padding: 2px 6px; border-radius: 4px;
   }
   .ps-chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
-  .ps-steps { padding: 0 11px 8px; display: flex; flex-direction: column; gap: 3px; }
-  .ps-step { display: flex; align-items: baseline; gap: 7px; font-size: 11px; }
+  .ps-steps {
+    padding: 0 11px 8px; display: flex; flex-direction: column; gap: 3px;
+    /* Show five rows and scroll the rest inside. A 23-step plan otherwise
+       eats the whole screen and pushes the conversation out of view — and
+       five is enough to see where you are without becoming the page. */
+    max-height: calc(5 * var(--ps-row) + 8px);
+    overflow-y: auto;
+    overscroll-behavior: contain;   /* don't chain to the chat scroller */
+  }
+  .ps-step {
+    display: flex; align-items: baseline; gap: 7px; font-size: 11px;
+    min-height: var(--ps-row);
+  }
   .rnum { color: var(--faint); }
   .ps-name {
     flex: 1; min-width: 0; color: var(--muted);
@@ -172,6 +186,6 @@
 
   @media (max-width: 640px) {
     /* knobs stack below the bar on narrow screens; the strip goes full width */
-    .planwrap { margin: 0 0 8px; }
+    .planwrap { margin: 0 0 8px; --ps-row: 21px; }  /* taller touch rows */
   }
 </style>
