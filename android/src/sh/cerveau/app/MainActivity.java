@@ -213,13 +213,15 @@ public class MainActivity extends Activity {
         LinearLayout root = column();
         root.addView(brandMark());
         root.addView(label("PAIR", TEXT, 20));
-        root.addView(text("on your machine: open Cerveau → tap the phone icon", MUTED));
+        root.addView(text("on your machine: open Cerveau → tap the phone icon\nscan the QR, or paste the link it shows", MUTED));
 
         // Two ways in, both from the same invitation:
         //   • the short link code (EQEF) — resolves the gate for us
         //   • the 6-char code shown under it
-        EditText linkField = field("link code (4 chars, e.g. EQEF)", "");
-        linkField.setAllCaps(true);
+        // The phone cannot discover the gate on its own (Tailscale is a
+        // userspace VPN on Android — peers are invisible to the app), so the
+        // pairing LINK is what carries the address. Paste it or scan it.
+        EditText linkField = field("paste the pairing link", "");
         EditText codeField = field("pairing code (6 chars)", "");
         codeField.setAllCaps(true);
         linkFieldRef = linkField; codeFieldRef = codeField;
@@ -254,17 +256,29 @@ public class MainActivity extends Activity {
                 try {
                     String gate = null, code = typed;
 
-                    // A link code resolves BOTH the gate and the code, so the
-                    // phone never has to know an address in advance.
+                    // A pasted link carries the gate; that is the reliable path.
                     if (!slug.isEmpty()) {
-                        String[] r = resolveSlug(slug);
-                        if (r != null) { gate = r[0]; if (code.isEmpty()) code = r[1]; }
+                        String direct = gateFromPayload(linkField.getText().toString().trim());
+                        if (direct != null) {
+                            gate = direct;
+                            String pc = codeFromPayload(linkField.getText().toString().trim());
+                            if (pc != null && code.isEmpty()) code = pc;
+                            // a /p/SLUG link resolves its own code
+                            if (code.isEmpty()) {
+                                String[] r = resolveVia(gate, lastPathSegment(
+                                        linkField.getText().toString().trim()));
+                                if (r != null) code = r[1];
+                            }
+                        } else {
+                            String[] r = resolveSlug(slug);
+                            if (r != null) { gate = r[0]; if (code.isEmpty()) code = r[1]; }
+                        }
                     }
                     if (gate == null) gate = prefs.getString("scanned_gate", null);
-                    if (gate == null) gate = Gate.discover(GATE_PORT, 6000);
+                    if (gate == null) gate = Gate.discover(8000);
                     if (gate == null) {
                         ui.post(() -> fail(status, confirm,
-                                "could not resolve that link code\ncheck it, or scan the QR"));
+                                "paste the whole link from your machine\n(or scan the QR) — a short code alone\ncannot tell the app where to connect"));
                         return;
                     }
                     if (code.length() != 6) {
@@ -326,11 +340,38 @@ public class MainActivity extends Activity {
         }
     }
 
+    static String lastPathSegment(String url) {
+        String u = url.replaceAll("/+$", "");
+        int i = u.lastIndexOf('/');
+        return i < 0 ? u : u.substring(i + 1);
+    }
+
+    /** Ask a KNOWN gate to resolve a slug into {gate, code}. */
+    private String[] resolveVia(String gate, String slug) {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(gate + "/p/" + slug).openConnection();
+            c.setRequestProperty("Accept", "application/json");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(8000);
+            if (c.getResponseCode() != 200) return null;
+            JSONObject j = new JSONObject(readAll(c.getInputStream()));
+            return new String[]{ j.getString("gate"), j.getString("code") };
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
     /** Resolve a 4-char link code into {gate, code} via the invitation. */
     private String[] resolveSlug(String slug) {
-        // The slug is only meaningful ON the gate, so we must already be able
-        // to reach one: try discovery, then ask it to resolve.
-        String gate = Gate.discover(GATE_PORT, 6000);
+        // A pasted full link resolves itself; otherwise ask each reachable
+        // gate candidate. NOTE: this must NOT depend on Gate.discover() alone
+        // — that was the bug that made every link code fail.
+        if (slug.startsWith("HTTP")) return null; // handled by gateFromPayload
+        String gate = Gate.discover(8000);
+        if (gate == null) gate = prefs.getString("scanned_gate", null);
         if (gate == null) return null;
         HttpURLConnection c = null;
         try {

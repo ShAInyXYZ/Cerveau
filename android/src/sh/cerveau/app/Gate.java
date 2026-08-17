@@ -66,27 +66,27 @@ public final class Gate {
      * It is kept only as a last resort; the INVITATION (QR or the gate the
      * code was minted by) is the real answer.
      */
-    public static String discover(int port, int timeoutMs) {
-        InetAddress self = tailnetAddress();
-        if (self == null) return null;
+    public static String discover(int timeoutMs) {
+        List<String> hosts = peerCandidates();
+        if (hosts.isEmpty()) return null;
 
-        // A user-supplied hint (set once, kept device-local) short-circuits the
-        // sweep — useful when the gate lives outside this phone's own /24.
-        List<String> candidates = new ArrayList<>();
-        byte[] me = self.getAddress();
-        for (int i = 1; i < 255; i++) {
-            if ((me[3] & 0xff) == i) continue;    // skip ourselves
-            candidates.add(String.format("100.%d.%d.%d", me[1] & 0xff, me[2] & 0xff, i));
+        // Try the NAS gate (https) and the machine doorbell (http) — whichever
+        // this phone can actually reach. The invitation is still the reliable
+        // path; this only helps when the user typed a code with no scan.
+        List<String> origins = new ArrayList<>();
+        for (String h : hosts) {
+            origins.add("https://" + h + ":7443");
+            origins.add("http://" + h + ":7701");
         }
 
-        ExecutorService pool = Executors.newFixedThreadPool(24);
+        ExecutorService pool = Executors.newFixedThreadPool(16);
         final String[] found = { null };
         try {
-            for (String host : candidates) {
+            for (String origin : origins) {
                 pool.submit(() -> {
                     if (found[0] != null) return;
-                    if (probe(host, port, 900)) {
-                        synchronized (found) { if (found[0] == null) found[0] = host; }
+                    if (probe(origin, 1500)) {
+                        synchronized (found) { if (found[0] == null) found[0] = origin; }
                     }
                 });
             }
@@ -96,15 +96,38 @@ public final class Gate {
         } finally {
             pool.shutdownNow();
         }
-        return found[0] == null ? null : "https://" + found[0] + ":" + port;
+        return found[0];
     }
 
-    /** Does this host answer like a Cerveau gate? */
-    private static boolean probe(String host, int port, int timeoutMs) {
+    /**
+     * Tailnet peers this phone can plausibly reach.
+     *
+     * PROVEN LIMITATION (measured on-device): on Android, Tailscale is a
+     * USERSPACE VPN — its peers never appear in /proc/net/arp, and the phone's
+     * own /24 says nothing about where other nodes live (the NAS is 100.116.x
+     * while the phone is 100.106.x). So there is no reliable way for the app
+     * to DISCOVER the gate by itself. This returns whatever is visible and is
+     * expected to come back empty; the INVITATION carrying the address is the
+     * real mechanism, which is why the QR/full link exists.
+     */
+    private static List<String> peerCandidates() {
+        List<String> out = new ArrayList<>();
+        try (java.io.BufferedReader r = new java.io.BufferedReader(
+                new java.io.FileReader("/proc/net/arp"))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                String[] f = line.trim().split("\\s+");
+                if (f.length > 0 && f[0].startsWith("100.")) out.add(f[0]);
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /** Does this origin answer like a Cerveau gate? */
+    private static boolean probe(String origin, int timeoutMs) {
         HttpURLConnection c = null;
         try {
-            c = (HttpURLConnection) new URL("https://" + host + ":" + port + "/api/health")
-                    .openConnection();
+            c = (HttpURLConnection) new URL(origin + "/api/health").openConnection();
             c.setConnectTimeout(timeoutMs);
             c.setReadTimeout(timeoutMs);
             c.setRequestMethod("GET");

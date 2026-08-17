@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -186,9 +187,13 @@ const pairPageHTML = `<!doctype html>
 </script>
 `
 
-// gateOrigin reconstructs the origin the CLIENT used, so the QR points back
-// through the same door the browser came in by (the NAS gate when proxied,
-// the machine directly when local) — never a compiled-in address.
+// gateOrigin reconstructs the origin a PHONE can reach.
+//
+// The obvious implementation — echo back r.Host — breaks the whole flow when
+// the panel is open on localhost: the invitation would tell the phone to
+// connect to 127.0.0.1, which on a phone means the phone itself. So when the
+// request came in over loopback we substitute this machine's tailnet address,
+// which is the only address a phone can actually use.
 func gateOrigin(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
@@ -198,7 +203,40 @@ func gateOrigin(r *http.Request) string {
 	if host == "" {
 		host = r.Host
 	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+			if ts := tailnetSelf(); ts != "" {
+				return "http://" + net.JoinHostPort(ts, ignitePort)
+			}
+		}
+	}
 	return scheme + "://" + host
+}
+
+// the doorbell port a phone connects to when pairing over the tailnet
+const ignitePort = "7701"
+
+// tailnetSelf returns this machine's own 100.64/10 address, or "".
+func tailnetSelf() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip4 := ipnet.IP.To4()
+		if ip4 == nil {
+			continue
+		}
+		// 100.64.0.0/10 — Tailscale's CGNAT range
+		if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return ip4.String()
+		}
+	}
+	return ""
 }
 
 // servePairInvite re-renders an existing invitation (following /p/<slug>)
