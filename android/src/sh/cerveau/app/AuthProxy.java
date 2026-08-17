@@ -28,7 +28,7 @@ import java.util.Map;
  * after the user unlocks). Nothing on the page can read it.
  */
 public final class AuthProxy {
-    private final String base;      // e.g. http://100.90.163.54:7701
+    private final String base;      // the paired gate origin, from app storage
     private final String token;
     private final String deviceId;
     private HttpServer server;

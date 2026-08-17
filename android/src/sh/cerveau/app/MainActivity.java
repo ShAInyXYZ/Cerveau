@@ -56,10 +56,11 @@ public class MainActivity extends Activity {
     static final String TEXT = "#FAFAFA", MUTED = "#A1A1AA", DIM = "#71717A", FAINT = "#52525B";
     static final String ACCENT = "#E54866", ERR = "#e6533f", OK = "#4bb894";
 
-    /** The only address this app ever talks to: the NAS gate, real TLS via
-     *  `tailscale serve`. The machine is never addressed directly, and there
-     *  is no plaintext-http field for the user to get wrong. */
-    static final String GATE = "https://shiny-nas.tail58d4d4.ts.net:7443";
+    /** The gate port. A bare port number identifies nothing on its own —
+     *  the HOST is discovered on the tailnet at pair time and is never
+     *  compiled into the APK: `strings` on the binary must not reveal the
+     *  user's network. Once paired, the resolved gate lives in app storage. */
+    static final int GATE_PORT = 7443;
 
     private static final int MAX_TRIES = 5;
     private static final long LOCKOUT_MS = 15 * 60 * 1000L;
@@ -169,7 +170,24 @@ public class MainActivity extends Activity {
         TextView status = text("", MUTED);
         root.addView(startPair);
         root.addView(status);
-        startPair.setOnClickListener(v -> showPairStep(status));
+        startPair.setOnClickListener(v -> {
+            // Check the network BEFORE revealing anything about it. Off the
+            // tailnet, the app says only that — never where the gate lives.
+            status.setTextColor(Color.parseColor(MUTED));
+            status.setText("checking your network…");
+            startPair.setEnabled(false);
+            new Thread(() -> {
+                if (!Gate.tailnetUp()) {
+                    ui.post(() -> {
+                        startPair.setEnabled(true);
+                        status.setTextColor(Color.parseColor(ERR));
+                        status.setText("not on your private network\nconnect tailscale, then pair");
+                    });
+                    return;
+                }
+                ui.post(() -> ui.post(() -> { startPair.setEnabled(true); showPairStep(); }));
+            }).start();
+        });
         setContentView(scroll(root));
     }
 
@@ -178,15 +196,23 @@ public class MainActivity extends Activity {
      * showing it on its own screen (over the tailnet). The user reads it there
      * and types it here — the code authorizes THIS device's public key.
      */
-    private void showPairStep(TextView unusedStatus) {
+    private void showPairStep() {
         LinearLayout root = column();
         root.addView(brandMark());
         root.addView(label("PAIR", TEXT, 20));
-        root.addView(text("on your machine, open\n" + pairPageHint()
-                + "\nand type the 6-character code it shows", MUTED));
+        TextView where = text("looking for your machine…", MUTED);
+        root.addView(where);
 
         EditText codeField = field("6-character code", "");
         codeField.setAllCaps(true);
+        final String[] gate = { null };
+        new Thread(() -> {
+            String g = Gate.discover(GATE_PORT, 6000);
+            gate[0] = g;
+            ui.post(() -> where.setText(g == null
+                    ? "could not find your machine on the network\nis it awake?"
+                    : "on your machine, open\n" + g + "/pair\nand type the 6-character code it shows"));
+        }).start();
         Button confirm = button("CONFIRM");
         TextView status = text("", MUTED);
 
@@ -198,14 +224,21 @@ public class MainActivity extends Activity {
             status.setText("handshaking…");
             confirm.setEnabled(false);
             new Thread(() -> {
-                if (!tailscaleUp()) {
+                if (!Gate.tailnetUp()) {
                     ui.post(() -> fail(status, confirm,
                             "tailscale is not up on this phone\nstart it, then retry"));
                     return;
                 }
                 try {
+                    String g = gate[0];
+                    if (g == null) g = Gate.discover(GATE_PORT, 6000);
+                    if (g == null) {
+                        ui.post(() -> fail(status, confirm, "cannot reach your machine"));
+                        return;
+                    }
+                    final String resolved = g;
                     DeviceKey.ensure();
-                    String[] got = pair(GATE, code, DeviceKey.publicKeyB64());
+                    String[] got = pair(resolved, code, DeviceKey.publicKeyB64());
                     if (got == null) {
                         int tries = prefs.getInt("tries", 0) + 1;
                         prefs.edit().putInt("tries", tries).apply();
@@ -219,7 +252,7 @@ public class MainActivity extends Activity {
                                 "wrong or expired code — " + (MAX_TRIES - tries) + " tries left"));
                         return;
                     }
-                    prefs.edit().putString("url", GATE)
+                    prefs.edit().putString("url", resolved)
                             .putString("device_id", got[1])
                             .putInt("tries", 0).apply();
                     Vault.store(this, prefs, got[0]);
@@ -244,7 +277,7 @@ public class MainActivity extends Activity {
         setContentView(scroll(root));
     }
 
-    private String pairPageHint() { return GATE + "/pair"; }
+
 
     private void showLockedOut() {
         LinearLayout root = column();
