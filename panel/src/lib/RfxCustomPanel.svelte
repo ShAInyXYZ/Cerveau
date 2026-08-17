@@ -1,7 +1,7 @@
 <script>
   import { Zap, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
-  import { j, jpost, fetchEvents } from './api.js';
+  import { j, jpost, fetchEvents } from './api';
 
   // RfxCustomPanel — RFX-UI tier 2: the pack ships its own ui/panel.html
   // (any HTML/CSS/JS) rendered in a SANDBOXED iframe. Full presentation

@@ -1,5 +1,5 @@
 <script>
-  import { j, jpost } from './api.js';
+  import { j, jpost } from './api';
   import { Segmented, Button, Dot, Select } from '../kit/index.js';
   import MemGraph from './MemGraph.svelte';
   import { Search, GitBranch } from 'lucide-svelte';

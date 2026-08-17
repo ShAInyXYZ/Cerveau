@@ -2,7 +2,7 @@
   import { Segmented, Dot } from '../kit/index.js';
   import { tooltip } from '../kit/tooltip.js';
   import ActivityFlow from './ActivityFlow.svelte';
-  import { relTime } from './api.js';
+  import { relTime } from './api';
   import { X } from 'lucide-svelte';
 
   let { ticks = [], running = false, onClose } = $props();

@@ -12,10 +12,10 @@
     detail = '',
     meta = [],
     choices = null,          // [{ label, value, hint?, ghost? }] → stacked rows
-    onChoose,                // (value) => void
+    onChoose = null,         // (value) => void
     defaultOpen = false,     // start with the detail expanded (errors → true)
-    children,
-    actions                  // snippet → inline action buttons
+    children = null,
+    actions = null           // snippet → inline action buttons
   } = $props();
 
   const Icon = { err: AlertTriangle, warn: AlertTriangle, info: Info, accent: HelpCircle }[tone] ?? Info;

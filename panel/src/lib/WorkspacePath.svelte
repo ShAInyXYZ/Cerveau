@@ -1,5 +1,5 @@
 <script>
-  import { jpost } from './api.js';
+  import { jpost } from './api';
   import { tooltip } from '../kit/tooltip.js';
   import { FolderCog } from 'lucide-svelte';
 

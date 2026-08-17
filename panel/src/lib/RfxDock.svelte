@@ -1,7 +1,7 @@
 <script>
   import { Play, Zap } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
-  import { j, jpost } from './api.js';
+  import { j, jpost } from './api';
   import RfxPackCard from './RfxPackCard.svelte';
   import RfxCustomPanel from './RfxCustomPanel.svelte';
 
@@ -154,6 +154,7 @@
   /* strip participates in layout; the open panel FLOATS over the chat —
      it takes no space from it and carries no backdrop of its own. */
   .npanel { position: relative; display: flex; flex-shrink: 0; min-height: 0; }
+  @media (max-width: 900px) { .npanel { display: none; } }
 
   /* ── the strip: always present, ~34px, Blender-N-panel tab rail ── */
   .strip {

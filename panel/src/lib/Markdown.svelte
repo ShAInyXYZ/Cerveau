@@ -1,5 +1,6 @@
 <script>
   import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
   import markedFootnote from 'marked-footnote';
   import hljs from 'highlight.js/lib/common';
 
@@ -70,7 +71,9 @@
   }
 
   let src = $derived(unwrap(source || text || ''));
-  let html = $derived(marked.parse(src));
+  // Model output and fetched web content flow through here — sanitize before
+  // {@html}. Allows the markdown/hljs markup, strips scripts and handlers.
+  let html = $derived(DOMPurify.sanitize(String(marked.parse(src))));
 
   // Per-codeblock copy, via event delegation on the rendered HTML.
   function onClick(e) {

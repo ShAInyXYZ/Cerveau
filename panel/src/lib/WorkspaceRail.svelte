@@ -1,7 +1,7 @@
 <script>
   import { Field, Dot } from '../kit/index.js';
   import { tooltip } from '../kit/tooltip.js';
-  import { relTime } from './api.js';
+  import { relTime } from './api';
   import { groupByProject } from './projects.js';
   import { Plus, Boxes, ChevronRight, Folder, FolderOpen, Pencil, Trash2, Zap, Settings as SettingsIcon } from 'lucide-svelte';
 

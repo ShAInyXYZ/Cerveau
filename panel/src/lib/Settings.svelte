@@ -1,7 +1,7 @@
 <script>
   import { Volume2, VolumeX, Play, Zap, RefreshCw } from 'lucide-svelte';
   import { play, isMuted, setMuted, getVolume, setVolume, getSoundVolume, setSoundVolume, available } from './sound.js';
-  import { j, jpost } from './api.js';
+  import { j, jpost } from './api';
 
   // Settings — deliberately simple. First (and so far only) section: sounds.
   const TYPES = [

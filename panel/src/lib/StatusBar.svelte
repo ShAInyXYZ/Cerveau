@@ -9,7 +9,7 @@
 
   let {
     health, windowReport,
-    activityOpen = $bindable(false), memView = false, onToggleMemory
+    activityOpen = $bindable(false), memView = false, onToggleMemory, onMenu = null
   } = $props();
 
   const components = $derived(health?.components ?? []);
@@ -23,6 +23,11 @@
 </script>
 
 <header class="bar">
+  {#if onMenu}
+    <button class="hamburger" onclick={onMenu} aria-label="open the session drawer">
+      <span></span><span></span><span></span>
+    </button>
+  {/if}
   <div class="brand">
     <span class="logo">{@html logo}</span>
     <span class="word">CERVEAU</span>
@@ -38,7 +43,7 @@
     </div>
   {/if}
 
-  <SysMonitor />
+  <span class="sysmon"><SysMonitor /></span>
 
   <StatusOrb {components} system={health?.system} />
 
@@ -49,6 +54,22 @@
 </header>
 
 <style>
+  .hamburger {
+    display: none;
+    flex-direction: column; justify-content: center; gap: 3px;
+    width: 34px; height: 34px; padding: 8px;
+    background: transparent; border: none; cursor: pointer;
+  }
+  .hamburger span { display: block; height: 1.5px; background: var(--dim); border-radius: 1px; }
+  .hamburger:hover span { background: var(--text); }
+  @media (max-width: 900px) {
+    .hamburger { display: flex; }
+  }
+  @media (max-width: 640px) {
+    /* phone: keep brand + orb + hamburger; the meters and matrix go */
+    .sysmon, .rev, .ctx { display: none; }
+  }
+
   .bar {
     display: flex; align-items: center; gap: 14px;
     height: 46px; flex-shrink: 0;

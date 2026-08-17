@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 /* ============================================================================
    CERVEAU — design tokens
    Aesthetic: TP-7 / Japanese old-school-modern · minimalist industrial ·
@@ -7,10 +5,18 @@
    with numeric tags, generous negative space, mechanical precision.
    ============================================================================ */
 
-@theme {
+/* Tailwind was imported here but zero utility classes were ever used — it
+   only provided preflight and two font variables. The token system below IS
+   the styling system; this minimal reset replaces preflight. */
+:root {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 }
+*, *::before, *::after { box-sizing: border-box; }
+h1, h2, h3, h4, p, figure, blockquote, dl, dd, ul, ol { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+img, svg, canvas { display: block; max-width: 100%; }
 
 :root, [data-theme="dark"] {
   /* ---- surfaces: flat 4-step ladder, warm ink, never pure black ----
@@ -76,6 +82,31 @@
   --gap:   8px;
   --pad:   14px;
   --rail-w: 240px;
+
+  /* ---- shared control geometry — components must reference these, never
+     retype the numbers (the plan strip once hardcoded a 66px inset to mirror
+     a 54px knob it couldn't see) ---- */
+  --knob:        54px;                      /* round mode/attach controls */
+  --dock-gap:    12px;
+  --dock-inset:  calc(var(--knob) + var(--dock-gap));  /* knob + gap */
+  --composer-w:  760px;                     /* chat column max width */
+
+  /* ---- z scale — the only allowed z-index values ---- */
+  --z-raised:   10;   /* pinned strips, hud chips */
+  --z-dropdown: 40;   /* menus, knob popovers */
+  --z-overlay:  60;   /* rail drawer, docks */
+  --z-modal:    80;   /* dialogs */
+  --z-toast:    90;
+
+  /* ---- motion — every animation derives from these ---- */
+  --t-fast:  120ms;
+  --t-med:   180ms;
+  --t-slow:  320ms;
+  --ease-out:  cubic-bezier(.16, 1, .3, 1);
+  --ease-mech: cubic-bezier(.4, 0, .2, 1);
+
+  /* ---- breakpoints (for reference in @media, which cannot read vars):
+     narrow < 640px · compact < 900px · full ≥ 900px ---- */
 }
 
 
@@ -164,3 +195,14 @@ body {
 .anim-rise { animation: rise .16s cubic-bezier(.16,1,.3,1); }
 @keyframes blink { 50% { opacity: .3; } }
 .blink { animation: blink 1.1s steps(2, jump-none) infinite; }
+
+/* ============================================================================
+   REDUCED MOTION — one global policy instead of per-component vigilance
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

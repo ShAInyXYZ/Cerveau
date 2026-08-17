@@ -1,7 +1,7 @@
 <script>
   import { Zap, Play, ChevronDown, ChevronUp, Loader, CircleAlert, Sparkles } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
-  import { jpost } from './api.js';
+  import { jpost } from './api';
 
   // RfxPackCard — one talent pack's cockpit in the RFX dock (docs/RFX-UI.md).
   // Chrome is shared and fixed; content is the pack's ui: widget list,

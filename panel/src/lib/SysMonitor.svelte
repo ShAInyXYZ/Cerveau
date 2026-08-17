@@ -1,5 +1,5 @@
 <script>
-  import { j } from './api.js';
+  import { j } from './api';
   import { Cpu, Gpu, MemoryStick } from 'lucide-svelte';
 
   let stats = $state(null);
