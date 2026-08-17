@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -84,5 +85,10 @@ func main() {
 		}
 		fmt.Fprintf(w, "core: %v\n", coreUp())
 	})
-	log.Fatal(http.ListenAndServe("127.0.0.1:7701", nil))
+	addr := os.Getenv("CRV_IGNITE_ADDR")
+	if addr == "" {
+		addr = "100.90.163.54:7701" // this machine's fixed tailnet IP
+	}
+	log.Printf("ignite listening on http://%s (wakes the stack, proxies to %s)", addr, coreURL)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
