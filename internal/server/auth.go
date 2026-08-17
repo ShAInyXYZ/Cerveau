@@ -94,6 +94,17 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 			invites.servePairPortal(w, r, gate)
 			return
 		}
+		// The desktop panel mints an invitation for its "pair a phone" dialog.
+		// Open like /pair itself: reachable only by someone already on the
+		// machine or the tailnet, and it grants nothing without the code.
+		if path == "/api/pair/invite" {
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			invites.serveInviteJSON(w, gateOrigin(r))
+			return
+		}
 		switch path {
 		case "/api/pair":
 			if r.Method != http.MethodPost {

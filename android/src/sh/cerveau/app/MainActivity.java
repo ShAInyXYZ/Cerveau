@@ -218,8 +218,15 @@ public class MainActivity extends Activity {
 
         confirm.setOnClickListener(v -> {
             hideKeyboard(v);
-            String code = codeField.getText().toString().trim().toUpperCase();
+            String typed = codeField.getText().toString().trim();
+            // Accept either the 6-char code or a full pairing payload/URL
+            // (cerveau://pair?gate=…&code=… or https://gate/p/XXXX) so a
+            // scanned or pasted invitation works without any typing.
+            final String pastedGate = gateFromPayload(typed);
+            String code = codeFromPayload(typed);
+            if (code == null) code = typed.toUpperCase();
             if (code.length() != 6) { fail(status, confirm, "the code is 6 characters"); return; }
+            final String finalCode = code;
             status.setTextColor(Color.parseColor(MUTED));
             status.setText("handshaking…");
             confirm.setEnabled(false);
@@ -230,7 +237,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 try {
-                    String g = gate[0];
+                    String g = pastedGate != null ? pastedGate : gate[0];
                     if (g == null) g = Gate.discover(GATE_PORT, 6000);
                     if (g == null) {
                         ui.post(() -> fail(status, confirm, "cannot reach your machine"));
@@ -238,7 +245,7 @@ public class MainActivity extends Activity {
                     }
                     final String resolved = g;
                     DeviceKey.ensure();
-                    String[] got = pair(resolved, code, DeviceKey.publicKeyB64());
+                    String[] got = pair(resolved, finalCode, DeviceKey.publicKeyB64());
                     if (got == null) {
                         int tries = prefs.getInt("tries", 0) + 1;
                         prefs.edit().putInt("tries", tries).apply();
@@ -336,6 +343,30 @@ public class MainActivity extends Activity {
         } finally {
             if (c != null) c.disconnect();
         }
+    }
+
+    /** gate origin out of a scanned/pasted invitation, or null. */
+    static String gateFromPayload(String s) {
+        int i = s.indexOf("gate=");
+        if (i >= 0) {
+            String rest = s.substring(i + 5);
+            int amp = rest.indexOf('&');
+            return amp < 0 ? rest : rest.substring(0, amp);
+        }
+        // https://host:port/p/SLUG → https://host:port
+        int p = s.indexOf("/p/");
+        if (p > 0 && s.startsWith("http")) return s.substring(0, p);
+        return null;
+    }
+
+    /** 6-char code out of a scanned/pasted invitation, or null. */
+    static String codeFromPayload(String s) {
+        int i = s.indexOf("code=");
+        if (i < 0) return null;
+        String rest = s.substring(i + 5);
+        int amp = rest.indexOf('&');
+        String c = amp < 0 ? rest : rest.substring(0, amp);
+        return c.trim().toUpperCase();
     }
 
     static String readAll(InputStream in) throws Exception {

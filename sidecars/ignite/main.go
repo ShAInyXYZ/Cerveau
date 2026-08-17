@@ -87,7 +87,12 @@ func main() {
 	})
 	addr := os.Getenv("CRV_IGNITE_ADDR")
 	if addr == "" {
-		addr = "100.90.163.54:7701" // this machine's fixed tailnet IP
+		// Bind every interface, not one hardcoded tailnet IP: Tailscale can
+		// reassign addresses, and the NAS gate proxies IN from the tailnet —
+		// binding a single literal made the doorbell unreachable from it.
+		// Exposure is still tailnet-only: nothing forwards this port publicly,
+		// and every /api route is gated by token + device signature.
+		addr = ":7701"
 	}
 	log.Printf("ignite listening on http://%s (wakes the stack, proxies to %s)", addr, coreURL)
 	log.Fatal(http.ListenAndServe(addr, nil))

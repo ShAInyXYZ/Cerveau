@@ -3,7 +3,8 @@
   import { tooltip } from '../kit/tooltip.js';
   import StatusOrb from './StatusOrb.svelte';
   import SysMonitor from './SysMonitor.svelte';
-  import { PanelRight, Database } from 'lucide-svelte';
+  import { PanelRight, Database, Smartphone } from 'lucide-svelte';
+  import PairDialog from './PairDialog.svelte';
   import logo from './logo.svg?raw'; // inline so it inherits currentColor
   import DotMatrix from './DotMatrix.svelte';
 
@@ -13,6 +14,7 @@
   } = $props();
 
   const components = $derived(health?.components ?? []);
+  let pairOpen = $state(false);
   // version comes from the core (/api/health system.version, e.g. "0.3.0-alpha")
   // — hardcoding it here is how the header stayed on V0.2 for a whole release.
   const rev = $derived.by(() => {
@@ -47,11 +49,16 @@
 
   <StatusOrb {components} system={health?.system} />
 
+  <IconButton title="pair a phone" active={pairOpen} onclick={() => (pairOpen = true)}>
+    <Smartphone size={14} />
+  </IconButton>
   <IconButton title="memory browser" active={memView} onclick={onToggleMemory}><Database size={14} /></IconButton>
   <IconButton title="activity" active={activityOpen} onclick={() => (activityOpen = !activityOpen)}>
     <PanelRight size={14} />
   </IconButton>
 </header>
+
+<PairDialog bind:open={pairOpen} />
 
 <style>
   .hamburger {

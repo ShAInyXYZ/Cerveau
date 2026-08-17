@@ -217,3 +217,19 @@ func servePairInvite(w http.ResponseWriter, inv invitation) {
 	}
 	fmt.Fprintf(w, pairPageHTML, inv.Code, qrImg, remaining, inv.Gate, inv.Slug)
 }
+
+// serveInviteJSON mints an invitation for the desktop "pair a phone" dialog:
+// the same short-lived, one-shot code the /pair page shows, as JSON with the
+// QR pre-rendered so the panel needs no encoder of its own.
+func (s *pairSessions) serveInviteJSON(w http.ResponseWriter, gate string) {
+	inv := s.mint(gate)
+	png, err := qrcode.Encode(inv.QRPayload(), qrcode.Medium, 320)
+	qr := ""
+	if err == nil {
+		qr = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	fmt.Fprintf(w, `{"code":%q,"qr":%q,"gate":%q,"slug":%q,"expires_in":%d}`,
+		inv.Code, qr, inv.Gate, inv.Slug, int(pairTTL.Seconds()))
+}

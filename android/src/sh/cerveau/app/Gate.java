@@ -58,9 +58,13 @@ public final class Gate {
     }
 
     /**
-     * Look for the gate on the tailnet. Returns the origin (https://host:port)
-     * or null. Only called AFTER tailnetUp() — a phone off the tailnet learns
-     * nothing about what we were looking for.
+     * Fallback discovery when the user typed a code instead of scanning.
+     *
+     * NOTE: Tailscale does NOT allocate addresses by subnet — two nodes on the
+     * same tailnet routinely differ in the second and third octet — so a /24
+     * sweep of the phone's own range is not a reliable way to find the gate.
+     * It is kept only as a last resort; the INVITATION (QR or the gate the
+     * code was minted by) is the real answer.
      */
     public static String discover(int port, int timeoutMs) {
         InetAddress self = tailnetAddress();
