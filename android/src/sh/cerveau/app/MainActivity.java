@@ -210,7 +210,7 @@ public class MainActivity extends Activity {
             String g = Gate.discover(GATE_PORT, 6000);
             gate[0] = g;
             ui.post(() -> where.setText(g == null
-                    ? "could not find your machine on the network\nis it awake?"
+                    ? "scan the pairing code from your machine\n(open Cerveau on it → Pair a phone)"
                     : "on your machine, open\n" + g + "/pair\nand type the 6-character code it shows"));
         }).start();
         Button confirm = button("CONFIRM");

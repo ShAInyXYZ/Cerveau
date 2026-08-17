@@ -14,9 +14,14 @@ import (
 )
 
 // Pairing: the core prints a short ID on startup (the machine's console is
-// proof of physical access). The phone app trades it at /api/pair for the
-// long-lived access token; every other route then requires
-// "Authorization: Bearer <token>". Pair IDs are one-shot and rate-limited
+// proof of physical access). The phone trades it at /api/pair for a bearer
+// token AND registers a device public key in the same call. After that every
+// request needs BOTH:
+//   Authorization: Bearer <token>               (shared secret)
+//   X-Cerveau-Device / X-Cerveau-Nonce / X-Cerveau-Sig
+//                                               (this phone's TEE signed a
+//                                                fresh server challenge)
+// Either half alone is dead. Pair IDs are one-shot and rate-limited
 // (5 attempts / minute) so they can't be brute-forced over the wire.
 
 const pairIDPath = "pair.id"
@@ -44,9 +49,9 @@ func EnsurePairID() (string, error) {
 }
 
 type pairLimiter struct {
-	mu      sync.Mutex
-	count   int
-	window  time.Time
+	mu     sync.Mutex
+	count  int
+	window time.Time
 }
 
 func (l *pairLimiter) allow() bool {
@@ -64,55 +69,82 @@ type authCfg interface {
 	SetRemoteToken(token string) error
 }
 
-// authGate enforces the bearer token on every route except /api/pair and
-// /api/health (health is unauthenticated so probes stay trivial; it leaks
-// nothing beyond "cerveau is alive"). When no token exists yet (fresh
-// localhost-only setup), everything is open — pre-auth behavior — and
-// /api/pair mints the first token.
+// authGate enforces token + device-signature on every /api/ route except
+// /api/pair, /api/nonce, and /api/health. Static UI assets stay open so the
+// panel can render its lock screen. When no token exists yet (fresh
+// localhost-only setup), everything is open — pre-auth behavior.
 func authGate(cfg authCfg, inner http.Handler) http.Handler {
 	limiter := &pairLimiter{}
+	invites := newPairSessions()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/pair" {
+		path := r.URL.Path
+		// The pairing portal: shows a QR + short code so a phone never has to
+		// type a tailnet hostname (and the APK never has to contain one).
+		// Only reachable by someone already on the network.
+		if path == "/pair" || strings.HasPrefix(path, "/p/") {
+			gate := gateOrigin(r)
+			if strings.HasPrefix(path, "/p/") {
+				if inv, ok := invites.bySlug(strings.TrimPrefix(path, "/p/")); ok {
+					servePairInvite(w, inv)
+					return
+				}
+				http.Error(w, "this pairing link has expired — open /pair again", http.StatusGone)
+				return
+			}
+			invites.servePairPortal(w, r, gate)
+			return
+		}
+		switch path {
+		case "/api/pair":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			servePair(cfg, limiter, w, r)
+			servePair(cfg, limiter, invites, w, r)
+			return
+		case "/api/nonce":
+			serveNonce(w)
+			return
+		case "/api/health":
+			inner.ServeHTTP(w, r) // "is it alive" is not a secret
 			return
 		}
+
 		token := cfg.RemoteToken()
 		if token == "" {
 			inner.ServeHTTP(w, r) // unpaired localhost setup — same as before auth existed
 			return
 		}
-		if r.URL.Path == "/api/health" {
-			inner.ServeHTTP(w, r) // "is it alive" is not a secret
-			return
-		}
-		// Static UI assets (panel JS/CSS/icons/manifest) carry no session
-		// data and must load so the panel can show its lock screen and the
-		// phone can offer installability. Everything under /api/ stays gated.
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		// Static UI assets (panel JS/CSS/icons/manifest) carry no session data
+		// and must load so the panel can show its lock screen.
+		if !strings.HasPrefix(path, "/api/") {
 			inner.ServeHTTP(w, r)
 			return
 		}
+
+		// The full proof: bearer token AND a live device signature.
 		if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != token {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !isDeviceAuth(r) {
+			http.Error(w, "device not verified", http.StatusForbidden)
 			return
 		}
 		inner.ServeHTTP(w, r)
 	})
 }
 
-func servePair(cfg authCfg, limiter *pairLimiter, w http.ResponseWriter, r *http.Request) {
+func servePair(cfg authCfg, limiter *pairLimiter, invites *pairSessions, w http.ResponseWriter, r *http.Request) {
 	if !limiter.allow() {
 		http.Error(w, "too many attempts", http.StatusTooManyRequests)
 		return
 	}
 	var body struct {
 		PairID string `json:"pair_id"`
+		PubKey string `json:"pubkey"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.PairID) != 6 {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.PairID) != 6 || body.PubKey == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -120,10 +152,14 @@ func servePair(cfg authCfg, limiter *pairLimiter, w http.ResponseWriter, r *http
 		http.Error(w, "already paired", http.StatusConflict)
 		return
 	}
-	id, err := EnsurePairID()
-	if err != nil || body.PairID != id {
-		http.Error(w, "wrong pairing id", http.StatusUnauthorized)
-		return
+	// A live invitation code (from /pair) authorizes, one-shot. The
+	// console-printed pair.id remains valid as the offline fallback.
+	if _, ok := invites.consume(body.PairID); !ok {
+		id, err := EnsurePairID()
+		if err != nil || !strings.EqualFold(body.PairID, id) {
+			http.Error(w, "wrong pairing id", http.StatusUnauthorized)
+			return
+		}
 	}
 	var tb [32]byte
 	if _, err := rand.Read(tb[:]); err != nil {
@@ -135,7 +171,16 @@ func servePair(cfg authCfg, limiter *pairLimiter, w http.ResponseWriter, r *http
 		http.Error(w, "persist failed", http.StatusInternalServerError)
 		return
 	}
+	devID := newDeviceID(body.PubKey)
+	if devID == "" {
+		http.Error(w, "bad pubkey", http.StatusBadRequest)
+		return
+	}
+	if err := registerDevice(devID, body.PubKey); err != nil {
+		http.Error(w, "device persist failed", http.StatusInternalServerError)
+		return
+	}
 	_ = os.Remove(pairIDFile()) // one-shot: no pairing twice from the same ID
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"token":%q}`, token)
+	fmt.Fprintf(w, `{"token":%q,"device_id":%q}`, token, devID)
 }
