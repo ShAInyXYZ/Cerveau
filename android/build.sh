@@ -8,12 +8,13 @@ SDK="${ANDROID_HOME:-$HOME/Android/Sdk}"
 BT="$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)"
 AJ="$(ls -d "$SDK"/platforms/android-*/android.jar | sort -V | tail -1)"
 
-rm -rf classes classes.dex base.apk unsigned.apk aligned.apk res.zip
-mkdir -p classes
+rm -rf classes classes.dex base.apk unsigned.apk aligned.apk res.zip gen
+mkdir -p classes gen
 
 "$BT/aapt2" compile --dir res -o res.zip
-"$BT/aapt2" link -o base.apk -I "$AJ" --manifest AndroidManifest.xml res.zip
-javac --release 17 -cp "$AJ" -d classes $(find src -name '*.java')
+# --java emits R.java so code can reference @drawable/@mipmap resources
+"$BT/aapt2" link -o base.apk -I "$AJ" --manifest AndroidManifest.xml --java gen res.zip
+javac --release 17 -cp "$AJ" -d classes $(find src gen -name '*.java')
 "$BT/d8" --release --lib "$AJ" --min-api 29 --output . $(find classes -name '*.class')
 cp base.apk unsigned.apk
 zip -q unsigned.apk classes.dex

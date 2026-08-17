@@ -16,6 +16,7 @@ import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -48,9 +49,17 @@ import java.util.Collections;
  */
 public class MainActivity extends Activity {
     public static final String PREFS = "cerveau";
-    static final String BG = "#12100C", S2 = "#1E1A14", LINE = "#27221A";
-    static final String TEXT = "#F2E1DE", MUTED = "#B8B2A6", FAINT = "#5A554A";
-    static final String ACCENT = "#E88BA0", ERR = "#e6533f", OK = "#4bb894";
+    // Mirrors panel/src/tokens.css exactly — the app and the panel are one
+    // product, so the shell must not drift from the UI it hosts.
+    static final String BG = "#09090B", S1 = "#0F0F11", S2 = "#1B1B1E";
+    static final String LINE = "#262629", LINE2 = "#2C2C30";
+    static final String TEXT = "#FAFAFA", MUTED = "#A1A1AA", DIM = "#71717A", FAINT = "#52525B";
+    static final String ACCENT = "#E54866", ERR = "#e6533f", OK = "#4bb894";
+
+    /** The only address this app ever talks to: the NAS gate, real TLS via
+     *  `tailscale serve`. The machine is never addressed directly, and there
+     *  is no plaintext-http field for the user to get wrong. */
+    static final String GATE = "https://shiny-nas.tail58d4d4.ts.net:7443";
 
     private static final int MAX_TRIES = 5;
     private static final long LOCKOUT_MS = 15 * 60 * 1000L;
@@ -85,7 +94,7 @@ public class MainActivity extends Activity {
     // ── state 1: paired → unlock to continue ─────────────────────────
     private void showLock() {
         LinearLayout root = column();
-        root.addView(label("◈", ACCENT, 34));
+        root.addView(brandMark());
         root.addView(label("CERVEAU", TEXT, 20));
         TextView sub = text(Vault.isProtected(this)
                 ? "unlock to reach your machine"
@@ -152,74 +161,94 @@ public class MainActivity extends Activity {
     // ── state 2: not paired → the pairing form ───────────────────────
     private void showPortal() {
         LinearLayout root = column();
-        root.addView(label("◈", ACCENT, 34));
+        root.addView(brandMark());
         root.addView(label("CERVEAU", TEXT, 20));
-        root.addView(text("pair this device with your machine", MUTED));
+        root.addView(text("this device is not paired yet", MUTED));
 
-        EditText urlField = field("http://100.90.163.54:7701",
-                prefs.getString("url", "http://100.90.163.54:7701"));
-        EditText idField = field("pairing id (6 chars, from the core's console)", "");
-        Button pair = button("PAIR");
+        Button startPair = button("PAIR DEVICE");
+        TextView status = text("", MUTED);
+        root.addView(startPair);
+        root.addView(status);
+        startPair.setOnClickListener(v -> showPairStep(status));
+        setContentView(scroll(root));
+    }
+
+    /**
+     * Step 2 of pairing: the machine has minted a short-lived code and is
+     * showing it on its own screen (over the tailnet). The user reads it there
+     * and types it here — the code authorizes THIS device's public key.
+     */
+    private void showPairStep(TextView unusedStatus) {
+        LinearLayout root = column();
+        root.addView(brandMark());
+        root.addView(label("PAIR", TEXT, 20));
+        root.addView(text("on your machine, open\n" + pairPageHint()
+                + "\nand type the 6-character code it shows", MUTED));
+
+        EditText codeField = field("6-character code", "");
+        codeField.setAllCaps(true);
+        Button confirm = button("CONFIRM");
         TextView status = text("", MUTED);
 
-        pair.setOnClickListener(v -> {
+        confirm.setOnClickListener(v -> {
             hideKeyboard(v);
-            String furl = urlField.getText().toString().trim().replaceAll("/+$", "");
-            String id = idField.getText().toString().trim();
-            if (furl.isEmpty() || id.length() != 6) {
-                fail(status, pair, "need a url and a 6-char pairing id");
-                return;
-            }
+            String code = codeField.getText().toString().trim().toUpperCase();
+            if (code.length() != 6) { fail(status, confirm, "the code is 6 characters"); return; }
             status.setTextColor(Color.parseColor(MUTED));
-            status.setText("pairing…");
-            pair.setEnabled(false);
+            status.setText("handshaking…");
+            confirm.setEnabled(false);
             new Thread(() -> {
                 if (!tailscaleUp()) {
-                    ui.post(() -> fail(status, pair, "tailscale is not up on this phone\nstart it, then retry"));
+                    ui.post(() -> fail(status, confirm,
+                            "tailscale is not up on this phone\nstart it, then retry"));
                     return;
                 }
                 try {
                     DeviceKey.ensure();
-                    String pub = DeviceKey.publicKeyB64();
-                    String[] got = pair(furl, id, pub);
+                    String[] got = pair(GATE, code, DeviceKey.publicKeyB64());
                     if (got == null) {
                         int tries = prefs.getInt("tries", 0) + 1;
                         prefs.edit().putInt("tries", tries).apply();
                         if (tries >= MAX_TRIES) {
-                            prefs.edit().putLong("lock_until", System.currentTimeMillis() + LOCKOUT_MS).apply();
+                            prefs.edit().putLong("lock_until",
+                                    System.currentTimeMillis() + LOCKOUT_MS).apply();
                             ui.post(this::showLockedOut);
                             return;
                         }
-                        ui.post(() -> fail(status, pair,
-                                "pairing failed — wrong id or machine unreachable\n"
-                                        + (MAX_TRIES - tries) + " tries left"));
+                        ui.post(() -> fail(status, confirm,
+                                "wrong or expired code — " + (MAX_TRIES - tries) + " tries left"));
                         return;
                     }
-                    prefs.edit().putString("url", furl)
+                    prefs.edit().putString("url", GATE)
                             .putString("device_id", got[1])
                             .putInt("tries", 0).apply();
                     Vault.store(this, prefs, got[0]);
                     ui.post(() -> {
                         status.setTextColor(Color.parseColor(OK));
                         status.setText("paired — this device is now known to your machine");
-                        ui.postDelayed(this::showLock, 700);
+                        ui.postDelayed(this::showLock, 800);
                     });
                 } catch (Exception e) {
-                    ui.post(() -> fail(status, pair, "pairing error: " + e.getMessage()));
+                    ui.post(() -> fail(status, confirm, "pairing error: " + e.getMessage()));
                 }
             }).start();
         });
 
-        root.addView(urlField);
-        root.addView(idField);
-        root.addView(pair);
+        root.addView(codeField);
+        root.addView(confirm);
         root.addView(status);
+        TextView back = text("back", FAINT);
+        back.setPadding(0, dp(24), 0, 0);
+        back.setOnClickListener(v -> showPortal());
+        root.addView(back);
         setContentView(scroll(root));
     }
 
+    private String pairPageHint() { return GATE + "/pair"; }
+
     private void showLockedOut() {
         LinearLayout root = column();
-        root.addView(label("◈", ERR, 34));
+        root.addView(brandMark());
         root.addView(label("LOCKED", TEXT, 20));
         root.addView(text("too many wrong pairing ids\ntry again in "
                 + (lockRemaining() / 60000 + 1) + " min", MUTED));
@@ -337,6 +366,17 @@ public class MainActivity extends Activity {
     }
 
     private TextView text(String s, String color) { return label(s, color, 12); }
+
+    /** The real Cerveau brain, not a glyph — same mark as the panel. */
+    private ImageView brandMark() {
+        ImageView v = new ImageView(this);
+        v.setImageResource(R.drawable.brand_mark);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(72), dp(72));
+        p.gravity = Gravity.CENTER_HORIZONTAL;
+        p.setMargins(0, 0, 0, dp(10));
+        v.setLayoutParams(p);
+        return v;
+    }
 
     private EditText field(String hint, String value) {
         EditText e = new EditText(this);
