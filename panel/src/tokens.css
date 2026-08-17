@@ -19,17 +19,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
 img, svg, canvas { display: block; max-width: 100%; }
 
 :root, [data-theme="dark"] {
-  /* ---- surfaces: flat 4-step ladder, cool near-black, never pure black.
-     Matches NashGit's dark theme (hsl(240 10% …)) so both apps read as one
-     product family. ---- */
+  /* ---- surfaces: flat 4-step ladder, near-black, never pure black.
+     Base matches NashGit's --background; the upper steps are neutral gray
+     (NashGit's card/secondary are hue-240 and read bluish on large areas
+     like the tree rail) so panels stay truly neutral. ---- */
   --bg:    #09090B;   /* app base — NashGit --background */
-  --s1:    #0D0F13;   /* panel — NashGit --card */
-  --s2:    #1C1C1F;   /* raised / input — NashGit --muted */
-  --s3:    #222225;   /* control / hover — NashGit --secondary */
+  --s1:    #0F0F11;   /* panel / tree */
+  --s2:    #1B1B1E;   /* raised / input */
+  --s3:    #222225;   /* control / hover */
 
   /* ---- hairlines ---- */
-  --line:  #27272A;   /* default divider — NashGit --border */
-  --line2: #2D2D31;   /* emphasized / focusable edge — NashGit --input */
+  --line:  #262629;   /* default divider */
+  --line2: #2C2C30;   /* emphasized / focusable edge */
 
   /* ---- ink ---- */
   --text:  #FAFAFA;   /* primary — NashGit --foreground */
