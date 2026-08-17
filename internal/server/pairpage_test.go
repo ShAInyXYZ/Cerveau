@@ -80,3 +80,37 @@ func TestInvitationCarriesGate(t *testing.T) {
 		t.Errorf("QR payload must carry gate AND code: %q", payload)
 	}
 }
+
+// Opening the pair dialog repeatedly must NOT mint a new invitation each
+// time: several live codes at once is strictly worse security, and the user
+// expects the countdown to keep running when they reopen it.
+func TestPairSessionReusesLiveInvitation(t *testing.T) {
+	s := newPairSessions()
+	first := s.current("https://gate.example:7443")
+	second := s.current("https://gate.example:7443")
+	if first.Code != second.Code {
+		t.Errorf("reopening should reuse the live invitation: %q vs %q", first.Code, second.Code)
+	}
+
+	// once it expires, the next open mints a fresh one
+	s.mu.Lock()
+	s.items[first.Code].expires = time.Now().Add(-time.Second)
+	s.mu.Unlock()
+	third := s.current("https://gate.example:7443")
+	if third.Code == first.Code {
+		t.Error("an expired invitation must be replaced, not reused")
+	}
+}
+
+// A consumed invitation must not be handed out again either.
+func TestPairSessionAfterUseMintsFresh(t *testing.T) {
+	s := newPairSessions()
+	first := s.current("https://gate.example:7443")
+	if _, ok := s.consume(first.Code); !ok {
+		t.Fatal("fresh code should consume")
+	}
+	next := s.current("https://gate.example:7443")
+	if next.Code == first.Code {
+		t.Error("a used invitation must not be reissued")
+	}
+}

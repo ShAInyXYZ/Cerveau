@@ -8,6 +8,10 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <!-- fingerprint / face unlock for the local lock screen -->
   <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+  <!-- in-app QR scanning: the pairing code must never be handed to a
+       third-party scanner, so we read the camera ourselves -->
+  <uses-permission android:name="android.permission.CAMERA"/>
+  <uses-feature android:name="android.hardware.camera" android:required="false"/>
   <application
       android:label="Cerveau"
       android:icon="@mipmap/ic_launcher"
@@ -27,6 +31,9 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
+    <activity android:name=".ScanActivity"
+        android:configChanges="orientation|screenSize|keyboardHidden"
+        android:exported="false"/>
     <activity android:name=".PanelActivity"
         android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
         android:windowSoftInputMode="adjustResize"

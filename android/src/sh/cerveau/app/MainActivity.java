@@ -158,13 +158,14 @@ public class MainActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req == REQ_UNLOCK && res == RESULT_OK) { openPanel(text("", MUTED)); return; }
         if (req == REQ_SCAN && res == RESULT_OK && data != null) {
-            String payload = data.getStringExtra("SCAN_RESULT");
+            String payload = data.getStringExtra("payload");
             if (payload == null) return;
             String g = gateFromPayload(payload), c = codeFromPayload(payload);
             if (c != null && codeFieldRef != null) codeFieldRef.setText(c);
-            // a scanned payload carries the gate directly — remember it so the
-            // link-code lookup can be skipped entirely
-            if (g != null) prefs.edit().putString("scanned_gate", g).apply();
+            if (g != null) {
+                prefs.edit().putString("scanned_gate", g).apply();
+                if (linkFieldRef != null) linkFieldRef.setText(g);
+            }
         }
     }
 
@@ -328,16 +329,9 @@ public class MainActivity extends Activity {
         setContentView(scroll(root));
     }
 
-    /** Ask any installed scanner app for a QR; result lands in onActivityResult. */
+    /** Open OUR OWN scanner — the pairing payload never leaves this app. */
     private void launchScanner(TextView status) {
-        Intent i = new Intent("com.google.zxing.client.android.SCAN");
-        i.putExtra("SCAN_MODE", "QR_CODE_MODE");
-        try {
-            startActivityForResult(i, REQ_SCAN);
-        } catch (Exception e) {
-            status.setTextColor(Color.parseColor(MUTED));
-            status.setText("no scanner app installed — type the codes instead");
-        }
+        startActivityForResult(new Intent(this, ScanActivity.class), REQ_SCAN);
     }
 
     static String lastPathSegment(String url) {

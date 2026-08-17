@@ -74,6 +74,27 @@ func randomFrom(alphabet string, n int) string {
 	return string(b)
 }
 
+// current returns the live invitation for this gate, minting one only when
+// none exists (or the last was used/expired).
+//
+// Opening the "pair a phone" dialog repeatedly must NOT create a new code
+// each time: that leaves several valid invitations outstanding, which is
+// strictly worse security, and the user reasonably expects the countdown to
+// keep running when they close and reopen it.
+func (s *pairSessions) current(gate string) invitation {
+	s.mu.Lock()
+	s.gcLocked()
+	for _, inv := range s.items {
+		if inv.Gate == gate && time.Now().Before(inv.expires) {
+			out := *inv
+			s.mu.Unlock()
+			return out
+		}
+	}
+	s.mu.Unlock()
+	return s.mint(gate)
+}
+
 // mint creates a fresh invitation for the given gate origin.
 func (s *pairSessions) mint(gate string) invitation {
 	s.mu.Lock()
@@ -136,7 +157,7 @@ func (s *pairSessions) gcLocked() {
 // shows the QR + code. Reachable only from the machine itself or over the
 // tailnet (the auth gate leaves non-/api paths open so this can render).
 func (s *pairSessions) servePairPortal(w http.ResponseWriter, r *http.Request, gate string) {
-	inv := s.mint(gate)
+	inv := s.current(gate)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	png, err := qrcode.Encode(inv.QRPayload(), qrcode.Medium, 320)
@@ -144,8 +165,11 @@ func (s *pairSessions) servePairPortal(w http.ResponseWriter, r *http.Request, g
 	if err == nil {
 		qrImg = "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
 	}
-	fmt.Fprintf(w, pairPageHTML,
-		inv.Code, qrImg, int(pairTTL.Seconds()), gate, inv.Slug)
+	remaining := int(time.Until(inv.expires).Seconds())
+	if remaining < 0 {
+		remaining = 0
+	}
+	fmt.Fprintf(w, pairPageHTML, inv.Code, qrImg, remaining, gate, inv.Slug)
 }
 
 // The page draws its own QR client-side from the payload — no image
@@ -260,7 +284,7 @@ func servePairInvite(w http.ResponseWriter, inv invitation) {
 // the same short-lived, one-shot code the /pair page shows, as JSON with the
 // QR pre-rendered so the panel needs no encoder of its own.
 func (s *pairSessions) serveInviteJSON(w http.ResponseWriter, gate string) {
-	inv := s.mint(gate)
+	inv := s.current(gate)
 	png, err := qrcode.Encode(inv.QRPayload(), qrcode.Medium, 320)
 	qr := ""
 	if err == nil {
@@ -268,6 +292,10 @@ func (s *pairSessions) serveInviteJSON(w http.ResponseWriter, gate string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	remaining := int(time.Until(inv.expires).Seconds())
+	if remaining < 0 {
+		remaining = 0
+	}
 	fmt.Fprintf(w, `{"code":%q,"qr":%q,"gate":%q,"slug":%q,"expires_in":%d}`,
-		inv.Code, qr, inv.Gate, inv.Slug, int(pairTTL.Seconds()))
+		inv.Code, qr, inv.Gate, inv.Slug, remaining)
 }
