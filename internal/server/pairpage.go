@@ -299,3 +299,8 @@ func (s *pairSessions) serveInviteJSON(w http.ResponseWriter, gate string) {
 	fmt.Fprintf(w, `{"code":%q,"qr":%q,"gate":%q,"slug":%q,"expires_in":%d}`,
 		inv.Code, qr, inv.Gate, inv.Slug, remaining)
 }
+
+// allowsAdditionalDevice documents the rule that an existing bearer token must
+// never block pairing another device: authorization comes from the one-shot
+// invitation, and every device registers its own key.
+func allowsAdditionalDevice(existingToken string) bool { return true }

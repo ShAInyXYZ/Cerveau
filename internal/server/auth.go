@@ -176,10 +176,11 @@ func servePair(cfg authCfg, limiter *pairLimiter, invites *pairSessions, w http.
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if cfg.RemoteToken() != "" {
-		http.Error(w, "already paired", http.StatusConflict)
-		return
-	}
+	// NOTE: an existing token does NOT block pairing. A user pairs a second
+	// phone, or re-pairs after reinstalling the app, and each device
+	// registers its own key — refusing here made the app report "wrong or
+	// expired code" for a code that was perfectly valid. Authorization still
+	// rests entirely on the one-shot invitation consumed below.
 	// A live invitation code (from /pair) authorizes, one-shot. The
 	// console-printed pair.id remains valid as the offline fallback.
 	if _, ok := invites.consume(body.PairID); !ok {
@@ -189,15 +190,21 @@ func servePair(cfg authCfg, limiter *pairLimiter, invites *pairSessions, w http.
 			return
 		}
 	}
-	var tb [32]byte
-	if _, err := rand.Read(tb[:]); err != nil {
-		http.Error(w, "internal", http.StatusInternalServerError)
-		return
-	}
-	token := hex.EncodeToString(tb[:])
-	if err := cfg.SetRemoteToken(token); err != nil {
-		http.Error(w, "persist failed", http.StatusInternalServerError)
-		return
+	// Reuse the existing bearer token when one exists, so pairing a second
+	// device does not invalidate the first. Device identity — not the token —
+	// is what distinguishes them, and each key is registered separately.
+	token := cfg.RemoteToken()
+	if token == "" {
+		var tb [32]byte
+		if _, err := rand.Read(tb[:]); err != nil {
+			http.Error(w, "internal", http.StatusInternalServerError)
+			return
+		}
+		token = hex.EncodeToString(tb[:])
+		if err := cfg.SetRemoteToken(token); err != nil {
+			http.Error(w, "persist failed", http.StatusInternalServerError)
+			return
+		}
 	}
 	devID := newDeviceID(body.PubKey)
 	if devID == "" {

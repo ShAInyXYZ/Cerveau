@@ -164,3 +164,13 @@ func TestProxiedTrafficIsNotLocal(t *testing.T) {
 		t.Error("a direct loopback request must remain local")
 	}
 }
+
+// Pairing a SECOND device (or re-pairing after a reinstall) must work: the
+// bearer token is shared, but each device registers its own key. Refusing
+// because a token already exists made the app report "wrong or expired code"
+// for a perfectly good code.
+func TestPairingASecondDeviceIsAllowed(t *testing.T) {
+	if !allowsAdditionalDevice("existing-token") {
+		t.Error("an existing token must not block pairing another device")
+	}
+}

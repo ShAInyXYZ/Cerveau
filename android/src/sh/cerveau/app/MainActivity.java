@@ -322,16 +322,25 @@ public class MainActivity extends Activity {
                     final String resolvedGate = gate;
                     String[] got = pair(resolvedGate, code, DeviceKey.publicKeyB64());
                     if (got == null) {
-                        int tries = prefs.getInt("tries", 0) + 1;
-                        prefs.edit().putInt("tries", tries).apply();
-                        if (tries >= MAX_TRIES) {
-                            prefs.edit().putLong("lock_until",
-                                    System.currentTimeMillis() + LOCKOUT_MS).apply();
-                            ui.post(this::showLockedOut);
-                            return;
+                        final String why = lastPairError;
+                        // A 401 means the CODE was rejected — that is the only
+                        // case worth counting against the retry budget.
+                        if (why.startsWith("401")) {
+                            int tries = prefs.getInt("tries", 0) + 1;
+                            prefs.edit().putInt("tries", tries).apply();
+                            if (tries >= MAX_TRIES) {
+                                prefs.edit().putLong("lock_until",
+                                        System.currentTimeMillis() + LOCKOUT_MS).apply();
+                                ui.post(this::showLockedOut);
+                                return;
+                            }
+                            ui.post(() -> fail(status, confirm,
+                                    "that code was rejected — get a fresh one on your machine\n"
+                                            + (MAX_TRIES - tries) + " tries left"));
+                        } else {
+                            ui.post(() -> fail(status, confirm,
+                                    why.isEmpty() ? "the machine did not answer" : "the machine said: " + why));
                         }
-                        ui.post(() -> fail(status, confirm,
-                                "wrong or expired code — " + (MAX_TRIES - tries) + " tries left"));
                         return;
                     }
                     final String tok = got[0], devId = got[1];
@@ -478,7 +487,15 @@ public class MainActivity extends Activity {
                     .put("pubkey", pubkey)
                     .toString();
             try (OutputStream os = c.getOutputStream()) { os.write(body.getBytes("UTF-8")); }
-            if (c.getResponseCode() != 200) return null;
+            int rc = c.getResponseCode();
+            if (rc != 200) {
+                // Carry the real reason back: reporting every failure as
+                // "wrong or expired code" blamed the user for server-side
+                // refusals and burned a retry each time.
+                String why = readAllQuiet(c.getErrorStream());
+                lastPairError = rc + (why.isEmpty() ? "" : ": " + why.trim());
+                return null;
+            }
             JSONObject j = new JSONObject(readAll(c.getInputStream()));
             return new String[]{ j.getString("token"), j.optString("device_id", "") };
         } catch (Exception e) {
@@ -510,6 +527,14 @@ public class MainActivity extends Activity {
         int amp = rest.indexOf('&');
         String c = amp < 0 ? rest : rest.substring(0, amp);
         return c.trim().toUpperCase();
+    }
+
+    /** the last /api/pair failure, for an honest message */
+    private String lastPairError = "";
+
+    static String readAllQuiet(InputStream in) {
+        if (in == null) return "";
+        try { return readAll(in); } catch (Exception e) { return ""; }
     }
 
     static String readAll(InputStream in) throws Exception {
