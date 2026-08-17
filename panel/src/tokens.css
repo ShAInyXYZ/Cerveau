@@ -19,31 +19,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
 img, svg, canvas { display: block; max-width: 100%; }
 
 :root, [data-theme="dark"] {
-  /* ---- surfaces: flat 4-step ladder, warm ink, never pure black ----
-     Base matches the cerveau.sh dark band (--ink #17140F); the ladder steps
-     up from it so the app and the site read as one product. ---- */
-  --bg:    #12100C;   /* app base */
-  --s1:    #17140F;   /* panel — the site's band background exactly */
-  --s2:    #1E1A14;   /* raised / input */
-  --s3:    #27221A;   /* control / hover */
+  /* ---- surfaces: flat 4-step ladder, cool near-black, never pure black.
+     Matches NashGit's dark theme (hsl(240 10% …)) so both apps read as one
+     product family. ---- */
+  --bg:    #09090B;   /* app base — NashGit --background */
+  --s1:    #0D0F13;   /* panel — NashGit --card */
+  --s2:    #1C1C1F;   /* raised / input — NashGit --muted */
+  --s3:    #222225;   /* control / hover — NashGit --secondary */
 
-  /* ---- hairlines: cream at low alpha, as the site's band does ---- */
-  --line:  #27221A;   /* default divider */
-  --line2: #363026;   /* emphasized / focusable edge */
+  /* ---- hairlines ---- */
+  --line:  #27272A;   /* default divider — NashGit --border */
+  --line2: #2D2D31;   /* emphasized / focusable edge — NashGit --input */
 
-  /* ---- ink: the site's cream ---- */
-  --text:  #F2E1DE;   /* primary — site --cream */
-  --muted: #B8B2A6;   /* secondary */
-  --dim:   #87816F;   /* tertiary / labels active */
-  --faint: #5A554A;   /* label rest / disabled ink */
+  /* ---- ink ---- */
+  --text:  #FAFAFA;   /* primary — NashGit --foreground */
+  --muted: #A1A1AA;   /* secondary — NashGit --muted-foreground */
+  --dim:   #71717A;   /* tertiary / labels active */
+  --faint: #52525B;   /* label rest / disabled ink */
 
   /* ---- one signal accent — interactive/semantic ONLY.
-     On dark the site uses --cobalt-soft (#E88BA0), not full crimson:
-     #C0304A lacks contrast against ink. Same rule here. ---- */
-  --accent:      #E88BA0;
-  --accent-ink:  #17140F;
-  --accent-soft: rgba(232,139,160,.12);
-  --accent-line: rgba(232,139,160,.42);
+     NashGit's cherry (hsl(348 70% 51%) = #D92B4E), lifted one step for
+     text-contrast on the near-black base — same move NashGit makes with
+     its --accent-foreground (#F0A3B3). ---- */
+  --accent:      #E54866;
+  --accent-ink:  #FFFFFF;
+  --accent-soft: rgba(229,72,102,.12);
+  --accent-line: rgba(229,72,102,.42);
 
   /* ---- semantic status — used as dots/labels, not fills ---- */
   --ok:   #4bb894;
