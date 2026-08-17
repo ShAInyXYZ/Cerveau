@@ -8,11 +8,23 @@
   import RfxDock from './lib/RfxDock.svelte';
   import Settings from './lib/Settings.svelte';
   import DeleteSessionDialog from './lib/DeleteSessionDialog.svelte';
-  import { api } from './lib/api';
+  import { api, onAuthRequired, setAuthToken } from './lib/api';
   import { healthStore } from './lib/stores/health.svelte.ts';
   import { sessionStore } from './lib/stores/session.svelte.ts';
   import { uiStore } from './lib/stores/ui.svelte.ts';
   import type { SessionMeta } from './lib/types';
+
+  // ── lock screen: the core is paired (token set), panel needs the token ──
+  let locked = $state(false);
+  let tokenInput = $state('');
+  let tokenErr = $state('');
+  onAuthRequired(() => (locked = true));
+  async function unlock(): Promise<void> {
+    setAuthToken(tokenInput.trim());
+    const h = await api.health();
+    if (h) { locked = false; tokenErr = ''; location.reload(); }
+    else { setAuthToken(null); tokenErr = 'wrong token'; }
+  }
 
   $effect(() => {
     healthStore.start();
@@ -100,7 +112,46 @@
     onConfirm={confirmDelete} onClose={closeDelete} />
 {/if}
 
+{#if locked}
+  <div class="lock" role="dialog" aria-label="cerveau locked">
+    <div class="lockcard">
+      <div class="lock-mark">◈</div>
+      <div class="label">CERVEAU LOCKED</div>
+      <p>This instance is paired. Enter the access token to unlock.</p>
+      <input type="password" bind:value={tokenInput} placeholder="access token"
+        onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && unlock()} autocomplete="off" />
+      {#if tokenErr}<div class="lock-err">{tokenErr}</div>{/if}
+      <button onclick={unlock}>unlock</button>
+    </div>
+  </div>
+{/if}
+
 <style>
+  .lock {
+    position: fixed; inset: 0; z-index: var(--z-modal);
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .lockcard {
+    display: flex; flex-direction: column; gap: 12px; align-items: center;
+    max-width: 320px; padding: 28px; text-align: center;
+  }
+  .lock-mark { color: var(--accent); font-size: 28px; }
+  .lockcard p { color: var(--muted); font-size: 12px; }
+  .lockcard input {
+    width: 100%; padding: 10px 12px; background: var(--s2); color: var(--text);
+    border: 1px solid var(--line2); border-radius: var(--r);
+    font-family: var(--font-mono); font-size: 12px; outline: none;
+  }
+  .lockcard input:focus { border-color: var(--accent-line); }
+  .lock-err { color: var(--err); font-size: 11px; font-family: var(--font-mono); }
+  .lockcard button {
+    width: 100%; padding: 10px; background: var(--accent); color: var(--accent-ink);
+    border: none; border-radius: var(--r); cursor: pointer;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: .18em;
+    text-transform: uppercase;
+  }
+
   .shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
   .chatwrap { display: flex; flex: 1; min-width: 0; min-height: 0; }
   .chatwrap :global(main.chat) { flex: 1; min-width: 0; }

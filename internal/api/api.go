@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -27,8 +28,9 @@ import (
 const Version = "0.3.1"
 
 type API struct {
-	cfg     *config.Config
-	sess    session.Store
+	cfg        *config.Config
+	configPath string
+	sess       session.Store
 	http    *http.Client
 	chat    *loop.Loop
 	sctx    *tools.SessionContext
@@ -63,7 +65,22 @@ func New(cfg *config.Config, sess session.Store) *API {
 	}
 }
 
+// SetConfigPath lets SetRemoteToken persist pairing to disk.
+func (a *API) SetConfigPath(p string) { a.configPath = p }
+
 func (a *API) SetLoop(l *loop.Loop) { a.chat = l }
+
+// RemoteToken is the gate's bearer secret (empty = unpaired localhost mode).
+func (a *API) RemoteToken() string { return a.cfg.RemoteAccessToken }
+
+// SetRemoteToken persists a freshly minted pairing token into the config.
+func (a *API) SetRemoteToken(token string) error {
+	a.cfg.RemoteAccessToken = token
+	if a.configPath == "" {
+		return fmt.Errorf("config path unknown")
+	}
+	return config.Save(a.configPath, a.cfg)
+}
 
 func (a *API) SetSessionContext(sctx *tools.SessionContext) { a.sctx = sctx }
 

@@ -46,5 +46,5 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("POST /api/codegraph/index", a.ReindexCode)
 	mux.HandleFunc("GET /api/system/stats", a.SystemStats)
 	mux.Handle("/", panel.Handler())
-	return &http.Server{Addr: addr, Handler: mux}
+	return &http.Server{Addr: addr, Handler: authGate(a, mux)}
 }

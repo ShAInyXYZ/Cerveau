@@ -23,6 +23,10 @@ type Config struct {
 	ModelCtx         int       `json:"model_ctx"`
 	TypesenseKey     string    `json:"typesense_key,omitempty"`
 	TypesenseManaged bool      `json:"typesense_managed,omitempty"`
+	// RemoteAccessToken gates every API route and the panel once set —
+	// required before Addr may be anything but localhost. /api/pair (gated
+	// by the printed pairing ID) hands it to the phone app.
+	RemoteAccessToken string    `json:"remote_access_token,omitempty"`
 	Endpoints        Endpoints `json:"endpoints"`
 }
 
@@ -94,6 +98,9 @@ func Save(path string, cfg *Config) error {
 }
 
 func applyEnv(cfg *Config) {
+	if v := os.Getenv("CRV_REMOTE_ACCESS_TOKEN"); v != "" {
+		cfg.RemoteAccessToken = v
+	}
 	if v := os.Getenv("CRV_ADDR"); v != "" {
 		cfg.Addr = v
 	}

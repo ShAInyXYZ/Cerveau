@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -111,6 +112,7 @@ func main() {
 	}()
 
 	a := api.New(cfg, sess)
+	a.SetConfigPath(*configPath)
 	if tsClient != nil {
 		a.SetMemory(tsClient)
 	}
@@ -318,9 +320,35 @@ func main() {
 
 	srv := server.New(cfg.Addr, a)
 
+	// Remote access: the phone app pairs with a short ID printed here (the
+	// machine's console is proof of physical access), and the core refuses a
+	// non-localhost bind until a token exists.
+	if cfg.RemoteAccessToken == "" {
+		pairID, err := server.EnsurePairID()
+		if err != nil {
+			slog.Error("pair id", "err", err)
+			os.Exit(1)
+		}
+		if isLocalBind(cfg.Addr) {
+			slog.Info("pairing id (for the phone app)", "pair_id", pairID)
+			fmt.Printf("\n  ◈ cerveau pairing id: %s  — enter it in the phone app to pair\n\n", pairID)
+		} else {
+			slog.Error("refusing non-localhost bind without remote_access_token in config — pair a phone first (run on 127.0.0.1)", "addr", cfg.Addr)
+			os.Exit(1)
+		}
+	}
+
 	slog.Info("cerveau online", "addr", cfg.Addr, "sessions", cfg.SessionsDir)
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("server", "err", err)
 		os.Exit(1)
 	}
+}
+
+func isLocalBind(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	return host == "" || host == "127.0.0.1" || host == "localhost" || host == "::1"
 }

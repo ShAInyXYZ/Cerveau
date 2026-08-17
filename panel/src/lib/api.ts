@@ -5,6 +5,39 @@ import type {
   Question, SessionError, SessionMeta,
 } from './types';
 
+// Auth — the core gates everything behind a bearer token once paired.
+// The phone app pairs via /api/pair; the panel unlocks by pasting the
+// token (persisted in localStorage).
+const AUTH_KEY = 'crv.auth';
+let authToken: string | null = null;
+try { authToken = localStorage.getItem(AUTH_KEY); } catch { /* no storage */ }
+export function setAuthToken(t: string | null) {
+  authToken = t;
+  try { t ? localStorage.setItem(AUTH_KEY, t) : localStorage.removeItem(AUTH_KEY); } catch {}
+}
+
+const authRequiredListeners = new Set<() => void>();
+export function onAuthRequired(fn: () => void) { authRequiredListeners.add(fn); }
+function signalAuthRequired() { authRequiredListeners.forEach((f) => f()); }
+
+// Fetch shim: EVERY panel request (raw fetches included) carries the token;
+// a 401 flips the lock screen via onAuthRequired.
+const rawFetch = window.fetch.bind(window);
+window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const u = new URL(url, location.origin);
+  const isApi = u.origin === location.origin && u.pathname.startsWith('/api/');
+  let merged: RequestInit = init ?? {};
+  if (isApi && authToken) {
+    const h = new Headers(init?.headers);
+    h.set('authorization', `Bearer ${authToken}`);
+    merged = { ...merged, headers: h };
+  }
+  const r = await rawFetch(input, merged);
+  if (r.status === 401 && isApi) signalAuthRequired();
+  return r;
+};
+
 async function getJSON<T>(url: string, opts?: RequestInit): Promise<T | null> {
   try {
     const r = await fetch(url, opts);
