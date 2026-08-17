@@ -21,7 +21,64 @@
 
 ## 📌 Patch notes
 
-### 🧭 v0.3 — "Guidebook" · 2026-08-03
+### 📱 v0.4 — "Pocket" · 2026-08-18
+
+<p>
+  <img src="https://img.shields.io/badge/phone-paired_%2B_biometric-C0304A?style=flat-square&labelColor=17140F" alt="phone access"/>
+  <img src="https://img.shields.io/badge/identity-keystore_P--256-E88BA0?style=flat-square&labelColor=17140F" alt="device identity"/>
+  <img src="https://img.shields.io/badge/panel-mobile_first-C0304A?style=flat-square&labelColor=17140F" alt="mobile panel"/>
+</p>
+
+**Cerveau in your pocket, over your own tailnet.** A native Android shell
+reaches the harness from anywhere, and the panel it renders was rebuilt to
+deserve the small screen.
+
+**The phone**
+- **Pair once, unlock forever after.** The desktop's ⌾ button mints a
+  short-lived invitation — QR plus a 6-character code, one use, five
+  minutes. The phone scans it **with its own camera** (a vendored,
+  decode-only ZXing; the pairing payload is never handed to a third-party
+  scanner) and registers a **P-256 key generated inside the Android
+  Keystore**. The private key cannot leave the TEE, so copying the app's
+  data to another phone yields an identity that cannot sign.
+- **The token is sealed behind your fingerprint.** AES-GCM under a
+  Keystore key bound to the device lock; opening the app asks for
+  biometrics or your PIN, and a phone with no lock says so plainly rather
+  than implying protection it cannot give.
+- **The page never holds a credential.** A loopback bridge inside the app
+  adds the bearer token and a fresh per-request device signature on the
+  way out, so the WebView's JavaScript stays completely dumb.
+- **Nothing about your network ships in the APK.** No hostname, no tailnet
+  name, no machine IP — `strings` on the binary reveals none of it. The
+  invitation carries the address, and the app refuses to even look for a
+  gate until it has proven it is on your tailnet.
+
+**The panel, rebuilt**
+- **TypeScript, rune stores, real primitives.** A typed API client, an SSE
+  stream that reconnects with backoff, `Chat.svelte` split from 592 lines
+  into seven focused components, bits-ui dialogs with real focus traps, and
+  the first frontend tests the project has ever had.
+- **Mobile-first.** The session rail becomes a drawer under 900px, chrome
+  hides on phones, and the plan strip shows five rows and scrolls the rest
+  instead of swallowing the screen.
+- **Pick a workspace from the phone.** The desktop's native folder dialog
+  opens on the *machine* — invisible from a phone — so narrow screens get
+  an in-panel browser backed by a deliberately narrow endpoint: directory
+  names only, nothing above `$HOME`, symlinks resolved before the
+  containment check.
+
+**Guards that tell the truth**
+- Loopback requests are trusted again, so pairing a phone no longer locks
+  you out of your own machine — while traffic proxied in from the tailnet
+  is stamped and still fully gated.
+- An existing token no longer refuses new devices; each registers its own
+  key.
+- Several error messages stopped asserting causes they never tested
+  ("is tailscale up?", "wrong or expired code", "is it awake?"). An error
+  now reports what was observed.
+
+<details>
+<summary><b>🧭 v0.3 — "Guidebook" · 2026-08-03</b></summary>
 
 <p>
   <img src="https://img.shields.io/badge/self--repair-guidebook-C0304A?style=flat-square&labelColor=17140F" alt="guidebook"/>
@@ -66,7 +123,10 @@ ignore; a rule in the core always runs.*
   nearest-match hints on a miss. The model lands edits on the first try
   instead of re-reading whole files.
 
-### 🎛️ v0.2.1 — "RFX_UI" · 2026-08-02
+</details>
+
+<details>
+<summary><b>🎛️ v0.2.1 — "RFX_UI" · 2026-08-02</b></summary>
 
 <p>
   <img src="https://img.shields.io/badge/RFX__UI-tier_2-C0304A?style=flat-square&labelColor=17140F" alt="RFX_UI tier 2"/>
@@ -99,7 +159,10 @@ publishing via `gh`, commit-identity management, and a ✦ button that has
 **the local model write your commit message**. Twelve talents, all YAML +
 one HTML file, zero core changes — which is the point.
 
-### ⚡ v0.2 — "RFX" · 2026-08-01
+</details>
+
+<details>
+<summary><b>⚡ v0.2 — "RFX" · 2026-08-01</b></summary>
 
 <p>
   <img src="https://img.shields.io/badge/RFX-v1_frozen-C0304A?style=flat-square&labelColor=17140F" alt="RFX v1 frozen"/>
@@ -162,6 +225,9 @@ The result is not a smarter model — it's a harness that **absorbs the failure
 modes of modest models**, so a few billion active parameters deliver work that
 otherwise needs a much larger one. Specialization is what a general tool
 cannot offer; it's the entire reason Cerveau exists.
+
+</details>
+
 
 ## Why a harness for local hardware
 

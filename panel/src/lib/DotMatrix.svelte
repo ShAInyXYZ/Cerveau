@@ -3,7 +3,7 @@
   // string as a grid of dots: lit dots in the accent, unlit dots faint — like a
   // real LED display. SVG so it stays crisp at any size and recolors via tokens.
   let {
-    text = 'V0.3',
+    text = 'V0.4',
     dot = 2.4,          // dot radius
     gap = 2.2,          // gap between dot centers beyond the diameter
     lit = 'var(--accent)',
