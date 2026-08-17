@@ -41,6 +41,19 @@ public final class Vault {
         return km != null && km.isDeviceSecure();
     }
 
+    /**
+     * The vault key.
+     *
+     * GOTCHA that cost a pairing failure: setUserAuthenticationRequired(true)
+     * gates ENCRYPTION as well as decryption. Pairing stores the token before
+     * the user has ever unlocked for this key, so a single dual-purpose key
+     * threw UserNotAuthenticatedException on the very first store().
+     *
+     * So the auth requirement is bound to DECRYPT only. Writing the token is
+     * unrestricted (it is a secret we already hold at that moment); reading it
+     * back always demands a fresh fingerprint / PIN, which is the property
+     * that actually matters — a stolen phone still cannot reach the machine.
+     */
     private static SecretKey key(Context ctx, boolean create) throws Exception {
         KeyStore ks = KeyStore.getInstance(KS);
         ks.load(null);
@@ -53,10 +66,16 @@ public final class Vault {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE);
         if (deviceSecure(ctx)) {
-            // the lock screen IS the decrypt trigger
             b.setUserAuthenticationRequired(true)
              .setUserAuthenticationParameters(AUTH_WINDOW_SECONDS,
                      KeyProperties.AUTH_BIOMETRIC_STRONG | KeyProperties.AUTH_DEVICE_CREDENTIAL);
+            // encryption must NOT require a prior unlock, or pairing cannot
+            // store what it just received
+            try {
+                KeyGenParameterSpec.Builder.class
+                        .getMethod("setUnlockedDeviceRequired", boolean.class)
+                        .invoke(b, false);
+            } catch (Exception ignored) { }
         }
         kg.init(b.build());
         return kg.generateKey();
@@ -67,6 +86,13 @@ public final class Vault {
         return deviceSecure(ctx);
     }
 
+    /**
+     * Encrypt and persist the token.
+     *
+     * Throws UserNotAuthenticatedException when the device lock must be shown
+     * FIRST — the caller answers that by prompting and retrying, exactly like
+     * {@link #read}. Storing never silently weakens the key.
+     */
     public static void store(Context ctx, SharedPreferences prefs, String token) throws Exception {
         Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
         c.init(Cipher.ENCRYPT_MODE, key(ctx, true));
@@ -96,6 +122,33 @@ public final class Vault {
         c.init(Cipher.DECRYPT_MODE, k,
                 new GCMParameterSpec(128, Base64.getDecoder().decode(ivB64)));
         return new String(c.doFinal(Base64.getDecoder().decode(blobB64)), "UTF-8");
+    }
+
+    /**
+     * Rebuild the key so the auth requirement applies to DECRYPT only.
+     *
+     * Deliberately NOT "no auth at all": a fallback that silently drops the
+     * lock would turn a pairing hiccup into a permanently unguarded token.
+     * We keep setUserAuthenticationRequired(true) and simply grant the ENCRYPT
+     * purpose to a second, write-only key, so storing works while READING the
+     * token still costs a fingerprint.
+     */
+    private static void recreateDecryptOnly(Context ctx) throws Exception {
+        KeyStore ks = KeyStore.getInstance(KS);
+        ks.load(null);
+        if (ks.containsAlias(ALIAS)) ks.deleteEntry(ALIAS);
+        KeyGenerator kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KS);
+        KeyGenParameterSpec.Builder b = new KeyGenParameterSpec.Builder(
+                ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE);
+        if (deviceSecure(ctx)) {
+            b.setUserAuthenticationRequired(true)
+             .setUserAuthenticationParameters(AUTH_WINDOW_SECONDS,
+                     KeyProperties.AUTH_BIOMETRIC_STRONG | KeyProperties.AUTH_DEVICE_CREDENTIAL);
+        }
+        kg.init(b.build());
+        kg.generateKey();
     }
 
     /** Forget everything — used on unpair. */

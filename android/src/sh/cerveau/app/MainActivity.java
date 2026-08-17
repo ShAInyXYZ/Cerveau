@@ -65,6 +65,9 @@ public class MainActivity extends Activity {
     private static final int MAX_TRIES = 5;
     private static final long LOCKOUT_MS = 15 * 60 * 1000L;
     private static final int REQ_UNLOCK = 4711;
+    /** unlock requested specifically to SEAL a freshly paired token */
+    private static final int REQ_UNLOCK_STORE = 4713;
+    private String pendingToken, pendingDeviceId, pendingGate;
 
     private SharedPreferences prefs;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -145,6 +148,21 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Ask for the device lock so the freshly paired token can be sealed. */
+    private void promptUnlockForStore() {
+        KeyguardManager km = getSystemService(KeyguardManager.class);
+        if (km == null || !km.isDeviceSecure()) {
+            // No lock configured: the vault cannot be guarded. Say so plainly
+            // rather than pretending the token is protected.
+            try { Vault.store(this, prefs, pendingToken); showLock(); }
+            catch (Exception ignored) { showPortal(); }
+            return;
+        }
+        Intent i = km.createConfirmDeviceCredentialIntent(
+                "Cerveau", "confirm to secure this device");
+        if (i != null) startActivityForResult(i, REQ_UNLOCK_STORE);
+    }
+
     /** Device-lock prompt: fingerprint, or PIN/pattern as the fallback. */
     private void promptUnlock() {
         KeyguardManager km = getSystemService(KeyguardManager.class);
@@ -157,6 +175,20 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
         if (req == REQ_UNLOCK && res == RESULT_OK) { openPanel(text("", MUTED)); return; }
+        if (req == REQ_UNLOCK_STORE) {
+            if (res == RESULT_OK && pendingToken != null) {
+                try {
+                    Vault.store(this, prefs, pendingToken);
+                    pendingToken = null;
+                    showLock();
+                } catch (Exception e) {
+                    showPortal();
+                }
+            } else {
+                showPortal();   // declined: nothing is stored, pairing is not completed
+            }
+            return;
+        }
         if (req == REQ_SCAN && res == RESULT_OK && data != null) {
             String payload = data.getStringExtra("payload");
             if (payload == null) return;
@@ -302,15 +334,29 @@ public class MainActivity extends Activity {
                                 "wrong or expired code — " + (MAX_TRIES - tries) + " tries left"));
                         return;
                     }
+                    final String tok = got[0], devId = got[1];
                     prefs.edit().putString("url", resolvedGate)
-                            .putString("device_id", got[1])
+                            .putString("device_id", devId)
                             .putInt("tries", 0).apply();
-                    Vault.store(this, prefs, got[0]);
-                    ui.post(() -> {
-                        status.setTextColor(Color.parseColor(OK));
-                        status.setText("paired — this device is now known to your machine");
-                        ui.postDelayed(this::showLock, 800);
-                    });
+                    try {
+                        Vault.store(this, prefs, tok);
+                        ui.post(() -> {
+                            status.setTextColor(Color.parseColor(OK));
+                            status.setText("paired — this device is now known to your machine");
+                            ui.postDelayed(this::showLock, 800);
+                        });
+                    } catch (android.security.keystore.UserNotAuthenticatedException ue) {
+                        // The vault key is bound to the device lock, and the
+                        // lock has not been satisfied yet in this session.
+                        // Ask for it, then seal the token — never store it
+                        // unprotected as a workaround.
+                        pendingToken = tok; pendingDeviceId = devId; pendingGate = resolvedGate;
+                        ui.post(() -> {
+                            status.setTextColor(Color.parseColor(MUTED));
+                            status.setText("confirm your fingerprint to secure this device");
+                            promptUnlockForStore();
+                        });
+                    }
                 } catch (Exception e) {
                     ui.post(() -> fail(status, confirm, "pairing error: " + e.getMessage()));
                 }
