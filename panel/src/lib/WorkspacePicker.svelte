@@ -31,9 +31,25 @@
     }
   }
 
+  // Load ONCE per opening.
+  //
+  // The naive version read `current` inside the effect — and `current` is the
+  // workspace from the health store, which re-polls every few seconds. Every
+  // poll re-ran the effect and reloaded the ORIGINAL path, silently throwing
+  // away wherever the user had navigated to. It looked random because it
+  // followed the poll tick, not the taps.
+  //
+  // `opened` is a plain variable, NOT $state, so setting it cannot re-trigger
+  // the effect either (same trap as the plan strip's celebrate loop).
+  let opened = false;
   $effect(() => {
-    if (open) void load(current || undefined);
-    else { listing = null; error = ''; }
+    if (open) {
+      if (!opened) { opened = true; void load(current || undefined); }
+    } else {
+      opened = false;
+      listing = null;
+      error = '';
+    }
   });
 
   function choose(): void {
