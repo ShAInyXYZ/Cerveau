@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+  <!-- cleartext allowed ONLY for tailnet (100.64.0.0/10) cerveau doors -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="false">100.90.163.54</domain>
+  </domain-config>
+  <base-config cleartextTrafficPermitted="false"/>
+</network-security-config>
