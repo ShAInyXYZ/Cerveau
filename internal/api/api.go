@@ -24,7 +24,7 @@ import (
 )
 
 // Version is the running app version, surfaced in /health.
-const Version = "0.3.0-alpha"
+const Version = "0.3.1"
 
 type API struct {
 	cfg     *config.Config
