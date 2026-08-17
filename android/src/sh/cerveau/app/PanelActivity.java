@@ -54,7 +54,11 @@ public class PanelActivity extends Activity {
             }
             @Override public void onReceivedError(WebView v, WebResourceRequest req,
                                                   android.webkit.WebResourceError e) {
-                if (req.isForMainFrame()) offline();
+                android.util.Log.e("cerveau", "webview error " + e.getErrorCode()
+                        + " " + e.getDescription() + " for " + req.getUrl());
+                if (req.isForMainFrame()) {
+                    offline("the bridge could not reach your machine\n" + e.getDescription());
+                }
             }
         });
 
@@ -74,19 +78,25 @@ public class PanelActivity extends Activity {
 
         try {
             proxy = new AuthProxy(url, token, deviceId);
-            web.loadUrl(proxy.start() + "/");
+            String local = proxy.start();
+            android.util.Log.i("cerveau", "proxy on " + local + " → gate " + url);
+            web.loadUrl(local + "/");
         } catch (Exception e) {
-            offline();
+            android.util.Log.e("cerveau", "proxy failed to start", e);
+            offline("could not start the local bridge\n" + e.getMessage());
         }
     }
 
-    private void offline() {
+    private void offline(String detail) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
         box.setBackgroundColor(Color.parseColor(MainActivity.BG));
         TextView t = new TextView(this);
-        t.setText("◈ machine unreachable\nis tailscale up on both ends?");
+        // Say what actually failed. "is tailscale up?" was a guess that sent
+        // the user chasing a healthy network.
+        t.setText("◈ " + (detail == null || detail.isEmpty()
+                ? "could not load the panel" : detail) + "\n\ntap to retry");
         t.setTextColor(Color.parseColor(MainActivity.ACCENT));
         t.setGravity(Gravity.CENTER);
         t.setPadding(48, 0, 48, 0);

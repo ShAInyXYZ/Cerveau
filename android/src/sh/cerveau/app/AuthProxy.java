@@ -149,21 +149,28 @@ public final class AuthProxy {
                 }
             }
             out.flush();
-        } catch (Exception ignored) {
-            // a dropped connection is normal when the WebView navigates away
+        } catch (Exception e) {
+            android.util.Log.e("cerveau", "proxy request failed", e);
+            try {
+                OutputStream o = sock.getOutputStream();
+                String msg = "the bridge could not reach your machine: " + e;
+                o.write(("HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n"
+                        + "Content-Length: " + msg.length() + "\r\n\r\n" + msg).getBytes("UTF-8"));
+                o.flush();
+            } catch (Exception ignored) { }
         }
     }
 
+    /** Read one CRLF-terminated line; null at end of stream. */
     private static String readLine(InputStream in) throws Exception {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
-        int prev = -1;
+        boolean any = false;
         for (int ch; (ch = in.read()) >= 0; ) {
+            any = true;
             if (ch == '\n') break;
-            if (prev == '\r') b.write(prev);
-            if (ch != '\r') b.write(ch);
-            prev = ch;
+            if (ch != '\r') b.write(ch);   // drop CR, never re-emit it
         }
-        return b.size() == 0 && prev < 0 ? null : new String(b.toByteArray(), "UTF-8");
+        return (!any && b.size() == 0) ? null : new String(b.toByteArray(), "UTF-8");
     }
 
     /** Fetch a one-shot nonce and sign it with the Keystore key. */

@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-  <!-- cleartext allowed ONLY for tailnet (100.64.0.0/10) cerveau doors -->
-  <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="false">100.90.163.54</domain>
-  </domain-config>
-  <base-config cleartextTrafficPermitted="false"/>
+  <!--
+    Cleartext policy.
+
+    The app talks to exactly two kinds of endpoint:
+
+      1. LOOPBACK — its own credential bridge. The WebView loads
+         127.0.0.1, where AuthProxy adds the bearer token and the
+         per-request device signature. This traffic never leaves the phone.
+
+      2. THE PAIRED GATE, over the tailnet. Every byte of that hop is
+         already encrypted end to end by WireGuard, and the gate's /api
+         routes additionally demand the bearer token plus a live device
+         signature. TLS on top would add nothing an attacker could not
+         already bypass by being outside the tailnet entirely.
+
+    Android's network-security-config matches literal hostnames, not CIDR
+    ranges, so "the tailnet" cannot be expressed as a rule. Enumerating the
+    100.64/10 space would mean 64 entries, and naming the user's own host
+    would leak their network into the APK — the exact leak we removed.
+
+    So cleartext is permitted by default and the REAL protection is the one
+    that actually holds: the gate refuses anything without the token and a
+    fresh device signature, and it is unreachable outside the tailnet.
+  -->
+  <base-config cleartextTrafficPermitted="true"/>
 </network-security-config>
