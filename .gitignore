@@ -81,3 +81,6 @@ Thumbs.db
 !.vscode/extensions.json
 Reports/
 android/Cerveau.apk
+
+# APK signing key — never commit
+android/cerveau.keystore

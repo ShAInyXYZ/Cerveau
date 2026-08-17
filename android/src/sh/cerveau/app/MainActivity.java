@@ -1,6 +1,7 @@
 package sh.cerveau.app;
 
 import android.app.Activity;
+import android.app.KeyguardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -11,10 +12,12 @@ import android.os.Looper;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import org.json.JSONObject;
@@ -29,140 +32,203 @@ import java.net.NetworkInterface;
 import java.net.URL;
 import java.util.Collections;
 
-/** Cerveau portal — the door into your machine.
+/**
+ *  Cerveau — the portal.
  *
- *  Flow: splash → portal (URL + pairing ID, Tailscale verified first) →
- *  pair with the core → PanelActivity. Five wrong IDs locks the app for
- *  15 minutes. Secrets live in app-private storage, never on the wire
- *  outside the tailnet address the user confirmed. */
+ *  Two states, decided at launch:
+ *    NOT PAIRED → the pairing form (machine URL + 6-char code from the core's
+ *                 console). Pairing registers this phone's Keystore public key
+ *                 with the machine; the identity cannot be copied to another
+ *                 device because the private key never leaves this TEE.
+ *    PAIRED     → the lock screen. The token is encrypted at rest behind the
+ *                 device lock, so opening the app asks for fingerprint (or PIN
+ *                 / pattern) and only then opens the panel.
+ *
+ *  Five wrong pairing IDs lock the form for 15 minutes.
+ */
 public class MainActivity extends Activity {
-    static final String PREFS = "cerveau";
-    static final String BG = "#000000", S1 = "#0F0F11", S2 = "#1B1B1E",
-        LINE = "#262629", TEXT = "#FAFAFA", MUTED = "#A1A1AA",
-        FAINT = "#52525B", ACCENT = "#E54866", ERR = "#e6533f", OK = "#4bb894";
+    public static final String PREFS = "cerveau";
+    static final String BG = "#12100C", S2 = "#1E1A14", LINE = "#27221A";
+    static final String TEXT = "#F2E1DE", MUTED = "#B8B2A6", FAINT = "#5A554A";
+    static final String ACCENT = "#E88BA0", ERR = "#e6533f", OK = "#4bb894";
 
-    private static final int MAX_ATTEMPTS = 5;
-    private static final long LOCK_MS = 15 * 60 * 1000;
+    private static final int MAX_TRIES = 5;
+    private static final long LOCKOUT_MS = 15 * 60 * 1000L;
+    private static final int REQ_UNLOCK = 4711;
 
     private SharedPreferences prefs;
-    private Handler ui = new Handler(Looper.getMainLooper());
+    private final Handler ui = new Handler(Looper.getMainLooper());
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
-        getWindow().setStatusBarColor(Color.BLACK);
-        getWindow().setNavigationBarColor(Color.BLACK);
+        getWindow().setStatusBarColor(Color.parseColor(BG));
+        getWindow().setNavigationBarColor(Color.parseColor(BG));
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-
-        if (prefs.getString("token", null) != null && prefs.getString("url", null) != null) {
-            startActivity(new Intent(this, PanelActivity.class));
-            finish();
-            return;
-        }
-        if (lockRemaining() > 0) { showLocked(); return; }
-        showPortal();
+        route();
     }
 
-    // ── lockout ──────────────────────────────────────────────────────
-    private long lockRemaining() {
-        long until = prefs.getLong("lockUntil", 0);
-        return Math.max(0, until - System.currentTimeMillis());
+    @Override protected void onResume() {
+        super.onResume();
+        // returning from the panel must land on the lock screen, never straight in
+        if (isPaired()) showLock();
     }
 
-    private void showLocked() {
+    private boolean isPaired() {
+        return prefs.getString("url", null) != null && Vault.has(prefs);
+    }
+
+    private void route() {
+        if (lockRemaining() > 0) { showLockedOut(); return; }
+        if (isPaired()) showLock(); else showPortal();
+    }
+
+    // ── state 1: paired → unlock to continue ─────────────────────────
+    private void showLock() {
         LinearLayout root = column();
-        TextView mark = label("◈", ACCENT, 34);
-        TextView t = label("LOCKED", ERR, 13);
-        t.setLetterSpacing(0.25f);
-        TextView sub = text("too many wrong pairing ids\ntry again in " + (lockRemaining() / 60000 + 1) + " min", MUTED);
-        sub.setGravity(Gravity.CENTER);
-        root.addView(mark); root.addView(t); root.addView(sub);
-        setContentView(root);
-        ui.postDelayed(this::recheckLock, 10000);
+        root.addView(label("◈", ACCENT, 34));
+        root.addView(label("CERVEAU", TEXT, 20));
+        TextView sub = text(Vault.isProtected(this)
+                ? "unlock to reach your machine"
+                : "no device lock set — your token is unguarded", MUTED);
+        root.addView(sub);
+
+        Button unlock = button(Vault.isProtected(this) ? "UNLOCK" : "OPEN");
+        TextView status = text("", MUTED);
+        unlock.setOnClickListener(v -> openPanel(status));
+        root.addView(unlock);
+        root.addView(status);
+
+        TextView unpair = text("unpair this device", FAINT);
+        unpair.setPadding(0, dp(28), 0, 0);
+        unpair.setOnClickListener(v -> {
+            Vault.clear(prefs);
+            DeviceKey.clear();
+            prefs.edit().remove("url").remove("device_id").apply();
+            showPortal();
+        });
+        root.addView(unpair);
+        setContentView(scroll(root));
+
+        // straight to the biometric prompt — one tap less on every launch
+        ui.postDelayed(() -> openPanel(status), 200);
     }
 
-    private void recheckLock() {
-        if (lockRemaining() <= 0) showPortal(); else showLocked();
+    /**
+     * Decrypt the token (the Keystore demands a fresh unlock) and open the
+     * panel. UserNotAuthenticatedException is the SIGNAL to show the device
+     * lock prompt, not a failure.
+     */
+    private void openPanel(TextView status) {
+        try {
+            String token = Vault.read(this, prefs);
+            if (token == null) { showPortal(); return; }
+            Intent i = new Intent(this, PanelActivity.class);
+            i.putExtra("token", token);
+            i.putExtra("url", prefs.getString("url", ""));
+            i.putExtra("device_id", prefs.getString("device_id", ""));
+            startActivity(i);
+        } catch (android.security.keystore.UserNotAuthenticatedException e) {
+            promptUnlock();
+        } catch (Exception e) {
+            status.setTextColor(Color.parseColor(ERR));
+            status.setText("could not open the vault — unpair and pair again");
+        }
     }
 
-    // ── portal ───────────────────────────────────────────────────────
+    /** Device-lock prompt: fingerprint, or PIN/pattern as the fallback. */
+    private void promptUnlock() {
+        KeyguardManager km = getSystemService(KeyguardManager.class);
+        if (km == null || !km.isDeviceSecure()) { showPortal(); return; }
+        Intent i = km.createConfirmDeviceCredentialIntent(
+                "Cerveau", "unlock to reach your machine");
+        if (i != null) startActivityForResult(i, REQ_UNLOCK);
+    }
+
+    @Override protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_UNLOCK && res == RESULT_OK) openPanel(text("", MUTED));
+    }
+
+    // ── state 2: not paired → the pairing form ───────────────────────
     private void showPortal() {
         LinearLayout root = column();
+        root.addView(label("◈", ACCENT, 34));
+        root.addView(label("CERVEAU", TEXT, 20));
+        root.addView(text("pair this device with your machine", MUTED));
 
-        TextView mark = label("◈", ACCENT, 30);
-        TextView title = label("CERVEAU", TEXT, 18);
-        title.setLetterSpacing(0.35f);
-        TextView sub = text("portal — pair this device with your machine", MUTED);
-        sub.setGravity(Gravity.CENTER);
-
-        EditText urlField = field("http://100.90.163.54:7700", prefs.getString("url", ""));
+        EditText urlField = field("http://100.90.163.54:7701",
+                prefs.getString("url", "http://100.90.163.54:7701"));
         EditText idField = field("pairing id (6 chars, from the core's console)", "");
-        idField.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-            | android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-            | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-
-        TextView status = text("", FAINT);
-        status.setGravity(Gravity.CENTER);
-
-        Button pair = new Button(this);
-        pair.setText("PAIR");
-        pair.setTextColor(Color.BLACK);
-        pair.setLetterSpacing(0.2f);
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(Color.parseColor(ACCENT));
-        d.setCornerRadius(6);
-        pair.setBackground(d);
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, dp(48));
-        bp.setMargins(0, dp(18), 0, 0);
-        pair.setLayoutParams(bp);
+        Button pair = button("PAIR");
+        TextView status = text("", MUTED);
 
         pair.setOnClickListener(v -> {
-            hideKeyboard(urlField);
-            String url = urlField.getText().toString().trim();
-            String id = idField.getText().toString().trim().toLowerCase();
-            if (url.isEmpty() || id.length() != 6) {
-                status.setTextColor(Color.parseColor(ERR));
-                status.setText("need a url and a 6-char pairing id");
+            hideKeyboard(v);
+            String furl = urlField.getText().toString().trim().replaceAll("/+$", "");
+            String id = idField.getText().toString().trim();
+            if (furl.isEmpty() || id.length() != 6) {
+                fail(status, pair, "need a url and a 6-char pairing id");
                 return;
             }
-            if (!url.startsWith("http")) url = "http://" + url;
-            final String furl = url;
+            status.setTextColor(Color.parseColor(MUTED));
+            status.setText("pairing…");
             pair.setEnabled(false);
-            status.setTextColor(Color.parseColor(FAINT));
-            status.setText("checking tailscale…");
             new Thread(() -> {
                 if (!tailscaleUp()) {
                     ui.post(() -> fail(status, pair, "tailscale is not up on this phone\nstart it, then retry"));
                     return;
                 }
-                ui.post(() -> status.setText("reaching " + furl + " …"));
-                String token = pair(furl, id);
-                if (token == null) {
-                    int fails = prefs.getInt("fails", 0) + 1;
-                    prefs.edit().putInt("fails", fails).apply();
-                    if (fails >= MAX_ATTEMPTS) {
-                        prefs.edit().putLong("lockUntil", System.currentTimeMillis() + LOCK_MS)
-                            .putInt("fails", 0).apply();
-                        ui.post(this::showLocked);
+                try {
+                    DeviceKey.ensure();
+                    String pub = DeviceKey.publicKeyB64();
+                    String[] got = pair(furl, id, pub);
+                    if (got == null) {
+                        int tries = prefs.getInt("tries", 0) + 1;
+                        prefs.edit().putInt("tries", tries).apply();
+                        if (tries >= MAX_TRIES) {
+                            prefs.edit().putLong("lock_until", System.currentTimeMillis() + LOCKOUT_MS).apply();
+                            ui.post(this::showLockedOut);
+                            return;
+                        }
+                        ui.post(() -> fail(status, pair,
+                                "pairing failed — wrong id or machine unreachable\n"
+                                        + (MAX_TRIES - tries) + " tries left"));
                         return;
                     }
-                    ui.post(() -> fail(status, pair,
-                        "pairing refused (" + fails + "/" + MAX_ATTEMPTS + ")\nwrong id, unreachable, or already paired"));
-                    return;
+                    prefs.edit().putString("url", furl)
+                            .putString("device_id", got[1])
+                            .putInt("tries", 0).apply();
+                    Vault.store(this, prefs, got[0]);
+                    ui.post(() -> {
+                        status.setTextColor(Color.parseColor(OK));
+                        status.setText("paired — this device is now known to your machine");
+                        ui.postDelayed(this::showLock, 700);
+                    });
+                } catch (Exception e) {
+                    ui.post(() -> fail(status, pair, "pairing error: " + e.getMessage()));
                 }
-                prefs.edit().putString("url", furl).putString("token", token)
-                    .putInt("fails", 0).apply();
-                ui.post(() -> {
-                    status.setTextColor(Color.parseColor(OK));
-                    status.setText("paired — entering");
-                    startActivity(new Intent(this, PanelActivity.class));
-                    finish();
-                });
             }).start();
         });
 
-        root.addView(mark); root.addView(title); root.addView(sub);
-        root.addView(urlField); root.addView(idField); root.addView(pair); root.addView(status);
-        setContentView(root);
+        root.addView(urlField);
+        root.addView(idField);
+        root.addView(pair);
+        root.addView(status);
+        setContentView(scroll(root));
+    }
+
+    private void showLockedOut() {
+        LinearLayout root = column();
+        root.addView(label("◈", ERR, 34));
+        root.addView(label("LOCKED", TEXT, 20));
+        root.addView(text("too many wrong pairing ids\ntry again in "
+                + (lockRemaining() / 60000 + 1) + " min", MUTED));
+        setContentView(scroll(root));
+        ui.postDelayed(this::route, 30000);
+    }
+
+    private long lockRemaining() {
+        return Math.max(0, prefs.getLong("lock_until", 0) - System.currentTimeMillis());
     }
 
     private void fail(TextView status, Button pair, String msg) {
@@ -171,7 +237,7 @@ public class MainActivity extends Activity {
         pair.setEnabled(true);
     }
 
-    // ── tailscale detection: a 100.64.0.0/10 address on the interface ──
+    // ── tailscale detection: a 100.64.0.0/10 address on a tun interface ──
     private boolean tailscaleUp() {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
@@ -181,26 +247,28 @@ public class MainActivity extends Activity {
                     if (b.length == 4 && (b[0] & 0xff) == 100 && ((b[1] & 0xff) >> 6) == 1) return true;
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) { }
         return false;
     }
 
-    private String pair(String base, String id) {
+    /** POST /api/pair with this device's public key → {token, device_id}. */
+    private String[] pair(String base, String id, String pubkey) {
         HttpURLConnection c = null;
         try {
-            URL u = new URL(base + "/api/pair");
-            c = (HttpURLConnection) u.openConnection();
+            c = (HttpURLConnection) new URL(base + "/api/pair").openConnection();
             c.setRequestMethod("POST");
             c.setRequestProperty("content-type", "application/json");
-            c.setConnectTimeout(5000);
-            c.setReadTimeout(5000);
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(8000);
             c.setDoOutput(true);
-            byte[] body = ("{\"pair_id\":\"" + id + "\"}").getBytes("UTF-8");
-            OutputStream os = c.getOutputStream();
-            os.write(body); os.close();
+            String body = new JSONObject()
+                    .put("pair_id", id)
+                    .put("pubkey", pubkey)
+                    .toString();
+            try (OutputStream os = c.getOutputStream()) { os.write(body.getBytes("UTF-8")); }
             if (c.getResponseCode() != 200) return null;
-            String s = readAll(c.getInputStream());
-            return new JSONObject(s).getString("token");
+            JSONObject j = new JSONObject(readAll(c.getInputStream()));
+            return new String[]{ j.getString("token"), j.optString("device_id", "") };
         } catch (Exception e) {
             return null;
         } finally {
@@ -215,14 +283,46 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
-    // ── tiny view helpers (no xml, one identity) ─────────────────────
+    // ── views: no xml, one identity ──────────────────────────────────
+    /** Scrollable + inset-padded, so the status bar and the nav bar/keyboard
+     *  never crop the form. */
+    private ScrollView scroll(View content) {
+        ScrollView sv = new ScrollView(this);
+        sv.setBackgroundColor(Color.parseColor(BG));
+        sv.setFillViewport(true);
+        sv.addView(content);
+        sv.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return insets;
+        });
+        return sv;
+    }
+
     private LinearLayout column() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setPadding(dp(36), 0, dp(36), 0);
+        root.setPadding(dp(36), dp(24), dp(36), dp(24));
         root.setBackgroundColor(Color.parseColor(BG));
+        root.setLayoutParams(new LinearLayout.LayoutParams(-1, -1));
         return root;
+    }
+
+    private Button button(String text) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setTextColor(Color.BLACK);
+        b.setLetterSpacing(0.2f);
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(Color.parseColor(ACCENT));
+        d.setCornerRadius(dp(8));
+        b.setBackground(d);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, dp(52));
+        bp.setMargins(0, dp(14), 0, dp(6));
+        b.setLayoutParams(bp);
+        return b;
     }
 
     private TextView label(String s, String color, int sp) {
@@ -236,9 +336,7 @@ public class MainActivity extends Activity {
         return t;
     }
 
-    private TextView text(String s, String color) {
-        return label(s, color, 12);
-    }
+    private TextView text(String s, String color) { return label(s, color, 12); }
 
     private EditText field(String hint, String value) {
         EditText e = new EditText(this);
@@ -252,7 +350,7 @@ public class MainActivity extends Activity {
         GradientDrawable d = new GradientDrawable();
         d.setColor(Color.parseColor(S2));
         d.setStroke(1, Color.parseColor(LINE));
-        d.setCornerRadius(6);
+        d.setCornerRadius(dp(6));
         e.setBackground(d);
         e.setPadding(dp(14), 0, dp(14), 0);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(50));
@@ -267,6 +365,7 @@ public class MainActivity extends Activity {
     }
 
     private int dp(int n) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, n, getResources().getDisplayMetrics());
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, n, getResources().getDisplayMetrics());
     }
 }
