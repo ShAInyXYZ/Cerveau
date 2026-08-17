@@ -80,3 +80,4 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 Reports/
+android/Cerveau.apk
