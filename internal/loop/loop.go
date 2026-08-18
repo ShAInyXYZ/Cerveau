@@ -86,11 +86,51 @@ type Loop struct {
 	stackInfo    func() string                 // the harness's own running services + reserved ports
 	isInstant    func(id string) bool          // is this session an ephemeral instant session?
 	bg           sync.WaitGroup
+	regFor       func(ws string) *tools.Registry
 }
 
 // SetWorkspaceFunc wires a live getter for the active workspace path so the
 // system prompt can tell the model where it actually is.
 func (l *Loop) SetWorkspaceFunc(f func(sessionID string) string) { l.workspace = f }
+
+// SetRegistryForWorkspace wires a builder that produces a tool registry rooted
+// in a GIVEN workspace.
+//
+// Without it, every session shares one registry built at startup from the
+// global cfg.Workspace — and each tool captures its jail root at CONSTRUCTION
+// (NewServe(ws), file jails), so no amount of SetWorkspace on the registry can
+// redirect them afterwards.
+//
+// The result was a harness that lied: envBlock told the model "your workspace
+// is <session path>. All file tools are rooted here", while the tools actually
+// read, wrote and served the core's global workspace. A benchmark session
+// pointed at ~/Pictures/Benchmark had its static server serve an unrelated
+// chess project, and a regex search miss a function that was sitting in its
+// real workspace.
+func (l *Loop) SetRegistryForWorkspace(f func(ws string) *tools.Registry) {
+	l.toolsMu.Lock()
+	l.regFor = f
+	l.toolsMu.Unlock()
+}
+
+// registryFor returns the registry a session's tools must run in: one rooted in
+// that session's own workspace when a builder is wired, else the global one.
+func (l *Loop) registryFor(sessionID string) *tools.Registry {
+	l.toolsMu.RLock()
+	f, ws := l.regFor, l.workspace
+	l.toolsMu.RUnlock()
+	if f == nil || ws == nil {
+		return l.registry()
+	}
+	path := ws(sessionID)
+	if path == "" {
+		return l.registry()
+	}
+	if r := f(path); r != nil {
+		return r
+	}
+	return l.registry()
+}
 
 func (l *Loop) SetRegistry(r *tools.Registry) {
 	l.toolsMu.Lock()
@@ -193,7 +233,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	if l.recall != nil {
 		turnPulls = l.recall.TurnStart(ctx, sessionID, userMsg, l.tailEvtIDs(sessionID, 20))
 	}
-	sessionReg := l.registry()
+	sessionReg := l.registryFor(sessionID)
 	if l.rfx != nil {
 		defs := l.rfx.List()
 		reg, rfxErrs := sessionReg.WithReflexes(defs)

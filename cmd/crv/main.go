@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -223,6 +224,42 @@ func main() {
 		}
 		return cfg.Workspace
 	})
+	// Per-session tool registries.
+	//
+	// Tools capture their jail root at CONSTRUCTION, so one startup-built
+	// registry silently pins every session to the global cfg.Workspace no
+	// matter what workspace the session carries. Build (and cache) a registry
+	// per workspace so a session's tools act where the session says they do.
+	var regCacheMu sync.Mutex
+	regCache := map[string]*tools.Registry{}
+	agentLoop.SetRegistryForWorkspace(func(ws string) *tools.Registry {
+		abs, err := filepath.Abs(ws)
+		if err != nil {
+			return nil // caller falls back to the global registry
+		}
+		regCacheMu.Lock()
+		defer regCacheMu.Unlock()
+		if r, ok := regCache[abs]; ok {
+			return r
+		}
+		if info, err := os.Stat(abs); err != nil || !info.IsDir() {
+			return nil
+		}
+		store, err := codeintel.OpenStore(codeintel.DBPathFor(abs))
+		if err != nil {
+			return nil
+		}
+		grd := guard.New(abs)
+		r := tools.NewRegistry(buildEntries(abs, store)...)
+		r.SetWorkspace(abs)
+		r.SetGuard(grd.Check)
+		r.SetRemediator(func(tool string, args json.RawMessage) (json.RawMessage, error) {
+			return grd.Remediate(tool, args, time.Now())
+		})
+		regCache[abs] = r
+		return r
+	})
+
 	// instant sessions never promote to long-term semantic memory
 	agentLoop.SetInstantCheck(sess.IsInstant)
 	// tell the model what the harness itself is running, so it never suggests
