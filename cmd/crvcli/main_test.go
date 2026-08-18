@@ -25,7 +25,7 @@ func TestAskCreatesSessionAndChats(t *testing.T) {
 	defer srv.Close()
 
 	c := &client{base: srv.URL}
-	if err := c.ask("", "discussion", []string{"say", "hi"}); err != nil {
+	if err := c.ask("", "discussion", t.TempDir(), []string{"say", "hi"}); err != nil {
 		t.Fatal(err)
 	}
 	if chatBody["text"] != "say hi" {
@@ -52,7 +52,7 @@ func TestAskExistingSessionSkipsCreate(t *testing.T) {
 	defer srv.Close()
 
 	c := &client{base: srv.URL}
-	if err := c.ask("sess_existing", "", []string{"go"}); err != nil {
+	if err := c.ask("sess_existing", "", "", []string{"go"}); err != nil {
 		t.Fatal(err)
 	}
 	if created {
@@ -69,7 +69,7 @@ func TestErrorResponseSurfaced(t *testing.T) {
 	defer srv.Close()
 
 	c := &client{base: srv.URL}
-	err := c.ask("s1", "", []string{"x"})
+	err := c.ask("s1", "", "", []string{"x"})
 	if err == nil || !strings.Contains(err.Error(), "loop not wired") {
 		t.Fatalf("expected surfaced error, got %v", err)
 	}

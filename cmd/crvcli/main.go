@@ -5,6 +5,13 @@
 //
 //	crvcli ask "refactor the parser"          # one-shot: new session, chat, print reply
 //	crvcli ask -mode brainstorming "research X"
+//	crvcli -workspace ~/code/app ask "add tests"   # work in a specific project
+//
+// The workspace belongs to the project: every session in it shares that path.
+// The CLI is INDEPENDENT of the panel — it defaults to the directory you are
+// standing in, and the panel's folder picker never redirects a session the
+// terminal started.
+//
 //	crvcli -session sess_123 ask "continue"    # chat into an existing session
 //	crvcli sessions                            # list sessions
 //	crvcli new "my task"                       # create a session, print its id
@@ -20,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -28,6 +36,7 @@ func main() {
 	addr := flag.String("addr", envOr("CRV_ADDR", "http://localhost:7700"), "crv server base URL")
 	session := flag.String("session", "", "existing session id (default: create a fresh one)")
 	mode := flag.String("mode", "", "chat mode: discussion | brainstorming | autopilot")
+	workspace := flag.String("workspace", "", "project folder to work in (default: current directory)")
 	jsonOut := flag.Bool("json", false, "print raw JSON responses")
 	flag.Parse()
 
@@ -41,9 +50,9 @@ func main() {
 	var err error
 	switch args[0] {
 	case "ask":
-		err = c.ask(*session, *mode, args[1:])
+		err = c.ask(*session, *mode, *workspace, args[1:])
 	case "new":
-		err = c.newSession(args[1:])
+		err = c.newSession(*workspace, args[1:])
 	case "sessions":
 		err = c.sessions()
 	case "health":
@@ -63,19 +72,57 @@ func main() {
 	}
 }
 
+// resolveWorkspace decides which folder a CLI session works in.
+//
+// The CLI is independent of the panel. The panel picks a workspace with a
+// folder dialog and writes the core's GLOBAL setting; a terminal caller has no
+// picker, so it states the path itself — and defaults to the directory the
+// user is standing in, which is what `cd project && crvcli ask ...` obviously
+// means. Without this a CLI session silently inherited whatever folder the
+// panel last pointed at.
+//
+// The path is made absolute HERE, because the server resolves relative paths
+// from its own working directory, not the caller's.
+func resolveWorkspace(ws string) (string, error) {
+	if strings.TrimSpace(ws) == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("workspace: cannot read the current directory: %w", err)
+		}
+		ws = cwd
+	}
+	abs, err := filepath.Abs(ws)
+	if err != nil {
+		return "", fmt.Errorf("workspace %q: %w", ws, err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", fmt.Errorf("workspace %s: %v", abs, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("workspace %s is not a directory", abs)
+	}
+	return abs, nil
+}
+
 type client struct {
 	base string
 	json bool
 }
 
 // ask: (optionally create a session), send one chat turn, print the reply.
-func (c *client) ask(session, mode string, rest []string) error {
+func (c *client) ask(session, mode, workspace string, rest []string) error {
 	text, err := promptText(rest)
 	if err != nil {
 		return err
 	}
 	if session == "" {
-		m, err := c.post("/api/sessions", map[string]string{"name": firstLine(text, 40)})
+		ws, err := resolveWorkspace(workspace)
+		if err != nil {
+			return err
+		}
+		m, err := c.post("/api/sessions", map[string]string{
+			"name": firstLine(text, 40), "workspace": ws})
 		if err != nil {
 			return err
 		}
@@ -99,12 +146,16 @@ func (c *client) ask(session, mode string, rest []string) error {
 	return nil
 }
 
-func (c *client) newSession(rest []string) error {
+func (c *client) newSession(workspace string, rest []string) error {
 	name := strings.TrimSpace(strings.Join(rest, " "))
 	if name == "" {
 		return fmt.Errorf("usage: crvcli new <name>")
 	}
-	m, err := c.post("/api/sessions", map[string]string{"name": name})
+	ws, err := resolveWorkspace(workspace)
+	if err != nil {
+		return err
+	}
+	m, err := c.post("/api/sessions", map[string]string{"name": name, "workspace": ws})
 	if err != nil {
 		return err
 	}
@@ -261,11 +312,19 @@ flags:
   -addr    crv base URL (default http://localhost:7700, or $CRV_ADDR)
   -session existing session id to chat into
   -mode    discussion | brainstorming | autopilot
+  -workspace  project folder to work in (default: the current directory)
   -json    print raw JSON
+
+the workspace:
+  belongs to the PROJECT — every session in it shares that path. The CLI is
+  independent of the panel: it uses the folder you are standing in unless you
+  say otherwise, and the panel's picker never redirects a session started here.
 
 examples:
   crvcli ask "explain internal/loop/loop.go"
   crvcli ask -mode brainstorming "research vector db options"
+  crvcli -workspace ~/code/app ask "add tests for the parser"
+  cd ~/code/app && crvcli ask "add tests"      # same thing
   crvcli -session sess_abc ask "continue"
   echo "prompt" | crvcli ask -
 `)
