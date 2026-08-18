@@ -1,9 +1,10 @@
 <script lang="ts">
-  // "Pair a phone" — the desktop half of the phone-access flow.
+  // "Pair a device" — the desktop half of the device-access flow.
+  // Not phone-specific: the same invitation enrolls a laptop just as well.
   // Asks the core for a short-lived invitation, shows the QR + the 6-char
   // code, and counts down its expiry. The phone scans or types it.
   import { Dialog } from 'bits-ui';
-  import { X, Smartphone, RefreshCw } from 'lucide-svelte';
+  import { X, MonitorSmartphone, RefreshCw } from 'lucide-svelte';
 
   let { open = $bindable(false) } = $props<{ open?: boolean }>();
 
@@ -52,11 +53,11 @@
         <Dialog.Close class="x" aria-label="close"><X size={16} /></Dialog.Close>
 
         <header>
-          <span class="hicon"><Smartphone size={17} /></span>
+          <span class="hicon"><MonitorSmartphone size={17} /></span>
           <div>
-            <Dialog.Title class="pd-title">Pair a phone</Dialog.Title>
+            <Dialog.Title class="pd-title">Pair a device</Dialog.Title>
             <Dialog.Description class="pd-desc">
-              Open Cerveau on your phone, tap PAIR DEVICE, then scan or type this.
+              On the new device, open Cerveau and choose to pair, then scan or type this.
             </Dialog.Description>
           </div>
         </header>

@@ -1,4 +1,4 @@
-// Package rfx implements the RFX reflex manifest (docs/RFX.md, spec v1):
+// Package rfx implements the RFX reflex manifest (docs-private/RFX.md, spec v1):
 // parsing, validation, and discovery of ~/.crv/rfx/*.rfx.yaml files.
 //
 // A reflex is a declarative capability — composed from tools the harness
@@ -513,7 +513,7 @@ func trunc(s string, n int) string {
 
 // Pack is a pack.yaml manifest: a folder of related reflexes — a "talent"
 // (github/, blender/, homelab/). One folder level max; names stay global.
-// Widget is one RFX_UI content declaration (docs/RFX-UI.md): declarative
+// Widget is one RFX_UI content declaration (docs-private/RFX-UI.md): declarative
 // only — no code, no HTML. type: button | field | status | log | toggle |
 // progress. A field named after a param IS the binding for sibling buttons.
 // Row is one status metric: a regex (capture group = value, else match
@@ -542,7 +542,7 @@ func (r *Row) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// Icons is the closed icon vocabulary (docs/RFX-UI.md). Authors pick a NAME;
+// Icons is the closed icon vocabulary (docs-private/RFX-UI.md). Authors pick a NAME;
 // the renderer owns the glyphs. Unknown names are load-time rejections, so a
 // card never renders a mystery hole.
 var Icons = []string{
@@ -584,7 +584,7 @@ type Widget struct {
 	Limit  int            `yaml:"limit"   json:"limit,omitempty"` // list: max lines shown
 }
 
-// PackUI is the ui: block of a pack (docs/RFX-UI.md §2).
+// PackUI is the ui: block of a pack (docs-private/RFX-UI.md §2).
 //
 // session/turn are PANEL CAPABILITIES, opt-in per pack: session lets the
 // panel read the current session's plan + checkpoints; turn lets it post a

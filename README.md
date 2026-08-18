@@ -61,6 +61,13 @@ deserve the small screen.
 - **Mobile-first.** The session rail becomes a drawer under 900px, chrome
   hides on phones, and the plan strip shows five rows and scrolls the rest
   instead of swallowing the screen.
+- **A new colour identity.** The panel moved off its old palette onto a
+  near-black neutral base (`#09090B`) with a single warm crimson accent
+  carrying every interactive and semantic signal. Greys were re-cut as a
+  proper ladder — base, two surfaces, two divider weights, three text
+  tiers — so depth now comes from flat steps and 1px hairlines instead of
+  shadows and glow. Every colour is a token in `tokens.css`; no component
+  hardcodes a hex.
 - **Pick a workspace from the phone.** The desktop's native folder dialog
   opens on the *machine* — invisible from a phone — so narrow screens get
   an in-panel browser backed by a deliberately narrow endpoint: directory
@@ -107,7 +114,7 @@ ignore; a rule in the core always runs.*
   big pages with `section=`/`start_index` drill-down sized to the 32K
   window. Honest UA (a test fails if it ever impersonates a browser);
   404/bot-blocks return as *facts to route around*, never burning the
-  error budget. Design record in `docs/WEBFETCH.md`.
+  error budget. Design record in `docs-private/WEBFETCH.md`.
 - **Plans reach the plan card no matter what** — `commit_plan` accepts
   plain markdown (headings/lists/checkboxes become steps), and a plan
   written to a `.md` file is auto-committed as a structured plan event,

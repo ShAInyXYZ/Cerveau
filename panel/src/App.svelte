@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { PanelLeftOpen, PanelLeftClose } from 'lucide-svelte';
   import './tokens.css';
   import StatusBar from './lib/StatusBar.svelte';
   import WorkspaceRail from './lib/WorkspaceRail.svelte';
@@ -60,7 +61,7 @@
     }
     memView={uiStore.view === 'memory'}
     onToggleMemory={() => uiStore.toggleMemory()}
-    onMenu={() => uiStore.toggleRail()} />
+    />
 
   {#if healthStore.offline}
     <div class="offline" role="alert">
@@ -82,6 +83,16 @@
         onSettings={() => uiStore.toggleSettings()}
         settingsOpen={uiStore.view === 'settings'} />
     </div>
+    <!-- The drawer toggle rides the RAIL's edge rather than sitting in the
+         header: the control stays attached to the column it opens and closes,
+         so its meaning is positional instead of learned. -->
+    <button class="railtoggle" class:open={uiStore.railOpen}
+      onclick={() => uiStore.toggleRail()}
+      aria-label={uiStore.railOpen ? 'close the session drawer' : 'open the session drawer'}
+      aria-expanded={uiStore.railOpen}>
+      {#if uiStore.railOpen}<PanelLeftClose size={16} />{:else}<PanelLeftOpen size={16} />{/if}
+    </button>
+
     {#if uiStore.railOpen}
       <button class="scrim" aria-label="close the session drawer" onclick={() => uiStore.closeRail()}></button>
     {/if}
@@ -175,6 +186,9 @@
   .railwrap { display: flex; min-height: 0; }
   .scrim { display: none; }
 
+  /* desktop keeps the rail permanently open, so the toggle is phone-only */
+  .railtoggle { display: none; }
+
   /* ── compact: the rail becomes an overlay drawer ── */
   @media (max-width: 900px) {
     .railwrap {
@@ -190,5 +204,21 @@
       background: rgba(0, 0, 0, .5);
       border: none; cursor: pointer;
     }
+
+    .railtoggle {
+      display: flex; align-items: center; justify-content: center;
+      position: absolute; left: 0; top: 8px;
+      z-index: var(--z-overlay);
+      width: 34px; height: 40px;
+      padding: 0; border: none; cursor: pointer;
+      background: var(--s2);
+      color: var(--dim);
+      border-radius: 0 10px 10px 0;
+      box-shadow: var(--elev-1);
+      transition: transform var(--t-med) var(--ease-out), color var(--t-fast);
+    }
+    .railtoggle:hover, .railtoggle:focus-visible { color: var(--text); }
+    /* travels with the drawer so it always hugs the column's edge */
+    .railtoggle.open { transform: translateX(var(--rail-w, 260px)); }
   }
 </style>

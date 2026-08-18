@@ -159,6 +159,12 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 			http.Error(w, "device not verified", http.StatusForbidden)
 			return
 		}
+		// Fleet management, deliberately placed after the full proof above:
+		// only an already-trusted device may list or revoke devices.
+		if path == "/api/devices" || path == "/api/devices/revoke" {
+			serveDevices(w, r)
+			return
+		}
 		inner.ServeHTTP(w, r)
 	})
 }
@@ -171,6 +177,14 @@ func servePair(cfg authCfg, limiter *pairLimiter, invites *pairSessions, w http.
 	var body struct {
 		PairID string `json:"pair_id"`
 		PubKey string `json:"pubkey"`
+		Label  string `json:"label,omitempty"`
+
+		// Set when an already-trusted device (a paired phone) is admitting
+		// this one. The claim is only honoured if the voucher proves control
+		// of its key by signing a fresh nonce — see voucherVerified.
+		VoucherID    string `json:"voucher_id,omitempty"`
+		VoucherNonce string `json:"voucher_nonce,omitempty"`
+		VoucherSig   string `json:"voucher_sig,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.PairID) != 6 || body.PubKey == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -211,7 +225,15 @@ func servePair(cfg authCfg, limiter *pairLimiter, invites *pairSessions, w http.
 		http.Error(w, "bad pubkey", http.StatusBadRequest)
 		return
 	}
-	if err := registerDevice(devID, body.PubKey); err != nil {
+	// Record who admitted this device. An unverified claim is dropped rather
+	// than stored: the trail must mean something, so "approved by" is either
+	// proven or absent. A dropped claim is not an error — the enrollment was
+	// authorized by the invitation either way.
+	approver := ""
+	if body.VoucherID != "" && voucherVerified(body.VoucherID, body.VoucherNonce, body.VoucherSig) {
+		approver = body.VoucherID
+	}
+	if err := registerDeviceVouched(devID, body.PubKey, approver, body.Label); err != nil {
 		http.Error(w, "device persist failed", http.StatusInternalServerError)
 		return
 	}

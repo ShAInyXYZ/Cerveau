@@ -4,10 +4,14 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.Window;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -62,19 +66,37 @@ public class PanelActivity extends Activity {
             }
         });
 
-        // The window content must respect the system bars — this is the whole
-        // fix for the cropping: pad by the insets instead of drawing under them.
+        // Immersive: the panel gets the whole screen, and the status/nav bars
+        // slide away. A swipe from either edge brings them back temporarily,
+        // then they hide again on their own (BEHAVIOR_SHOW_TRANSIENT_BARS).
+        //
+        // Immersive is NOT the same as ignoring insets — that was the original
+        // cropping bug. The bars are hidden but their insets still arrive when
+        // they are transiently shown, and the keyboard's inset always does, so
+        // content is padded by whatever is ACTUALLY on screen at the time.
         FrameLayout host = new FrameLayout(this);
         host.setBackgroundColor(Color.parseColor(MainActivity.BG));
         host.addView(web, new FrameLayout.LayoutParams(-1, -1));
         host.setOnApplyWindowInsetsListener((v, insets) -> {
+            // Pad ONLY for what is really occupying the screen.
+            //
+            // systemBars is 0 while immersive (and non-zero only while a bar
+            // is transiently swiped in), and the IME must never be drawn under
+            // or the composer would sit behind the keyboard.
+            //
+            // displayCutout is deliberately EXCLUDED here: it reports the
+            // notch region every time, hidden bars or not. Including it left a
+            // permanent 111px black band at the top of a phone whose cutout is
+            // already covered by the (now hidden) status bar. The cutout is
+            // handled by LAYOUT_IN_DISPLAY_CUTOUT_MODE instead, so content
+            // flows into it and only real obstructions cost space.
             Insets bars = insets.getInsets(
-                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()
-                            | WindowInsets.Type.ime());
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
             return insets;
         });
         setContentView(host);
+        goImmersive();
 
         try {
             proxy = new AuthProxy(url, token, deviceId);
@@ -85,6 +107,54 @@ public class PanelActivity extends Activity {
             android.util.Log.e("cerveau", "proxy failed to start", e);
             offline("could not start the local bridge\n" + e.getMessage());
         }
+    }
+
+    /**
+     * Hide the system bars, letting a swipe reveal them transiently.
+     *
+     * setDecorFitsSystemWindows(false) is what lets the app own the full
+     * window; without it the bars leave a permanent gap even when hidden.
+     */
+    @SuppressWarnings("deprecation")
+    private void goImmersive() {
+        Window w = getWindow();
+        // WindowInsetsController is API 30. minSdk is 29, and android.jar is a
+        // COMPILE-TIME stub — calling it unguarded compiles cleanly and then
+        // throws NoSuchMethodError on a real API-29 phone. Same trap as the
+        // JDK-only httpserver import. Guard, with the legacy flags as fallback.
+        if (Build.VERSION.SDK_INT >= 30) {
+            w.setDecorFitsSystemWindows(false);
+            // Draw into the notch region too; without this the window is laid
+            // out below the cutout and the immersive gain is given straight
+            // back as a black bar.
+            w.getAttributes().layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            WindowInsetsController c = w.getInsetsController();
+            if (c != null) {
+                c.hide(WindowInsets.Type.systemBars());
+                c.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            w.getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
+    }
+
+    /**
+     * Android restores the bars whenever the window loses and regains focus
+     * (app switcher, notification shade, permission dialog, unlocking). Without
+     * re-asserting here they would come back permanently after the first
+     * interruption — which is exactly how they end up "always showing".
+     */
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) goImmersive();
     }
 
     private void offline(String detail) {

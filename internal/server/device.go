@@ -36,6 +36,17 @@ type device struct {
 	ID      string `json:"id"`
 	PubKey  string `json:"pubkey"` // base64 SPKI
 	AddedAt string `json:"added_at"`
+
+	// Provenance. A device may be admitted by ANOTHER trusted device (the
+	// phone vouching for a laptop), not just at the machine. Without this
+	// the two are indistinguishable afterwards, so a lost phone leaves no
+	// way to find what it let in.
+	Label      string `json:"label,omitempty"`       // human name, for the device list
+	ApprovedBy string `json:"approved_by,omitempty"` // voucher's device id; "" = paired at the machine
+
+	// Set when the approver was revoked but this device was kept. The trail
+	// must never silently point at an id that no longer exists.
+	ApproverGone bool `json:"approver_gone,omitempty"`
 }
 
 var (
@@ -63,17 +74,82 @@ func saveDevices(ds []device) error {
 }
 
 func registerDevice(id, pubkeyB64 string) error {
+	return registerDeviceVouched(id, pubkeyB64, "", "")
+}
+
+// registerDeviceVouched records a device along with who admitted it.
+// approvedBy is the voucher's device id, or "" when the device paired
+// directly at the machine.
+func registerDeviceVouched(id, pubkeyB64, approvedBy, label string) error {
 	devMu.Lock()
 	defer devMu.Unlock()
 	ds := loadDevices()
-	for _, d := range ds {
-		if d.ID == id {
-			d.PubKey = pubkeyB64 // re-pair replaces
+	for i := range ds {
+		if ds[i].ID == id {
+			// re-pair replaces the key; it must also refresh provenance,
+			// otherwise a device re-paired at the machine would keep
+			// claiming it was vouched for by a phone that is long gone.
+			ds[i].PubKey = pubkeyB64
+			ds[i].ApprovedBy = approvedBy
+			ds[i].ApproverGone = false
+			if label != "" {
+				ds[i].Label = label
+			}
 			return saveDevices(ds)
 		}
 	}
-	ds = append(ds, device{ID: id, PubKey: pubkeyB64, AddedAt: time.Now().UTC().Format(time.RFC3339)})
+	ds = append(ds, device{
+		ID:         id,
+		PubKey:     pubkeyB64,
+		AddedAt:    time.Now().UTC().Format(time.RFC3339),
+		Label:      label,
+		ApprovedBy: approvedBy,
+	})
 	return saveDevices(ds)
+}
+
+// revokeDevice removes a device. With cascade, everything that device ever
+// admitted goes too — transitively, since a vouched device can itself vouch.
+// Without cascade the admitted devices survive but are flagged, so the trail
+// never points at an approver that no longer exists.
+//
+// Returns the ids actually removed.
+func revokeDevice(id string, cascade bool) ([]string, error) {
+	devMu.Lock()
+	defer devMu.Unlock()
+	ds := loadDevices()
+
+	doomed := map[string]bool{id: true}
+	if cascade {
+		// transitive closure: repeat until a pass adds nothing, so a chain
+		// phone → laptop → tablet is fully reached
+		for grew := true; grew; {
+			grew = false
+			for _, d := range ds {
+				if !doomed[d.ID] && d.ApprovedBy != "" && doomed[d.ApprovedBy] {
+					doomed[d.ID] = true
+					grew = true
+				}
+			}
+		}
+	}
+
+	out := make([]device, 0, len(ds))
+	var removed []string
+	for _, d := range ds {
+		if doomed[d.ID] {
+			removed = append(removed, d.ID)
+			continue
+		}
+		if d.ApprovedBy != "" && doomed[d.ApprovedBy] {
+			d.ApproverGone = true // orphaned: approver revoked, device kept
+		}
+		out = append(out, d)
+	}
+	if len(removed) == 0 {
+		return nil, nil
+	}
+	return removed, saveDevices(out)
 }
 
 func findDevice(id string) *device {
@@ -180,3 +256,18 @@ func isDeviceAuth(r *http.Request) bool {
 }
 
 func deviceRegistered(id string) bool { return findDevice(id) != nil }
+
+// voucherVerified reports whether `id` really is a registered device that
+// signed the given nonce — i.e. whether it is entitled to admit another
+// device right now.
+//
+// This is the whole basis of the approval trail. Trusting a caller-supplied
+// approver id without proof would let anyone stamp "approved by your phone"
+// on their own enrollment, which is strictly worse than recording nothing:
+// it manufactures false confidence in an audit trail.
+func voucherVerified(id, nonceB64, sigB64 string) bool {
+	if id == "" || !deviceRegistered(id) {
+		return false
+	}
+	return verifyDeviceSig(id, nonceB64, sigB64)
+}

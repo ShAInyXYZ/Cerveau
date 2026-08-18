@@ -13,6 +13,9 @@
   .ib {
     display: inline-flex; align-items: center; justify-content: center;
     width: 30px; height: 30px;
+    /* flex must not squeeze the square: without this the bar compressed these
+       to 24.9x30 on a narrow screen, so the icons stopped being 1:1 */
+    flex-shrink: 0;
     border: 1px solid var(--line2);
     border-radius: var(--r);
     background: var(--s2);

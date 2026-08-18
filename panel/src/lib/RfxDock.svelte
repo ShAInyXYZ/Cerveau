@@ -5,7 +5,7 @@
   import RfxPackCard from './RfxPackCard.svelte';
   import RfxCustomPanel from './RfxCustomPanel.svelte';
 
-  // RfxDock — Blender-N-panel-style RFX surface (docs/RFX-UI.md).
+  // RfxDock — Blender-N-panel-style RFX surface (docs-private/RFX-UI.md).
   // A slim vertical tab strip lives at the chat's right edge — one rotated
   // tab per pack (plus one for standalone reflexes). Clicking a tab expands
   // that pack's panel INLINE next to the strip; clicking it again collapses

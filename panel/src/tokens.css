@@ -20,10 +20,10 @@ img, svg, canvas { display: block; max-width: 100%; }
 
 :root, [data-theme="dark"] {
   /* ---- surfaces: flat 4-step ladder, near-black, never pure black.
-     Base matches NashGit's --background; the upper steps are neutral gray
-     (NashGit's card/secondary are hue-240 and read bluish on large areas
-     like the tree rail) so panels stay truly neutral. ---- */
-  --bg:    #09090B;   /* app base — NashGit --background */
+     The upper steps are deliberately neutral gray rather than hue-240:
+     a blue-tinted surface reads visibly cool over large areas like the
+     tree rail, so panels stay truly neutral. ---- */
+  --bg:    #09090B;   /* app base */
   --s1:    #0F0F11;   /* panel / tree */
   --s2:    #1B1B1E;   /* raised / input */
   --s3:    #222225;   /* control / hover */
@@ -33,15 +33,14 @@ img, svg, canvas { display: block; max-width: 100%; }
   --line2: #2C2C30;   /* emphasized / focusable edge */
 
   /* ---- ink ---- */
-  --text:  #FAFAFA;   /* primary — NashGit --foreground */
-  --muted: #A1A1AA;   /* secondary — NashGit --muted-foreground */
+  --text:  #FAFAFA;   /* primary */
+  --muted: #A1A1AA;   /* secondary */
   --dim:   #71717A;   /* tertiary / labels active */
   --faint: #52525B;   /* label rest / disabled ink */
 
   /* ---- one signal accent — interactive/semantic ONLY.
-     NashGit's cherry (hsl(348 70% 51%) = #D92B4E), lifted one step for
-     text-contrast on the near-black base — same move NashGit makes with
-     its --accent-foreground (#F0A3B3). ---- */
+     Cherry, lifted one step off its base tone (hsl(348 70% 51%) = #D92B4E)
+     so it keeps text-contrast against the near-black background. ---- */
   --accent:      #E54866;
   --accent-ink:  #FFFFFF;
   --accent-soft: rgba(229,72,102,.12);
@@ -84,6 +83,7 @@ img, svg, canvas { display: block; max-width: 100%; }
   --gap:   8px;
   --pad:   14px;
   --rail-w: 240px;
+  --bar-h:  46px;   /* header height — popovers pin below it */
 
   /* ---- shared control geometry — components must reference these, never
      retype the numbers (the plan strip once hardcoded a 66px inset to mirror
@@ -97,6 +97,7 @@ img, svg, canvas { display: block; max-width: 100%; }
   --z-raised:   10;   /* pinned strips, hud chips */
   --z-dropdown: 40;   /* menus, knob popovers */
   --z-overlay:  60;   /* rail drawer, docks */
+  --z-popover:  70;   /* status/hardware panels — must clear the rail toggle */
   --z-modal:    80;   /* dialogs */
   --z-toast:    90;
 

@@ -1,5 +1,10 @@
 <script>
-  let { components = [], system = null } = $props();
+  import HardwareStats from './HardwareStats.svelte';
+
+  // `stats` arrives from the header's SysMonitor, which owns the poll. On a
+  // phone the hardware readout is folded INTO this panel: two separate
+  // popovers competing for one narrow bar was the crowding problem.
+  let { components = [], system = null, stats = null } = $props();
 
   const anyDown = $derived(components.some((c) => !c.ok));
   const tone = $derived(components.length === 0 ? 'off' : anyDown ? 'err' : 'ok');
@@ -39,6 +44,16 @@
         <div class="mrow"><span class="label">MEMORY</span><span class="mval mono">{system.typesense.managed ? 'managed sidecar' : 'external'}</span></div>
       {/if}
     </div>
+
+    <!-- Touch only: the hardware readout stacks below the stack status, so one
+         tap on the orb shows everything instead of two popovers fighting over
+         a phone-width bar. -->
+    {#if stats}
+      <div class="hw">
+        <div class="phead"><span class="label">HARDWARE</span></div>
+        <HardwareStats {stats} />
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -59,13 +74,39 @@
 
   .pop {
     position: absolute; top: calc(100% + 8px); right: 0;
-    width: 340px; z-index: 60;
+    width: 340px; z-index: var(--z-popover);
     background: var(--surface); border-radius: 10px;
     box-shadow: var(--elev-2);
     opacity: 0; transform: translateY(-4px); pointer-events: none;
     transition: opacity .12s ease, transform .12s ease;
   }
   .orbwrap:hover .pop { opacity: 1; transform: none; pointer-events: auto; }
+
+  /* Desktop keeps the two panels separate — there is room for both, and the
+     hover target for hardware is the metric chips themselves. */
+  .hw { display: none; }
+  @media (max-width: 720px), (pointer: coarse) {
+    .hw { display: block; border-top: 1px solid var(--line); }
+  }
+
+  /* Touch has no hover, so tapping the orb could never reveal this. The
+     trigger is already a <button>, so focus-within is enough. */
+  .orbwrap:focus-within .pop { opacity: 1; transform: none; pointer-events: auto; }
+
+  /* The orb sits near the right edge, so a 340px panel anchored to it ran
+     off the LEFT of a phone screen — component labels were sliced mid-word
+     ("MODEL" showing as "L", "TYPESENSE" as "SENSE"). Pin it to the viewport
+     instead of the trigger, sized to the room that actually exists. */
+  @media (max-width: 720px), (pointer: coarse) {
+    .pop {
+      position: fixed;
+      top: calc(var(--bar-h, 46px) + 6px);
+      left: 8px; right: 8px;
+      width: auto; max-width: 380px; margin-left: auto;
+      max-height: calc(100dvh - var(--bar-h, 46px) - 24px);
+      overflow-y: auto; overscroll-behavior: contain;
+    }
+  }
 
   .phead {
     display: flex; align-items: center; gap: 8px;

@@ -3,7 +3,7 @@
   import { rfxIcon } from './rfxIcons.js';
   import { jpost } from './api';
 
-  // RfxPackCard — one talent pack's cockpit in the RFX dock (docs/RFX-UI.md).
+  // RfxPackCard — one talent pack's cockpit in the RFX dock (docs-private/RFX-UI.md).
   // Chrome is shared and fixed; content is the pack's ui: widget list,
   // rendered IN AUTHOR ORDER (the manifest is the layout). Visual identity:
   // hardware panels — mono metrics, inset rings, one accent per card.
@@ -125,7 +125,7 @@
     const confirmed = target.risk === 'dangerous'; // second (armed) click
     armed = '';
     const args = { ...(w.args ?? {}) };
-    // field binding: a field named after a param fills it (docs/RFX-UI.md §2)
+    // field binding: a field named after a param fills it (docs-private/RFX-UI.md §2)
     for (const [k, v] of Object.entries(fields)) {
       if (target.params?.properties?.[k] !== undefined && v !== '') args[k] = v;
     }

@@ -20,9 +20,9 @@ inside a pack.** Vocabulary matters to the user:
 - **Pack** — a folder of talents with `pack.yaml` (e.g. `github/`)
 - **RFX_UI** — the panel surface talents project into the chat
 
-Specs (LOCAL ONLY — `docs/` is gitignored, see §7 open threads):
-`docs/RFX.md` (frozen v1 spec + v1.1 addendum), `docs/RFX-AUTHORING.md`
-(how to write reflexes), `docs/RFX-UI.md` (the card design format — READ
+Specs (LOCAL ONLY — `docs-private/` is gitignored, see §7 open threads):
+`docs-private/RFX.md` (frozen v1 spec + v1.1 addendum), `docs-private/RFX-AUTHORING.md`
+(how to write reflexes), `docs-private/RFX-UI.md` (the card design format — READ
 THIS before UI work).
 
 ## 2. Current state — everything works, all pushed
@@ -60,7 +60,7 @@ always thin (~34px); the panel opens on demand.
 - Panel content = the existing `RfxPackCard.svelte` — it stays as-is
   (it's the approved cockpit: metrics, buttons, field binding, log tail).
 - Keep: declarative-only rule (NO user JS/HTML in cards ever), the
-  `ui:` manifest format in `docs/RFX-UI.md`, hardware-panel identity
+  `ui:` manifest format in `docs-private/RFX-UI.md`, hardware-panel identity
   (mono `mk`/`mv` metrics, hairline inset rings, tokens from
   `panel/src/lib/SysMonitor.svelte`).
 
@@ -83,9 +83,9 @@ panel/src/lib/          RfxDock.svelte (THE FILE TO REDESIGN, see §3),
                         RfxPackCard.svelte (approved cockpit, reuse),
                         Settings.svelte (RFX section), SysMonitor.svelte
                         (identity reference), App.svelte (chatwrap wiring)
-docs/                   RFX.md, RFX-AUTHORING.md, RFX-UI.md (LOCAL ONLY)
-docs/architecture/      Diagram.json + Build.json — arch/build boards,
-                        view via docs/arch-viewer (npm run dev, port 5181)
+docs-private/                   RFX.md, RFX-AUTHORING.md, RFX-UI.md (LOCAL ONLY)
+docs-private/architecture/      Diagram.json + Build.json — arch/build boards,
+                        view via docs-private/arch-viewer (npm run dev, port 5181)
 ~/.crv/rfx/             LIVE reflex dir (github/ pack lives here, NOT in repo)
 rfx/                    repo's canonical pack dir (currently EMPTY —
                         user cleared it for ground-up redesign; promote
@@ -107,7 +107,7 @@ rfx/                    repo's canonical pack dir (currently EMPTY —
    URL); panel prod build = `cd panel && npm run build` (writes
    internal/panel/dist, then rebuild core binary).
 4. **Commit per step**, conventional style (`feat(rfx-ui): …`), push to
-   main (user's solo repo). NEVER commit `docs/`, `Reports/`, binaries
+   main (user's solo repo). NEVER commit `docs-private/`, `Reports/`, binaries
    (`.gitignore` anchors `/crv` `/crvcli` — bare patterns once hid the
    entire cmd/ source; check `git status --ignored` if files vanish).
 5. **Panel gotchas**: Svelte 5 runes; never bind to `obj[key].field`
@@ -119,7 +119,7 @@ rfx/                    repo's canonical pack dir (currently EMPTY —
 7. **Registry is the single door**: all tool execution goes through
    `Registry.ExecuteMode` (guard → remediator → dispatch → ingress cap).
    Never bypass it. Declared risk/modes are enforced there.
-8. **Process**: track milestone work in `docs/architecture/Build.json`
+8. **Process**: track milestone work in `docs-private/architecture/Build.json`
    (add nodes with kind todo/wip/done, notes recording decisions+holes).
 
 ## 6. Design invariants (do not violate without asking the user)
@@ -139,9 +139,9 @@ rfx/                    repo's canonical pack dir (currently EMPTY —
    agent USING reflexes end-to-end (the system's raison d'être).
 2. **`docs:` recall-indexing** — operator's cards into Typesense
    (user's "LoRA-like docs" idea; v1.1 candidate recorded in spec §9).
-3. **Spec files not in git** — `docs/RFX.md`, `RFX-AUTHORING.md`,
+3. **Spec files not in git** — `docs-private/RFX.md`, `RFX-AUTHORING.md`,
    `RFX-UI.md` are gitignored; user was warned, hasn't decided. Suggest
-   `!docs/RFX*.md` exceptions in .gitignore.
+   `!docs-private/RFX*.md` exceptions in .gitignore.
 4. **Episodic card refresh** — dock cards updating when the MODEL runs a
    reflex (edge exists in Diagram.json; not implemented; v2).
 5. **Promote github pack to repo `rfx/`** — local-only now; user decides.

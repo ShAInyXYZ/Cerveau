@@ -1,6 +1,6 @@
 # ── internal docs ─────────────────────────────────────────────────────────
 # Working notes, architecture boards, briefs — for us, not for consumers.
-docs/
+docs-private/
 
 # ── dependencies ──────────────────────────────────────────────────────────
 node_modules/
@@ -26,7 +26,10 @@ arch-viewer/dist/
 # go
 *.test
 *.out
-vendor/
+# Go module vendoring only — NOT android/vendor, which holds the vendored
+# decode-only ZXing SOURCE that build.sh compiles. A bare `vendor/` swallowed
+# it and would break the APK build for anyone cloning the repo.
+/vendor/
 
 # ── secrets & local config ────────────────────────────────────────────────
 # Runtime config (contains the generated Typesense API key) normally lives at
@@ -84,3 +87,14 @@ android/Cerveau.apk
 
 # APK signing key — never commit
 android/cerveau.keystore
+
+# ── android build output (build.sh regenerates all of this) ───────────────
+android/classes/
+android/classes.dex
+android/gen/
+android/base.apk
+android/unsigned.apk
+android/aligned.apk
+android/res.zip
+android/*.apk
+android/*.idsig

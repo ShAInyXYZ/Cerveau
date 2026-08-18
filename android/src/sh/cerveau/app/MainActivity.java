@@ -208,7 +208,9 @@ public class MainActivity extends Activity {
         root.addView(label("CERVEAU", TEXT, 20));
         root.addView(text("this device is not paired yet", MUTED));
 
-        Button startPair = button("PAIR DEVICE");
+        // "PAIR DEVICE" read as "pair some other device" — this button only
+        // ever enrolls the phone it is running on. Say which device it means.
+        Button startPair = button("PAIR THIS PHONE");
         TextView status = text("", MUTED);
         root.addView(startPair);
         root.addView(status);
