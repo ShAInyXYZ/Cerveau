@@ -78,8 +78,11 @@ func TestErrorResponseSurfaced(t *testing.T) {
 func TestUnreachableServer(t *testing.T) {
 	c := &client{base: "http://127.0.0.1:1"} // nothing listening
 	err := c.health()
-	if err == nil || !strings.Contains(err.Error(), "cannot reach crv") {
-		t.Fatalf("expected connection error, got %v", err)
+	// A refused connection and a turn that outran the timeout are DIFFERENT
+	// failures and must read differently — "is the server running?" on a
+	// timeout sends the user to check a healthy service.
+	if err == nil || !strings.Contains(err.Error(), "could not connect") {
+		t.Fatalf("expected a connection error, got %v", err)
 	}
 }
 

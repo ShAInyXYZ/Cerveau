@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The CLI is INDEPENDENT of the WebUI.
@@ -128,4 +129,33 @@ func resolve(p string) string {
 		return p
 	}
 	return r
+}
+
+// A turn that outruns the client timeout must NOT be reported as an
+// unreachable server: the server is fine and the turn may still be running.
+func TestTimeoutIsNotReportedAsServerDown(t *testing.T) {
+	t.Setenv("CRV_TIMEOUT", "50ms")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(400 * time.Millisecond) // slower than the client's patience
+	}))
+	defer srv.Close()
+
+	err := (&client{base: srv.URL}).health()
+	if err == nil {
+		t.Fatal("expected a timeout error")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "is the server running") || strings.Contains(msg, "could not connect") {
+		t.Errorf("timeout reported as a dead server: %q", msg)
+	}
+	if !strings.Contains(msg, "CRV_TIMEOUT") {
+		t.Errorf("message should name the knob that fixes it: %q", msg)
+	}
+}
+
+func TestCRVTimeoutIsHonoured(t *testing.T) {
+	t.Setenv("CRV_TIMEOUT", "42m")
+	if got := clientTimeout(); got != 42*time.Minute {
+		t.Errorf("clientTimeout() = %v, want 42m", got)
+	}
 }

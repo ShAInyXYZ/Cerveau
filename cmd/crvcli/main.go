@@ -21,7 +21,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -103,6 +105,18 @@ func resolveWorkspace(ws string) (string, error) {
 		return "", fmt.Errorf("workspace %s is not a directory", abs)
 	}
 	return abs, nil
+}
+
+// clientTimeout bounds one chat turn. A fast MoE finishes a build task well
+// inside 10 minutes; a dense model at a quarter of the speed does not.
+func clientTimeout() time.Duration {
+	if v := os.Getenv("CRV_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+		fmt.Fprintf(os.Stderr, "ignoring CRV_TIMEOUT=%q (want e.g. 45m)\n", v)
+	}
+	return 10 * time.Minute
 }
 
 type client struct {
@@ -227,10 +241,22 @@ func (c *client) do(method, path string, body any) (map[string]any, error) {
 	if body != nil {
 		req.Header.Set("content-type", "application/json")
 	}
-	hc := &http.Client{Timeout: 10 * time.Minute} // chat turns can be long
+	// A chat turn takes as long as the model needs. 10 minutes suits a fast
+	// MoE; a dense model at a quarter of the speed blows through it on a real
+	// build task, and the client then reports a timeout as though the SERVER
+	// were down — sending the user to check a healthy service. Configurable,
+	// and the message below says what was actually observed.
+	hc := &http.Client{Timeout: clientTimeout()}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach crv at %s (%w) — is the server running?", c.base, err)
+		// Say what was OBSERVED. A turn that outran the client timeout is not
+		// the same as a server that is down, and telling the user to check a
+		// healthy service sends them chasing the wrong thing.
+		if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
+			return nil, fmt.Errorf("no reply from crv at %s within %s — the turn may still be running; "+
+				"raise the limit with CRV_TIMEOUT (e.g. CRV_TIMEOUT=45m)", c.base, clientTimeout())
+		}
+		return nil, fmt.Errorf("could not connect to crv at %s: %w", c.base, err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
