@@ -32,14 +32,16 @@ func TestGuardReportsItsOwnBudget(t *testing.T) {
 	}
 }
 
-func contains(s, sub string) bool { return len(s) >= len(sub) && (func() bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (func() bool {
+		for i := 0; i+len(sub) <= len(s); i++ {
+			if s[i:i+len(sub)] == sub {
+				return true
+			}
 		}
-	}
-	return false
-})() }
+		return false
+	})()
+}
 
 // The time guard must measure STUCKNESS, not duration. A turn that keeps
 // making progress runs as long as it needs; only a turn that stops

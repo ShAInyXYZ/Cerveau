@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -45,6 +48,7 @@ type chatRequest struct {
 	Tools       []ToolSpec     `json:"tools,omitempty"`
 	Grammar     string         `json:"grammar,omitempty"`
 	Temperature float64        `json:"temperature,omitempty"`
+	TopP        float64        `json:"top_p,omitempty"`
 	MaxTokens   int            `json:"max_tokens,omitempty"`
 	TemplateKW  map[string]any `json:"chat_template_kwargs,omitempty"`
 }
@@ -66,21 +70,64 @@ type chatResponse struct {
 }
 
 type Client struct {
-	base string
-	http *http.Client
+	base  string
+	key   string
+	model string
+	temp  float64
+	topP  float64
+	http  *http.Client
 }
 
+// NewClient targets an OpenAI-compatible endpoint. CRV_MODEL_KEY supplies a
+// bearer token when the Core behind it requires one — llama.cpp serves
+// unauthenticated, but a vLLM Core started with VLLM_API_KEY answers 401
+// without it. Empty means no header, which is the llama.cpp case.
 func NewClient(base string) *Client {
-	return &Client{base: base, http: &http.Client{Timeout: 10 * time.Minute}}
+	// llama.cpp ignores the model name and answers to anything ("local" by
+	// convention). vLLM checks it against --served-model-name and 502s with
+	// "The model `local` does not exist" otherwise, so a Core can override it.
+	model := strings.TrimSpace(os.Getenv("CRV_MODEL_NAME"))
+	if model == "" {
+		model = "local"
+	}
+	// Sampling. CRV_TEMP names a preset or a raw value.
+	//   strict 0.4 · neutral 0.55 · creative 0.7
+	// Qwen's own guidance is 0.7/top_p 0.8 for instruct and 1.0/0.95 with
+	// thinking, so these presets sit at or below its instruct setting —
+	// deliberately tighter, because this harness writes code.
+	temp, topP := 0.2, 0.0
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CRV_TEMP"))) {
+	case "strict":
+		temp, topP = 0.4, 0.8
+	case "neutral":
+		temp, topP = 0.55, 0.85
+	case "creative":
+		temp, topP = 0.7, 0.9
+	case "":
+		// unset: keep the long-standing 0.2 default
+	default:
+		if v, err := strconv.ParseFloat(os.Getenv("CRV_TEMP"), 64); err == nil && v >= 0 && v <= 2 {
+			temp = v
+		}
+	}
+	return &Client{
+		base:  base,
+		key:   strings.TrimSpace(os.Getenv("CRV_MODEL_KEY")),
+		model: model,
+		temp:  temp,
+		topP:  topP,
+		http:  &http.Client{Timeout: 10 * time.Minute},
+	}
 }
 
 func (c *Client) Complete(ctx context.Context, messages []Message, tools []ToolSpec, grammar string, maxTokens int) (Message, Usage, error) {
 	body := chatRequest{
-		Model:       "local",
+		Model:       c.model,
 		Messages:    messages,
 		Tools:       tools,
 		Grammar:     grammar,
-		Temperature: 0.2,
+		Temperature: c.temp,
+		TopP:        c.topP,
 		MaxTokens:   maxTokens,
 		// Qwen3 is a reasoning model: left on, it burns the entire token budget
 		// inside a <think> block and never emits an answer (finish_reason=length,
@@ -98,6 +145,9 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []ToolS
 		return Message{}, Usage{}, err
 	}
 	req.Header.Set("content-type", "application/json")
+	if c.key != "" {
+		req.Header.Set("authorization", "Bearer "+c.key)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return Message{}, Usage{}, fmt.Errorf("llm unreachable: %w", err)

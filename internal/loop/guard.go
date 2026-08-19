@@ -121,7 +121,24 @@ func (g *turnGuard) toolError(name string) (string, bool) {
 	return "", false
 }
 
-func (g *turnGuard) toolOK() {}
+// toolOK records a SUCCESSFUL tool call, which forgives earlier failures.
+//
+// Without this, errors accumulated for the whole turn: a model that failed
+// twice, fixed the problem, worked for ten more turns and then hit one
+// unrelated failure was stopped on the "third strike". Every vLLM benchmark
+// session died this way AFTER writing a working artifact.
+//
+// Progress is what distinguishes recovery from being stuck. A success means
+// the model is not looping, so the per-tool counter resets and the running
+// total decays rather than ratcheting.
+func (g *turnGuard) toolOK() {
+	for name := range g.perToolErrs {
+		delete(g.perToolErrs, name)
+	}
+	if g.totalErrs > 0 {
+		g.totalErrs--
+	}
+}
 
 // repeatedResult trips the loop detector only when the SAME call produced the
 // SAME result repeatedly — i.e. the model is genuinely stuck, nothing changing.

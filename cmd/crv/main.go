@@ -375,6 +375,20 @@ func main() {
 		}
 	}
 
+	// One trivial tool call at startup, in the background. A wrong vLLM
+	// --tool-call-parser is SILENT: calls arrive as plain text, the harness
+	// sees none, and the agent merely looks unwilling to use tools. Better to
+	// say so once at boot than to debug it as a model problem.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		if err := llmClient.ToolCanary(ctx); err != nil {
+			slog.Warn("tool-call canary FAILED — tools may be silently broken", "err", err)
+		} else {
+			slog.Info("tool-call canary ok")
+		}
+	}()
+
 	slog.Info("cerveau online", "addr", cfg.Addr, "sessions", cfg.SessionsDir)
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("server", "err", err)
