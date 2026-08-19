@@ -557,6 +557,15 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 		return nil, window.Report{}, err
 	}
 	items := []window.Item{{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"}}
+	// If the packer has to drop history, it replaces it with THIS rather than a
+	// bare "turns were removed" note: the original request, the plan, finished
+	// work, and what is on disk. Assembled from the log, so a model that just
+	// lost its context is never asked to summarise what it lost.
+	if l.win != nil {
+		l.win.SetResumeBrief(func(n int) string {
+			return buildResumeBrief(l.resumeFacts(sessionID, events, n))
+		})
+	}
 	// User-role, not system-role. The model's chat template permits exactly ONE
 	// system message, at index 0 — a second is rejected even at the front
 	// (verified against the live endpoint AND vllm docs: placement rules live
@@ -653,4 +662,55 @@ func (l *Loop) compress(ctx context.Context, items []window.Item) ([]llm.Message
 		return msgs, window.Report{}
 	}
 	return l.win.Build(ctx, items)
+}
+
+// resumeFacts pulls the non-recoverable context out of the episodic log: the
+// user's first request, the committed plan, and completed checkpoints. Files
+// come from the workspace itself, so the list is what is actually there now.
+func (l *Loop) resumeFacts(sessionID string, events []episodic.Event, compacted int) resumeFacts {
+	f := resumeFacts{Compacted: compacted}
+	st := episodic.Fold(events)
+
+	for _, ev := range st.Messages {
+		if ev.Type != episodic.MsgUser {
+			continue
+		}
+		var p struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(ev.Payload, &p) == nil && strings.TrimSpace(p.Text) != "" {
+			f.Goal = p.Text // the FIRST user message is the request
+			break
+		}
+	}
+	if len(st.Plan) > 0 {
+		var pl struct {
+			Title string `json:"title"`
+		}
+		if json.Unmarshal(st.Plan, &pl) == nil {
+			f.Plan = pl.Title
+		}
+	}
+	for _, ev := range events {
+		if ev.Type != episodic.Checkpoint {
+			continue
+		}
+		var cp struct {
+			Step, Status, Summary string
+		}
+		if json.Unmarshal(ev.Payload, &cp) == nil && cp.Status == "done" {
+			line := cp.Step
+			if cp.Summary != "" {
+				line += " — " + cp.Summary
+			}
+			f.Done = append(f.Done, line)
+		}
+	}
+	if l.workspace != nil {
+		if ws := l.workspace(sessionID); ws != "" {
+			f.Workspace = ws
+			f.Files = workspaceFiles(ws)
+		}
+	}
+	return f
 }

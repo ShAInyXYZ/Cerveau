@@ -32,10 +32,11 @@ type Report struct {
 }
 
 type Manager struct {
-	budget   int
-	reserve  int
-	keepLast int
-	counter  Counter
+	budget      int
+	reserve     int
+	keepLast    int
+	counter     Counter
+	resumeBrief func(dropped int) string
 }
 
 func NewManager(budget, reserve int, counter Counter) *Manager {
@@ -139,14 +140,18 @@ func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Repor
 		// exactly what happened and where the detail still lives.
 		if lastCut >= 0 {
 			out[lastCut].Kind = "compaction"
-			out[lastCut].Msg = llm.Message{
-				Role: "user",
-				Content: fmt.Sprintf("[%d earlier turns were compacted out of this window to stay "+
+			body := ""
+			if m.resumeBrief != nil {
+				body = m.resumeBrief(rep.Trimmed)
+			}
+			if body == "" {
+				body = fmt.Sprintf("[%d earlier turns were compacted out of this window to stay "+
 					"under the context limit. They are NOT lost — the full episodic log is on disk, "+
 					"and files you already wrote are still in the workspace. If you need something "+
 					"from before this point, re-read the files rather than assuming it never "+
-					"happened.]", rep.Trimmed),
+					"happened.]", rep.Trimmed)
 			}
+			out[lastCut].Msg = llm.Message{Role: "user", Content: body}
 			total += m.counter.Count(ctx, out[lastCut].Msg.Content) + 4
 			rep.Compacted = rep.Trimmed
 		}
@@ -165,3 +170,12 @@ func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Repor
 func pointerText(evtID string) string {
 	return fmt.Sprintf("[raw tool output demoted — full content at %s in the episodic log; re-run the tool if needed]", evtID)
 }
+
+// SetResumeBrief supplies the text that REPLACES dropped history. Without it
+// the packer leaves a generic "turns were removed" note, which tells the model
+// that it lost context but not how to carry on — and the one thing it cannot
+// recover by reading the workspace is what it was asked to do.
+//
+// A func, not a string: the brief must be built at compaction time, when the
+// number of dropped turns and the files on disk are known.
+func (m *Manager) SetResumeBrief(f func(dropped int) string) { m.resumeBrief = f }
