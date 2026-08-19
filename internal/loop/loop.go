@@ -231,6 +231,10 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	var winRep window.Report
 	lastCompacted := 0
 	breaker := newBashBreaker()
+	var work *workTracker
+	if l.workspace != nil {
+		work = newWorkTracker(l.workspace(sessionID))
+	}
 	var turnPulls, pendingPulls []memory.Pull
 	if l.recall != nil {
 		turnPulls = l.recall.TurnStart(ctx, sessionID, userMsg, l.tailEvtIDs(sessionID, 20))
@@ -349,6 +353,21 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				"text": fmt.Sprintf("context compacted — %d earlier turns folded away to stay under the %d-token window (full log kept on disk)", rep.Compacted, rep.Budget),
 			})
 			lastCompacted = rep.Compacted
+		}
+		// Churn detection. Errors are the wrong signal — the two worst runs of
+		// the benchmark had almost none while producing nothing. Ask instead
+		// whether the workspace moved.
+		//
+		// A NUDGE, not a kill: "nothing changed" is also what a finished task
+		// looks like, and killing a model that is about to report success would
+		// be worse than the churn. Say it, and let the model decide.
+		if work != nil {
+			if detail, stuck := work.check(); stuck {
+				correction = detail + " Stop repeating the current approach: either " +
+					"change tactics, or if the work is actually complete, say so and finish."
+				wr.Append(episodic.Note, map[string]string{"kind": "no_progress",
+					"text": "no workspace change in " + fmt.Sprint(progressStallLimit) + " iterations — nudging the model to change approach or finish"})
+			}
 		}
 		winRep = rep
 		reply, usage, err := l.completeWithRetry(iterCtx, wr, messages, sessionReg.Specs(mode.Name), "", mode.ProseCap)
