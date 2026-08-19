@@ -73,6 +73,7 @@
   <div class="body">
     <div class="railwrap" class:open={uiStore.railOpen}>
       <WorkspaceRail sessions={sessionStore.sessions} activeId={sessionStore.activeId}
+        runningIds={sessionStore.runningIds}
         lastEvents={sessionStore.lastEvents} skills={sessionStore.skills}
         activeWorkspace={healthStore.workspace}
         onSelect={select}

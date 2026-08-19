@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"sync/atomic"
 )
@@ -85,4 +86,22 @@ func (l *Loop) Kill(sessionID string) bool {
 		return true
 	}
 	return false
+}
+
+// RunningSessions lists the sessions with a turn executing right now.
+//
+// The registry has always known this — Steer, Pause and Kill all read it — but
+// nothing exposed it, so the panel could only know about turns IT started. A
+// build launched from the CLI looked identical to an idle session: the user
+// watching the WebUI saw nothing happening while the machine worked for half
+// an hour.
+func (l *Loop) RunningSessions() []string {
+	l.runs.mu.Lock()
+	defer l.runs.mu.Unlock()
+	out := make([]string, 0, len(l.runs.m))
+	for id := range l.runs.m {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

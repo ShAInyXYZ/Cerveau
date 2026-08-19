@@ -31,12 +31,12 @@ type API struct {
 	cfg        *config.Config
 	configPath string
 	sess       session.Store
-	http    *http.Client
-	chat    *loop.Loop
-	sctx    *tools.SessionContext
-	ci      *codeintel.Indexer
-	mem     *memory.TSClient
-	started time.Time
+	http       *http.Client
+	chat       *loop.Loop
+	sctx       *tools.SessionContext
+	ci         *codeintel.Indexer
+	mem        *memory.TSClient
+	started    time.Time
 
 	wmu     sync.Mutex
 	writers map[string]*episodic.Writer
@@ -323,7 +323,15 @@ func (a *API) ListSessions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sessions": metas})
+	// Which sessions have a turn executing RIGHT NOW. Without this the panel
+	// can only know about turns it started itself, so a CLI build is
+	// indistinguishable from an idle session — the user watches a still screen
+	// while the machine works.
+	running := []string{}
+	if a.chat != nil {
+		running = a.chat.RunningSessions()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": metas, "running": running})
 }
 
 func (a *API) CreateSession(w http.ResponseWriter, r *http.Request) {

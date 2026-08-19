@@ -6,7 +6,7 @@
   import { Plus, Boxes, ChevronRight, Folder, FolderOpen, Pencil, Trash2, Zap, Settings as SettingsIcon } from 'lucide-svelte';
 
   let {
-    sessions = [], activeId, activeWorkspace = '', lastEvents = {}, skills = [],
+    sessions = [], activeId, activeWorkspace = '', lastEvents = {}, skills = [], runningIds = [],
     onSelect, onCreate, onRename, onDelete, onInstant, onSettings, settingsOpen = false
   } = $props();
 
@@ -102,7 +102,9 @@
             {/if}
             {#each p.sessions as s (s.id)}
               <button class="sess" class:on={s.id === activeId} onclick={() => onSelect(s.id)}>
-                {#if s.id === activeId}<Dot tone="accent" size={5} />{:else}<span class="sdot"></span>{/if}
+                {#if runningIds.includes(s.id)}
+                  <span class="sdot live" title="a turn is running in this session"></span>
+                {:else if s.id === activeId}<Dot tone="accent" size={5} />{:else}<span class="sdot"></span>{/if}
                 <span class="scol">
                   {#if renamingId === s.id}
                     <!-- svelte-ignore a11y_autofocus -->
@@ -210,6 +212,19 @@
   }
   .pfolder:hover .padd { opacity: 1; }
   .padd:hover { color: var(--accent); background: var(--accent-soft); }
+
+  /* A turn is executing in this session — including one started from the CLI,
+     which the panel otherwise renders identically to an idle session. */
+  .sdot.live {
+    background: var(--ok, #7fa650);
+    box-shadow: 0 0 0 0 var(--ok, #7fa650);
+    animation: livepulse 1.6s ease-out infinite;
+  }
+  @keyframes livepulse {
+    0%   { box-shadow: 0 0 0 0 rgba(127,166,80,.6); }
+    70%  { box-shadow: 0 0 0 5px rgba(127,166,80,0); }
+    100% { box-shadow: 0 0 0 0 rgba(127,166,80,0); }
+  }
 
   /* ---- sessions nested as children beneath the pill ---- */
   .sessions {

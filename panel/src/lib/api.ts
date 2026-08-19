@@ -60,6 +60,10 @@ export const api = {
   health: () => getJSON<Health>('/api/health'),
   sessions: async (): Promise<SessionMeta[]> =>
     (await getJSON<{ sessions?: SessionMeta[] }>('/api/sessions'))?.sessions ?? [],
+  /** ids of sessions with a turn executing right now — includes CLI runs the
+   *  panel did not start, which are otherwise invisible here. */
+  runningSessions: async (): Promise<string[]> =>
+    (await getJSON<{ running?: string[] }>('/api/sessions'))?.running ?? [],
   sessionState: (id: string) =>
     getJSON<{ messages?: ChatMessage[] }>(`/api/sessions/${id}/state`),
   events: async (id: string): Promise<EpisodicEvent[]> => {

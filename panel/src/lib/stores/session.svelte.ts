@@ -15,6 +15,9 @@ const TICK_KEEP = 200;
 const ERROR_CARDS = 3;
 
 let sessions = $state<SessionMeta[]>([]);
+// sessions with a turn executing now — CLI runs included, so a build started
+// outside the panel is visibly running instead of looking idle.
+let runningIds = $state<string[]>([]);
 let activeId = $state<string | null>(null);
 let messages = $state<ChatMessage[]>([]);
 let ticks = $state<EpisodicEvent[]>([]);
@@ -98,12 +101,14 @@ export const sessionStore = {
   get errors() { return errors; },
   get report() { return report; },
   get skills() { return skills; },
+  get runningIds() { return runningIds; },
   get liveSteps() { return liveSteps; },
   get mode() { return mode; },
   set mode(m: Mode) { mode = m; },
 
   async loadSessions(): Promise<void> {
     sessions = await api.sessions();
+    runningIds = await api.runningSessions();
     if (!activeId && sessions.length) this.select(sessions[0].id);
   },
 
@@ -241,6 +246,9 @@ export const sessionStore = {
     void this.loadSessions(); void this.loadSkills();
     timer = setInterval(() => {
       void loadTicks(); void loadQuestion(); void loadErrors();
+      // keep the running set fresh: a CLI turn can start or finish at any
+      // moment and the panel has no other way to learn about it.
+      void api.runningSessions().then((ids) => { runningIds = ids; }).catch(() => {});
       if (report) void loadReport();
     }, TICK_MS);
   },
