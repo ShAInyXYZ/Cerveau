@@ -15,6 +15,28 @@ queries should be prefixed 'query: ' by the caller (Typesense sends raw content
 as passages, which is correct for indexing).
 """
 import os
+
+# CPU BY DEFAULT. The GPU is fully committed to the vLLM Core (0.90 util), and
+# an embedder sharing it OOM'd on any realistic batch: a single short string
+# returned in 15ms while a 16-chunk batch of code 500'd outright — a failure
+# that looks like "memory never retrieves" rather than an error.
+#
+# MEASURED on 32 threads, 16 code chunks (~40 lines each):
+#   bf16,  8 threads -> 277 ms/chunk   <- chosen
+#   fp32, 16 threads -> 516 ms/chunk   (fp32 is SLOWER: the bandwidth saved by
+#                                       bf16 beats its lack of a native CPU path)
+# Embedding runs on memory writes and retrievals, a few calls per turn — not
+# per token — so ~0.3s lands inside a 30s+ turn unnoticed. Set EMBED_DEVICE=cuda
+# to go back to the GPU.
+EMBED_DEVICE = os.environ.get("EMBED_DEVICE", "cpu")
+EMBED_THREADS = int(os.environ.get("EMBED_THREADS", "8"))
+
+if EMBED_DEVICE == "cpu":
+    # Hide the GPU before torch initialises, so no CUDA context is created at
+    # all — a context alone costs a few hundred MiB the Core now needs.
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
@@ -30,7 +52,13 @@ _model = None
 def model():
     global _model
     if _model is None:
-        _model = SentenceTransformer(MODEL_DIR, trust_remote_code=True)
+        if EMBED_DEVICE == "cpu":
+            # More threads is not better: 16 beat 8 on fp32 but 32 was worse
+            # than both — past ~8 the per-batch sync cost outweighs the split.
+            torch.set_num_threads(EMBED_THREADS)
+        _model = SentenceTransformer(
+            MODEL_DIR, trust_remote_code=True, device=EMBED_DEVICE
+        )
     return _model
 
 
@@ -41,7 +69,12 @@ class EmbedRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": MODEL_DIR}
+    return {
+        "ok": True,
+        "model": MODEL_DIR,
+        "device": EMBED_DEVICE,
+        "threads": EMBED_THREADS if EMBED_DEVICE == "cpu" else None,
+    }
 
 
 # Typesense (and OpenAI clients) probe /v1/models to validate the model exists
