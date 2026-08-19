@@ -45,6 +45,7 @@ func (t *CheckPage) Schema() map[string]any {
 			"path":   map[string]any{"type": "string", "description": "workspace-relative HTML file to load"},
 			"url":    map[string]any{"type": "string", "description": "full URL to load instead of a file (e.g. a serve tool URL)"},
 			"expect": map[string]any{"type": "string", "description": "element that must exist in the rendered DOM: a tag (canvas), #id, .class, or tag.class"},
+			"eval":   map[string]any{"type": "string", "description": "JS expression evaluated in the page after it loads; its value is returned to you. Use it to READ RUNTIME STATE, e.g. \"JSON.stringify({omega: window.__state.omega})\". Objects are JSON-stringified automatically."},
 		},
 	}
 }
@@ -74,6 +75,7 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 		Path   string `json:"path"`
 		URL    string `json:"url"`
 		Expect string `json:"expect"`
+		Eval   string `json:"eval"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
 		return "", fmt.Errorf("bad args: %w", err)
@@ -97,6 +99,20 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 			return "", fmt.Errorf("%s does not exist", a.Path)
 		}
 		target = "file://" + full
+	}
+
+	// eval: wrap the page so the expression runs after load and its value is
+	// printed to the console, which we already capture. Chromium headless has
+	// no --evaluate flag, and a wrapper is why this needs no browser driver:
+	// the model asked for playwright 26 times in one run because it could not
+	// read runtime state any other way.
+	if a.Eval != "" {
+		wrapped, cleanup, werr := t.writeEvalHarness(target, a.Eval)
+		if werr != nil {
+			return "", werr
+		}
+		defer cleanup()
+		target = wrapped
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, 25*time.Second)
@@ -136,7 +152,22 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 		}
 	}
 
+	// pull the eval result out of the console stream
+	evalResult := ""
+	for _, ln := range strings.Split(errb.String(), "\n") {
+		if i := strings.Index(ln, evalMarker); i >= 0 {
+			evalResult = strings.TrimSpace(ln[i+len(evalMarker):])
+		}
+	}
+
 	var final strings.Builder
+	if a.Eval != "" {
+		if evalResult != "" {
+			fmt.Fprintf(&final, "eval result: %s\n", evalResult)
+		} else {
+			final.WriteString("eval produced no result — the expression may have thrown before the page settled.\n")
+		}
+	}
 	if errCount == 0 {
 		final.WriteString("no console errors — the page loaded cleanly.\n")
 	} else {
@@ -191,3 +222,62 @@ func classInDOM(dom, class string) bool {
 }
 
 var reClassAttr = regexp.MustCompile(`class="([^"]*)"`)
+
+// evalMarker tags the eval result so it can be pulled out of ordinary console
+// noise. A page that logs a lot would otherwise bury the answer.
+const evalMarker = "__CRV_EVAL__"
+
+// writeEvalHarness copies the page and appends a script that evaluates the
+// expression in ITS OWN context, then logs the result.
+//
+// An iframe cannot work here: file:// documents are cross-origin with each
+// other (origin "null"), so contentWindow access is blocked. Appending to a
+// copy keeps everything same-document, and the copy sits in the workspace so
+// relative paths (modules, textures, importmaps) still resolve.
+func (t *CheckPage) writeEvalHarness(target, expr string) (string, func(), error) {
+	if !strings.HasPrefix(target, "file://") {
+		// served URL: fetch is not available to us here, so evaluate against
+		// the live page by loading it in a document that shares its origin.
+		return "", func() {}, fmt.Errorf("eval is only supported for workspace files (path:), not url:")
+	}
+	orig := strings.TrimPrefix(target, "file://")
+	body, err := os.ReadFile(orig)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("eval harness: %w", err)
+	}
+
+	f, err := os.CreateTemp(filepath.Dir(orig), ".crv-eval-*.html")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("eval harness: %w", err)
+	}
+	name := f.Name()
+	cleanup := func() { _ = os.Remove(name) }
+
+	probe := `
+<script>
+setTimeout(function () {
+  var v;
+  try {
+    v = eval(` + jsString(expr) + `);
+    if (v && typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = String(v); } }
+  } catch (e) { v = 'EVAL ERROR: ' + (e && e.message ? e.message : String(e)); }
+  console.log(` + jsString(evalMarker) + ` + ' ' + v);
+}, 2500);
+</script>`
+	if _, err := f.Write(append(body, []byte(probe)...)); err != nil {
+		f.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("eval harness: %w", err)
+	}
+	f.Close()
+	return "file://" + name, cleanup, nil
+}
+
+func jsString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+func htmlAttr(s string) string {
+	return strings.NewReplacer(`&`, "&amp;", `"`, "&quot;", `<`, "&lt;", `>`, "&gt;").Replace(s)
+}
