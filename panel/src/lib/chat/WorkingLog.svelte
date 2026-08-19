@@ -75,6 +75,11 @@
                 <pre class="toolout">{s.output.length > OUTPUT_CAP ? s.output.slice(0, OUTPUT_CAP) + '\n…[truncated]' : s.output}</pre>
               {/if}
             </div>
+          {:else if s.kind === 'note' && s.noteKind === 'context_compacted'}
+            <div class="step compaction">
+              <span class="sd compacted"></span>
+              <span class="stext">{s.text}</span>
+            </div>
           {:else if s.kind === 'note'}
             <div class="step"><span class="sd note"></span><span class="stext">{s.text}</span></div>
           {:else if s.kind === 'error' || s.kind === 'abort'}
@@ -115,6 +120,15 @@
   }
   .sd { width: 4px; height: 4px; border-radius: 50%; background: var(--faint); flex-shrink: 0; }
   .sd.note { background: var(--dim); }
+  /* Compaction is not routine chatter: the session just lost history, and a
+     user who cannot see that reads the model's next gap as disobedience. */
+  .sd.compacted { background: var(--am, #e8873a); }
+  .step.compaction {
+    border-left: 2px solid var(--am, #e8873a);
+    padding-left: 8px;
+    margin: 4px 0;
+  }
+  .step.compaction .stext { color: var(--am, #e8873a); }
   .sd.error, .sd.abort { background: var(--err); }
   .stext { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

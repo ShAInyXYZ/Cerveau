@@ -25,6 +25,10 @@ type Report struct {
 	Zone    string `json:"zone"`
 	Demoted int    `json:"demoted"`
 	Trimmed int    `json:"trimmed"`
+	// Compacted counts turns folded into a compaction marker. Surfaced to the
+	// UI so a user can SEE the session lost history — silently forgetting is
+	// indistinguishable from the model ignoring what it was told.
+	Compacted int `json:"compacted"`
 }
 
 type Manager struct {
@@ -44,7 +48,14 @@ func NewManager(budget, reserve int, counter Counter) *Manager {
 	return &Manager{budget: budget, reserve: reserve, keepLast: 6, counter: counter}
 }
 
-func (m *Manager) usable() int { return int(float64(m.budget-m.reserve) * 0.6) }
+// usable is the point where shedding starts. 0.75 leaves a quarter of the
+// window as headroom for the reply plus the gap between our token counter and
+// the engine's tokenizer (~8% measured against vLLM).
+//
+// It was 0.6, tuned when the window was 32K. At 96K that shed context with
+// 40K still unused — the packer was throwing away history the model could
+// have had.
+func (m *Manager) usable() int { return int(float64(m.budget-m.reserve) * 0.75) }
 
 func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Report) {
 	rep := Report{Budget: m.budget, Zone: ZoneGreen}
@@ -108,6 +119,7 @@ func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Repor
 	if total > usable {
 		rep.Zone = ZoneRed
 		cut := len(out) - m.keepLast
+		lastCut := -1
 		for i := 0; i < cut; i++ {
 			if out[i].Kind == "system" {
 				continue
@@ -115,9 +127,28 @@ func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Repor
 			total -= counts[i]
 			out[i].Kind = "dropped"
 			rep.Trimmed++
+			lastCut = i
 			if total <= usable {
 				break
 			}
+		}
+		// Leave a MARKER where the history was. Dropping turns silently makes
+		// the model believe the session began later than it did: it re-asks
+		// settled questions and re-does finished work, with no way to tell that
+		// anything is missing. The marker costs a few tokens and tells it
+		// exactly what happened and where the detail still lives.
+		if lastCut >= 0 {
+			out[lastCut].Kind = "compaction"
+			out[lastCut].Msg = llm.Message{
+				Role: "user",
+				Content: fmt.Sprintf("[%d earlier turns were compacted out of this window to stay "+
+					"under the context limit. They are NOT lost — the full episodic log is on disk, "+
+					"and files you already wrote are still in the workspace. If you need something "+
+					"from before this point, re-read the files rather than assuming it never "+
+					"happened.]", rep.Trimmed),
+			}
+			total += m.counter.Count(ctx, out[lastCut].Msg.Content) + 4
+			rep.Compacted = rep.Trimmed
 		}
 	}
 	msgs := []llm.Message{}

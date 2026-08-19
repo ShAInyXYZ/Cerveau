@@ -43,7 +43,11 @@ export function toStep(ev: EpisodicEvent): LiveStep | null {
         output: typeof p.output === 'string' ? p.output : '',
       };
     case 'note':
-      return p.text ? { id: ev.id, kind: 'note', text: String(p.text) } : null;
+      // keep the note's own kind: 'context_compacted' renders differently from
+      // an ordinary note — losing history is something the user must SEE.
+      return p.text
+        ? { id: ev.id, kind: 'note', text: String(p.text), noteKind: p.kind ? String(p.kind) : undefined }
+        : null;
     case 'error':
       return { id: ev.id, kind: 'error', text: String(p.what ?? p.detail ?? 'error') };
     case 'aborted':

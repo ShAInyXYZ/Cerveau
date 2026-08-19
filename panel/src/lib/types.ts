@@ -100,6 +100,8 @@ export interface LiveStep {
   status?: 'run' | 'ok' | 'fail';
   output?: string;
   text?: string;
+  /** the note's own kind, e.g. 'context_compacted' */
+  noteKind?: string;
 }
 
 export type Mode = 'discussion' | 'autopilot' | 'brainstorming';

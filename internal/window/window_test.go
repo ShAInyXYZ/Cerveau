@@ -80,8 +80,19 @@ func TestRedTrimsToTail(t *testing.T) {
 	if sys != 1 {
 		t.Fatal("system message must survive the red zone")
 	}
-	if len(msgs) > m.keepLast+1 {
+	// keepLast + the system message + the compaction marker that replaces the
+	// dropped history (see TestDroppedTurnsLeaveACompactionMarker).
+	if len(msgs) > m.keepLast+2 {
 		t.Fatalf("tail not enforced: %d msgs", len(msgs))
+	}
+	found := false
+	for _, msg := range msgs {
+		if strings.Contains(msg.Content, "compacted") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("red-zone trim left no compaction marker")
 	}
 }
 

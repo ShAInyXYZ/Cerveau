@@ -229,6 +229,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	}
 	g := newTurnGuardBudget(mode.MaxIter, turnBudget(ctx))
 	var winRep window.Report
+	lastCompacted := 0
 	var turnPulls, pendingPulls []memory.Pull
 	if l.recall != nil {
 		turnPulls = l.recall.TurnStart(ctx, sessionID, userMsg, l.tailEvtIDs(sessionID, 20))
@@ -337,6 +338,16 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		if correction != "" { // one-shot feedback after a truncated tool call
 			messages = append(messages, llm.Message{Role: "user", Content: correction})
 			correction = ""
+		}
+		// Surface compaction the moment it happens. A user watching a long run
+		// needs to know history was folded away — otherwise the model
+		// "forgetting" an earlier instruction looks like the model ignoring it.
+		if rep.Compacted > 0 && rep.Compacted != lastCompacted {
+			wr.Append(episodic.Note, map[string]string{
+				"kind": "context_compacted",
+				"text": fmt.Sprintf("context compacted — %d earlier turns folded away to stay under the %d-token window (full log kept on disk)", rep.Compacted, rep.Budget),
+			})
+			lastCompacted = rep.Compacted
 		}
 		winRep = rep
 		reply, usage, err := l.completeWithRetry(iterCtx, wr, messages, sessionReg.Specs(mode.Name), "", mode.ProseCap)
