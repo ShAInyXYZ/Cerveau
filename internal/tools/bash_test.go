@@ -28,12 +28,19 @@ func TestBashBasicOutput(t *testing.T) {
 func TestBashKeepsOutputOnFailure(t *testing.T) {
 	b := NewBash(t.TempDir())
 	out, err := b.Execute(context.Background(), bashArgs("echo boom >&2; exit 3"))
-	if err == nil {
-		t.Fatal("expected error on non-zero exit")
+	// A non-zero exit is no longer a tool error — test runners and linters use
+	// it to REPORT, and counting those toward the guard threshold stopped turns
+	// that were making progress. See TestFailingTestIsNotAToolError.
+	if err != nil {
+		t.Fatalf("non-zero exit should not be a tool error: %v", err)
 	}
-	// the command's own stderr must survive alongside the exit error
+	// the command's own stderr must survive — the point of this test
 	if want := "boom"; !contains(out, want) {
 		t.Fatalf("output %q missing %q", out, want)
+	}
+	// ...and the exit status must still be visible somewhere
+	if !contains(out, "exit status 3") {
+		t.Fatalf("exit status hidden from the model: %q", out)
 	}
 }
 
