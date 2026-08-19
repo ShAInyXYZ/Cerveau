@@ -230,6 +230,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	g := newTurnGuardBudget(mode.MaxIter, turnBudget(ctx))
 	var winRep window.Report
 	lastCompacted := 0
+	breaker := newBashBreaker()
 	var turnPulls, pendingPulls []memory.Pull
 	if l.recall != nil {
 		turnPulls = l.recall.TurnStart(ctx, sessionID, userMsg, l.tailEvtIDs(sessionID, 20))
@@ -435,6 +436,22 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 					correction = splitCorrection(tc.Function.Name)
 					continue
 				}
+				// Bash failing the same WAY three times is not three problems,
+				// it is one wall the model keeps walking into with a new
+				// command each time. Make it stop and ask whether the thing
+				// exists at all, rather than counting it toward a kill.
+				if tc.Function.Name == "bash" {
+					var ba struct {
+						Command string `json:"command"`
+					}
+					_ = json.Unmarshal(args, &ba)
+					if hint, tripped := breaker.record(ba.Command, out); tripped {
+						out += "\n\n[harness] " + hint
+						correction = hint
+						wr.Append(episodic.Note, map[string]string{"kind": "breaker_tripped",
+							"text": "same bash failure 3× — asking the model to reconsider the approach"})
+					}
+				}
 				if detail, tripped := g.toolError(tc.Function.Name); tripped {
 					iterCancel()
 					return stop(&Result{Iterations: i}, StopErrors, detail), nil
@@ -467,6 +484,14 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 					return stop(&Result{Iterations: i}, StopErrors, detail), nil
 				}
 			} else {
+				if tc.Function.Name == "bash" {
+					var ba struct {
+						Command string `json:"command"`
+					}
+					if json.Unmarshal(args, &ba) == nil {
+						breaker.ok(ba.Command)
+					}
+				}
 				g.toolOK()
 			}
 			// Coach BEFORE persisting: the loop rebuilds its window from the
