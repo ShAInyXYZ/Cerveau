@@ -209,7 +209,7 @@ type Result struct {
 
 func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*Result, error) {
 	mode := ModeByName(modeName)
-	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + mode.Module
+	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + mode.Module
 	// In autopilot, a plan committed earlier (in Discussion) is injected as GUIDANCE
 	// — the agent follows its intent but adapts freely. No plan is fine: it plans
 	// and executes from the task directly.
@@ -546,11 +546,19 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 		return nil, window.Report{}, err
 	}
 	items := []window.Item{{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"}}
-	if text := memory.FormatPulls(pulls); text != "" {
-		items = append(items, window.Item{Msg: llm.Message{Role: "system", Content: text}, Kind: "pulls"})
+	// User-role, not system-role. The model's chat template permits exactly ONE
+	// system message, at index 0 — a second is rejected even at the front
+	// (verified against the live endpoint AND vllm docs: placement rules live
+	// in the model's template; vLLM's own chat client sends a single
+	// --system-prompt). Injected context therefore ships as user-role
+	// <system-reminder> text, the qwen-code / deepseek-harness convention.
+	if text := wrapReminder(memory.FormatPulls(pulls)); text != "" {
+		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pulls"})
 	}
 	for _, note := range skillNotes {
-		items = append(items, window.Item{Msg: llm.Message{Role: "system", Content: note}, Kind: "skill"})
+		if text := wrapReminder(note); text != "" {
+			items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "skill"})
+		}
 	}
 	for _, ev := range events {
 		switch ev.Type {
