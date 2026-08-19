@@ -87,7 +87,7 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 	defer rootCancel()
 
 	mode := ModeByName("autopilot")
-	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + mode.Module
+	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + mode.Module
 
 	var pulls []memory.Pull
 	if l.recall != nil {
@@ -140,9 +140,8 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 	}
 
 	items := []window.Item{{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"}}
-	// see loop.go: exactly one system message is allowed, at index 0
-	if text := wrapReminder(memory.FormatPulls(pulls)); text != "" {
-		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pulls"})
+	if text := memory.FormatPulls(pulls); text != "" {
+		items = append(items, window.Item{Msg: llm.Message{Role: "system", Content: text}, Kind: "pulls"})
 	}
 	planPayload := fmt.Sprintf("Plan: %s (step %d/%d in progress)", plan.Title, idx+1, len(plan.Steps))
 	items = append(items,

@@ -209,7 +209,7 @@ type Result struct {
 
 func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*Result, error) {
 	mode := ModeByName(modeName)
-	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + mode.Module
+	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + mode.Module
 	// In autopilot, a plan committed earlier (in Discussion) is injected as GUIDANCE
 	// — the agent follows its intent but adapts freely. No plan is fine: it plans
 	// and executes from the task directly.
@@ -546,17 +546,11 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 		return nil, window.Report{}, err
 	}
 	items := []window.Item{{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"}}
-	// User-role, not system-role: the model's chat template accepts exactly ONE
-	// system message, at index 0. A second one is rejected even when it sits at
-	// the front, so these cannot be system messages at all. Verified against
-	// the live endpoint, not assumed.
-	if text := wrapReminder(memory.FormatPulls(pulls)); text != "" {
-		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pulls"})
+	if text := memory.FormatPulls(pulls); text != "" {
+		items = append(items, window.Item{Msg: llm.Message{Role: "system", Content: text}, Kind: "pulls"})
 	}
 	for _, note := range skillNotes {
-		if text := wrapReminder(note); text != "" {
-			items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "skill"})
-		}
+		items = append(items, window.Item{Msg: llm.Message{Role: "system", Content: note}, Kind: "skill"})
 	}
 	for _, ev := range events {
 		switch ev.Type {
