@@ -2,7 +2,6 @@ package window
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"cerveau/internal/llm"
@@ -43,55 +42,6 @@ func NewManager(budget, reserve int, counter Counter) *Manager {
 		reserve = 2048
 	}
 	return &Manager{budget: budget, reserve: reserve, keepLast: 6, counter: counter}
-}
-
-// Budget is the full context window the model was configured with. Callers
-// need it to size an output cap that fits alongside the prompt.
-func (m *Manager) Budget() int { return m.budget }
-
-// CountMessages estimates the token cost of an outgoing message list, using
-// the same counter the packer uses. Callers cap max_tokens against it: vLLM
-// rejects a request whose prompt + max_tokens exceeds the window, where
-// llama.cpp silently truncates.
-// CountRequest counts everything that goes into a completion request:
-// the messages AND the tool specs.
-//
-// The specs are the part that used to be missed. They are resent verbatim on
-// every request and each one carries a full JSON schema, so on a rich tool
-// registry they are worth thousands of tokens. Counting only messages made the
-// output clamp believe there was ~10k more room than there was, and vLLM —
-// which rejects prompt+max_tokens > window instead of truncating — 502'd on a
-// total of exactly 32769.
-func (m *Manager) CountRequest(msgs []llm.Message, specs []llm.ToolSpec) int {
-	n := m.CountMessages(msgs)
-	if m.counter == nil {
-		return n
-	}
-	ctx := context.Background()
-	for _, s := range specs {
-		n += m.counter.Count(ctx, s.Function.Name)
-		n += m.counter.Count(ctx, s.Function.Description)
-		if b, err := json.Marshal(s.Function.Parameters); err == nil {
-			n += m.counter.Count(ctx, string(b))
-		}
-		n += 4 // per-tool framing
-	}
-	return n
-}
-
-func (m *Manager) CountMessages(msgs []llm.Message) int {
-	if m.counter == nil {
-		return 0
-	}
-	ctx := context.Background()
-	n := 0
-	for _, msg := range msgs {
-		n += m.counter.Count(ctx, msg.Content) + 4
-		for _, tc := range msg.ToolCalls {
-			n += m.counter.Count(ctx, tc.Function.Arguments) + m.counter.Count(ctx, tc.Function.Name)
-		}
-	}
-	return n
 }
 
 func (m *Manager) usable() int { return int(float64(m.budget-m.reserve) * 0.6) }

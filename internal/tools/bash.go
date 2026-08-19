@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -117,47 +116,12 @@ func (t *Bash) Execute(ctx context.Context, args json.RawMessage) (string, error
 		if strings.Contains(a.Command, "&") && looksLikeServer(a.Command) {
 			return text, fmt.Errorf("exit: %w — a backgrounded server cannot survive a bash call (its process group is killed). Use the `serve` tool to run a static server instead", runErr)
 		}
-		// A non-zero exit is NOT a tool failure. Test runners, linters, type
-		// checkers and grep all exit non-zero to REPORT something — the command
-		// ran exactly as asked and the answer was "no". Returning a Go error
-		// made the loop count each one toward the guard threshold, so a model
-		// that wrote a verification script and iterated on what it found was
-		// stopped for doing the right thing (a real DAW benchmark died this way
-		// on its third passing-but-reporting-failures Playwright run).
-		//
-		// The exit status still has to be VISIBLE or the model cannot tell a
-		// failing suite from a passing one, so it goes into the output text.
-		// Errors are reserved for commands that could not run at all — those
-		// are handled by cmd.Start() above and by exec.ErrNotFound below.
-		if isCommandNotFound(runErr, text) {
-			return text, fmt.Errorf("exit: %w", runErr)
-		}
-		if text == "" {
-			text = "(no output)"
-		}
-		return text + "\n\n[exit: " + runErr.Error() + "]", nil
+		return text, fmt.Errorf("exit: %w", runErr)
 	}
 	if text == "" {
 		return "(no output)", nil
 	}
 	return text, nil
-}
-
-// isCommandNotFound distinguishes "the command ran and said no" from "there was
-// no command to run". Only the latter is a tool error the guard should count.
-func isCommandNotFound(runErr error, output string) bool {
-	if errors.Is(runErr, exec.ErrNotFound) {
-		return true
-	}
-	// bash reports these itself and exits 127 / 126
-	var ee *exec.ExitError
-	if errors.As(runErr, &ee) {
-		switch ee.ExitCode() {
-		case 127, 126: // not found / not executable
-			return true
-		}
-	}
-	return false
 }
 
 func capOutput(text string) string {

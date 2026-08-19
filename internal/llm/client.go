@@ -98,7 +98,12 @@ func NewClient(base string) *Client {
 	temp, topP := 0.2, 0.0
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("CRV_TEMP"))) {
 	case "strict":
-		temp, topP = 0.4, 0.8
+		// 0.2 / no top_p — MEASURED, not chosen. This was the default before
+		// the slider existed, and the benchmark run that produced the best
+		// output used it. A 0.4/0.8 "strict" preset lost visibly on all four
+		// projects: less complete, less correct. Qwen's own guidance (0.7/0.8
+		// instruct) is for chat; code generation wants the tighter setting.
+		temp, topP = 0.2, 0.0
 	case "neutral":
 		temp, topP = 0.55, 0.85
 	case "creative":
