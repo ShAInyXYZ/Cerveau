@@ -94,7 +94,12 @@ export const sessionStore = {
   get messages() { return messages; },
   get ticks() { return ticks; },
   get lastEvents() { return lastEvents; },
-  get running() { return running; },
+  // running = this tab started a turn, OR the server says one is executing in
+  // the active session. Without the second half a CLI build renders as a dead
+  // screen: the working log is gated on this flag, and the assistant messages
+  // during a build are empty (the model is calling tools, not talking), so
+  // there is literally nothing on screen while the machine works.
+  get running() { return running || runningIds.includes(activeId ?? ''); },
   get runStarted() { return runStarted; },
   get windowReport() { return windowReport; },
   get question() { return question; },
@@ -102,7 +107,19 @@ export const sessionStore = {
   get report() { return report; },
   get skills() { return skills; },
   get runningIds() { return runningIds; },
-  get liveSteps() { return liveSteps; },
+  // liveSteps is fed by the SSE stream, which only exists for turns this tab
+  // started. For a CLI run, derive the same steps from the episodic ticks we
+  // already poll — otherwise the working log is empty for the whole build.
+  get liveSteps() {
+    if (liveSteps.length) return liveSteps;
+    if (!runningIds.includes(activeId ?? '')) return liveSteps;
+    const out: LiveStep[] = [];
+    for (const ev of ticks) {
+      const st = toStep(ev as EpisodicEvent);
+      if (st) out.push(st);
+    }
+    return out;
+  },
   get mode() { return mode; },
   set mode(m: Mode) { mode = m; },
 
