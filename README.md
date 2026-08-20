@@ -21,6 +21,76 @@
 
 ## 📌 Patch notes
 
+### 🧠 v0.5 — "Cores" · 2026-08-19
+
+<p>
+  <img src="https://img.shields.io/badge/core-vLLM_dense-C0304A?style=flat-square&labelColor=17140F" alt="vllm core"/>
+  <img src="https://img.shields.io/badge/context-96K-E88BA0?style=flat-square&labelColor=17140F" alt="96k context"/>
+  <img src="https://img.shields.io/badge/verify-runtime_eval-C0304A?style=flat-square&labelColor=17140F" alt="runtime eval"/>
+</p>
+
+**One harness, swappable runtimes.** A second Brain Core joins the first — a
+whole different engine behind the same face — with three times the context and a
+verification loop that replaced forty bash calls with one question to the page.
+
+**Brain Cores**
+- **A second Core, not a second profile.** A profile is flags for one engine; a
+  Core is a whole runtime — engine, quantisation, KV format — behind one
+  OpenAI-compatible face. The llama.cpp MoE Core stays the default and is
+  untouched; the new one is Qwen3.8-27B W4A16 on vLLM. Cerveau only ever picks a
+  URL, so the harness needs no knowledge of what is behind it.
+- **Swaps survive because context lives outside the KV cache.** Session state is
+  in Typesense and the embedder, so switching Cores carries a briefing rather
+  than a memory. Do it at task boundaries, never mid-turn.
+- **The embedder moved to the CPU — because on the GPU it was failing.** Sharing
+  a 24 GB card with the Core left ~50 MiB free: a short string embedded in 15ms
+  while a realistic batch of code returned HTTP 500. That reads as "memory never
+  retrieves anything useful", not as an error. On CPU it is bf16 across 8
+  threads, ~297ms per code chunk — invisible inside a 30-second turn, and it
+  hands 2.6 GB back to the Core.
+- **96K of context, from fp8 and honesty about speed.** fp8 KV and dropping
+  speculative decoding took the cache from 40,329 to 179,443 tokens. Both were
+  latency choices, and latency is not the metric — the mid-build 502 that killed
+  long runs now sits three times further away.
+
+**Verification**
+- **`check_page` can run JavaScript and hand back the value.** Previously it
+  reported console errors and whether an element existed, which is not the
+  question a model actually has. It wants to know whether blade omega really
+  reaches 14 rad/s. Lacking that, one benchmark run spent 26 of its 46 tool calls
+  hunting for a browser driver this project has never shipped. Now it asks the
+  page directly.
+- **Repeated dead ends get a question instead of another error.** Failures are
+  counted by shape rather than by command, so `playwright` and `playwright-core`
+  are recognised as the same wall. Three of a shape and the tool stops answering
+  with an error and starts asking whether the thing is installed at all, naming
+  the capability that already exists.
+- **Churn is measured by whether the work moved, not by how many errors.** The
+  two most wasteful runs on record had almost no errors — one edited for four
+  minutes while the file changed by a single byte. The harness now fingerprints
+  the workspace and says so. A nudge, never a kill: an unchanging workspace is
+  also exactly what a finished task looks like.
+
+**Context**
+- **Compaction hands over a briefing, not a tombstone.** Dropping the oldest
+  turns silently made the model believe the session began later than it did, so
+  it redid finished work. What replaces them is assembled from the log — the
+  original request, the plan, completed steps, the files on disk — never
+  summarised by the model, since asking it to describe what it just lost is
+  circular.
+- **Exactly one system prompt, at position zero.** Strict chat templates reject a
+  second system message even at the front of the conversation, which ended whole
+  sessions mid-build. Recalled memory and skill notes now travel as user-role
+  `<system-reminder>` text, escaped so a stored note cannot close the envelope
+  and be read as something you typed.
+
+**Panel**
+- **A run started from the terminal is visible in the browser.** The panel could
+  only see turns it started itself, so a fifteen-minute CLI build rendered as a
+  dead screen — made worse by assistant messages during a build carrying no text
+  at all, because the model is working rather than talking. Live sessions now
+  pulse green in the rail and stream their tool calls wherever they began.
+
 ### 📱 v0.4 — "Pocket" · 2026-08-18
 
 <p>
