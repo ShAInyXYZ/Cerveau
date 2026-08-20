@@ -109,115 +109,44 @@ public class MainActivity extends Activity {
      * Laid out like the disconnected screen: one centred column, mark,
      * headline, one line of cause, the action.
      */
+    /**
+     * The welcome screen for an already-paired device.
+     *
+     * No automatic unlock: the biometric prompt is what the Unlock button does.
+     * Firing it on launch covers the app with a system dialog nobody asked for,
+     * and dismissing it strands the user on a screen they did not choose.
+     */
     private void showLock() {
-        int dp = (int) getResources().getDisplayMetrics().density;
         boolean guarded = Vault.isProtected(this);
 
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setGravity(Gravity.CENTER_HORIZONTAL);
-
-        // The mark carries the screen. At 112dp it was an illustration beside
-        // some text; at 168 it is the thing you see, which is what a brand mark
-        // on an otherwise empty screen is for.
-        ImageView mark = new ImageView(this);
-        mark.setImageResource(R.drawable.brand_mark);
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(168 * dp, 168 * dp);
-        mp.bottomMargin = 26 * dp;
-        col.addView(mark, mp);
-
-        // CERVEAU in tracked uppercase mono — the same wordmark as the panel
-        // header and the README banner. A plain sans "Cerveau" was a different
-        // brand wearing the same logo.
-        TextView head = new TextView(this);
-        head.setText("CERVEAU");
-        head.setTextColor(Color.WHITE);
-        head.setTextSize(23);
-        head.setLetterSpacing(0.34f);
-        head.setTypeface(android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD));
-        head.setGravity(Gravity.CENTER);
-        // Tracking puts a trailing gap after the last letter, so a centred
-        // string sits visually left. The padding compensates — but the view
-        // must be full-width or that padding eats the final glyph, which is
-        // exactly how this rendered as "CERVEA".
-        head.setPadding((int) (0.34f * 23 * dp), 0, 0, 0);
-        col.addView(head, new LinearLayout.LayoutParams(-1, -2));
-
-        // A hairline under the wordmark, the same device the disconnected
-        // screen uses to separate identity from instruction.
-        View rule = new View(this);
-        rule.setBackgroundColor(Color.parseColor("#2A2A30"));
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(52 * dp, Math.max(1, dp));
-        rlp.topMargin = 22 * dp; rlp.bottomMargin = 20 * dp;
-        col.addView(rule, rlp);
-
-        TextView sub = new TextView(this);
-        sub.setText(guarded
+        LinearLayout col = Ui.column(this);
+        Ui.mark(this, col, R.drawable.brand_mark, 168, 26);
+        Ui.wordmark(this, col, "CERVEAU");
+        Ui.hairline(this, col, 22);
+        Ui.body(this, col, guarded
                 ? "This device is paired.\nUnlock to reach your machine."
-                : "This device is paired, but has no screen lock.\nYour token is unguarded.");
-        sub.setTextColor(Color.parseColor(guarded ? "#8E8E98" : ERR));
-        sub.setTextSize(14.5f);
-        sub.setLineSpacing(5 * dp, 1f);
-        sub.setGravity(Gravity.CENTER);
-        col.addView(sub, new LinearLayout.LayoutParams(-1, -2));
+                : "This device is paired, but has no screen lock.\nYour token is unguarded.",
+                guarded ? Ui.MUTED : Ui.ERR, 0);
 
         final TextView status = new TextView(this);
-        status.setTextColor(Color.parseColor(MUTED));
-        status.setTextSize(12.5f);
+        status.setTextColor(Ui.color(Ui.DIM));
+        status.setTextSize(Ui.SMALL);
         status.setGravity(Gravity.CENTER);
 
-        TextView unlock = new TextView(this);
-        unlock.setText(guarded ? "UNLOCK" : "OPEN");
-        unlock.setTextColor(Color.parseColor("#0B0B0D"));
-        unlock.setTextSize(14);
-        unlock.setLetterSpacing(0.16f);
-        unlock.setTypeface(android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD));
-        unlock.setGravity(Gravity.CENTER);
-        unlock.setPadding(52 * dp, 15 * dp, (int) (52 * dp + 0.16f * 14 * dp), 15 * dp);
-        GradientDrawable btn = new GradientDrawable();
-        btn.setCornerRadius(11 * dp);
-        btn.setColor(Color.parseColor(ACCENT));
-        unlock.setBackground(btn);
-        unlock.setOnClickListener(v -> openPanel(status));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, -2);
-        bp.topMargin = 30 * dp;
-        col.addView(unlock, bp);
+        Ui.primary(this, col, guarded ? "UNLOCK" : "OPEN", v -> openPanel(status), 30);
 
         LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-2, -2);
-        stp.topMargin = 14 * dp;
+        stp.topMargin = Ui.dp(this, 14);
         col.addView(status, stp);
 
-        TextView unpair = new TextView(this);
-        unpair.setText("Unpair this device");
-        unpair.setTextColor(Color.parseColor("#4A4A52"));
-        unpair.setTextSize(12.5f);
-        unpair.setGravity(Gravity.CENTER);
-        unpair.setPadding(16 * dp, 12 * dp, 16 * dp, 12 * dp);
-        unpair.setOnClickListener(v -> {
+        Ui.quiet(this, col, "Unpair this device", v -> {
             Vault.clear(prefs);
             DeviceKey.clear();
             prefs.edit().remove("url").remove("device_id").apply();
             showPortal();
-        });
-        LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(-2, -2);
-        up.topMargin = 30 * dp;
-        col.addView(unpair, up);
+        }, 24);
 
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.parseColor(BG));
-        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
-        clp.leftMargin = 28 * dp; clp.rightMargin = 28 * dp;
-        root.addView(col, clp);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars());
-            v.setPadding(b.left, b.top, b.right, b.bottom);
-            return insets;
-        });
-        setContentView(root);
-        // NO automatic unlock: the biometric prompt is what the Unlock button
-        // does. Firing it on launch covers the app with a system dialog the
-        // user never asked for, and dismissing it strands them on a screen they
-        // did not choose.
+        setContentView(Ui.screen(this, col));
     }
 
     /**
@@ -314,12 +243,8 @@ public class MainActivity extends Activity {
     // ── state 2: not paired → the pairing form ───────────────────────
     /**
      * Shown when the machine cannot be reached, instead of launching the panel
-     * into a WebView error.
-     *
-     * The old path opened the panel first, so the failure read as "the app is
-     * broken" rather than "your machine did not answer" — and the message was a
-     * raw Chromium constant. Same screen as PanelActivity.offline() so the two
-     * entry points look identical.
+     * into a WebView error — which reads as "the app is broken" rather than
+     * "your machine did not answer".
      */
     private void showUnreachable() {
         setContentView(brokenScreen(this, "Your phone is not on the private network.",
@@ -329,117 +254,26 @@ public class MainActivity extends Activity {
                 }, v -> recreate()));
     }
 
-    /**
-     * The disconnected screen, shared by both entry points.
-     *
-     * One centred column: mark, headline, cause, what to do, the action. The
-     * first version stacked everything at the bottom of the screen with the top
-     * half empty — a layout that reads as a crash dump rather than a state the
-     * app understands.
-     */
-    static android.view.View brokenScreen(android.app.Activity a, String cause,
-                                          String[] steps,
-                                          android.view.View.OnClickListener onRetry) {
-        int dp = (int) a.getResources().getDisplayMetrics().density;
-
-        LinearLayout col = new LinearLayout(a);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setGravity(Gravity.CENTER_HORIZONTAL);
-
-        ImageView mark = new ImageView(a);
-        mark.setImageResource(R.drawable.brain_broken);
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(172 * dp, -2);
-        mp.bottomMargin = 34 * dp;
-        col.addView(mark, mp);
+    /** The disconnected screen, shared by both entry points. */
+    static View brokenScreen(Activity a, String cause, String[] steps,
+                             View.OnClickListener onRetry) {
+        LinearLayout col = Ui.column(a);
+        Ui.mark(a, col, R.drawable.brain_broken, 172, 30);
 
         TextView head = new TextView(a);
         head.setText("Can't reach Cerveau");
-        head.setTextColor(Color.WHITE);
-        head.setTextSize(25);
-        head.setLetterSpacing(-0.01f);
+        head.setTextColor(Ui.color(Ui.TEXT));
+        head.setTextSize(Ui.DISPLAY);
         head.setGravity(Gravity.CENTER);
-        col.addView(head);
+        col.addView(head, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView sub = new TextView(a);
-        sub.setText(cause);
-        sub.setTextColor(Color.parseColor("#8E8E98"));
-        sub.setTextSize(15);
-        sub.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
-        sp.topMargin = 10 * dp;
-        col.addView(sub, sp);
-
-        // A hairline instead of a heading: the steps are visibly a separate
-        // thing from the diagnosis, without a word spent saying so.
-        android.view.View rule = new android.view.View(a);
-        rule.setBackgroundColor(Color.parseColor("#26262B"));
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(56 * dp, Math.max(1, dp));
-        rlp.topMargin = 26 * dp; rlp.bottomMargin = 24 * dp;
-        col.addView(rule, rlp);
-
-        // The steps go in their own left-aligned block. Centring each row
-        // independently staggers the numbers, which reads as a mistake rather
-        // than a list.
-        LinearLayout list = new LinearLayout(a);
-        list.setOrientation(LinearLayout.VERTICAL);
+        Ui.body(a, col, cause, Ui.MUTED, 10);
+        Ui.hairline(a, col, 24);
         for (int i = 0; i < steps.length; i++) {
-            LinearLayout row = new LinearLayout(a);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-
-            TextView n = new TextView(a);
-            n.setText(String.valueOf(i + 1));
-            n.setTextColor(Color.parseColor(ACCENT));
-            n.setTextSize(12);
-            n.setGravity(Gravity.CENTER);
-            GradientDrawable ring = new GradientDrawable();
-            ring.setShape(GradientDrawable.OVAL);
-            ring.setStroke(Math.max(1, dp), Color.parseColor("#4A2430"));
-            n.setBackground(ring);
-            row.addView(n, new LinearLayout.LayoutParams(24 * dp, 24 * dp));
-
-            TextView t = new TextView(a);
-            t.setText(steps[i]);
-            t.setTextColor(Color.parseColor("#C4C4CC"));
-            t.setTextSize(14.5f);
-            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-2, -2);
-            tp.leftMargin = 13 * dp;
-            row.addView(t, tp);
-
-            LinearLayout.LayoutParams rp2 = new LinearLayout.LayoutParams(-1, -2);
-            if (i > 0) rp2.topMargin = 14 * dp;
-            list.addView(row, rp2);
+            Ui.step(a, col, i + 1, steps[i], i == 0 ? 0 : 14);
         }
-        col.addView(list, new LinearLayout.LayoutParams(-2, -2));
-
-        TextView retry = new TextView(a);
-        retry.setText("Try again");
-        retry.setTextColor(Color.parseColor("#0B0B0D"));
-        retry.setTextSize(15);
-        retry.setGravity(Gravity.CENTER);
-        retry.setPadding(38 * dp, 13 * dp, 38 * dp, 13 * dp);
-        GradientDrawable btn = new GradientDrawable();
-        btn.setCornerRadius(10 * dp);
-        btn.setColor(Color.parseColor(ACCENT));
-        retry.setBackground(btn);
-        retry.setOnClickListener(onRetry);
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, -2);
-        bp.topMargin = 34 * dp;
-        col.addView(retry, bp);
-
-        // The column is centred in the window, not pinned to the bottom.
-        FrameLayout root = new FrameLayout(a);
-        root.setBackgroundColor(Color.parseColor(BG));
-        FrameLayout.LayoutParams clp =
-                new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER);
-        clp.leftMargin = 32 * dp; clp.rightMargin = 32 * dp;
-        root.addView(col, clp);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars());
-            v.setPadding(b.left, b.top, b.right, b.bottom);
-            return insets;
-        });
-        return root;
+        Ui.primary(a, col, "TRY AGAIN", onRetry, 32);
+        return Ui.screen(a, col);
     }
 
     private void showPortal() {
