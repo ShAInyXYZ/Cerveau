@@ -15,20 +15,26 @@
   const empty = $derived(sessionStore.messages.length === 0 && !sessionStore.running);
   const isAuto = $derived(sessionStore.mode === 'autopilot');
 
-  let copied = $state('');          // id of the message just copied
-  let editing = $state('');         // id of the message being edited
+  // null while nothing is copied — an optimistic echo has no id, and comparing
+  // '' to '' would tick every id-less message at once.
+  let copied = $state<string | null>(null);
+  // null, not '': an optimistic echo has no id yet, and `editing === (m.id ?? '')`
+  // made every freshly-sent message match the "nothing is being edited" state
+  // and render as an edit box.
+  let editing = $state<string | null>(null);
   let draft = $state('');
 
-  async function copy(id: string, text: string) {
+  async function copy(key: string, text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      copied = id;
-      setTimeout(() => { if (copied === id) copied = ''; }, 1500);
+      copied = key;
+      setTimeout(() => { if (copied === key) copied = null; }, 1500);
     } catch { /* clipboard blocked — the text is on screen to select */ }
   }
 
   function startEdit(id: string, text: string) { editing = id; draft = text; }
-  function cancelEdit() { editing = ''; draft = ''; }
+  const isEditing = (m: { id?: string }) => editing !== null && !!m.id && m.id === editing;
+  function cancelEdit() { editing = null; draft = ''; }
 
   async function commitEdit(id: string) {
     const text = draft.trim();
@@ -54,7 +60,7 @@
       <span class="tag">{fmtTime(m.ts)}</span>
     </div>
     <div class="tbody">
-      {#if user && editing === (m.id ?? '')}
+      {#if user && isEditing(m)}
         <div class="edit">
           <textarea bind:value={draft} rows="3" aria-label="edit message"
             onkeydown={(e) => {
@@ -76,15 +82,16 @@
       {/if}
     </div>
 
-    {#if editing !== (m.id ?? '')}
+    {#if !isEditing(m)}
+      {@const ckey = m.id ?? `${m.ts}-${i}`}
       <div class="acts">
-        <button class="act" onclick={() => copy(m.id ?? '', m.payload?.text ?? '')}
-          use:tooltip={copied === (m.id ?? '') ? 'copied' : 'copy this message'}
+        <button class="act" onclick={() => copy(ckey, m.payload?.text ?? '')}
+          use:tooltip={copied === ckey ? 'copied' : 'copy this message'}
           aria-label="copy message">
-          {#if copied === (m.id ?? '')}<Check size={13} />{:else}<Copy size={13} />{/if}
+          {#if copied === ckey}<Check size={13} />{:else}<Copy size={13} />{/if}
         </button>
         {#if user && m.id && !sessionStore.running}
-          <button class="act" onclick={() => startEdit(m.id ?? '', m.payload?.text ?? '')}
+          <button class="act" onclick={() => startEdit(m.id, m.payload?.text ?? '')}
             use:tooltip={'edit and resend — discards everything after this message'}
             aria-label="edit message">
             <Pencil size={13} />
