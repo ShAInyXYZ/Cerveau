@@ -33,6 +33,22 @@
   }
 
   function startEdit(id: string, text: string) { editing = id; draft = text; }
+
+  /**
+   * How many tool calls happened after this message.
+   *
+   * Rewinding removes them from the CONVERSATION but never from the disk —
+   * deleting files would be far worse (the model may have edited files you also
+   * touched, and "undo three writes" is not reliably invertible from a log).
+   * The honest thing is to say so, and only when it actually applies.
+   */
+  function toolsAfter(id: string): number {
+    const msgs = sessionStore.messages;
+    const i = msgs.findIndex((m) => m.id === id);
+    if (i < 0) return 0;
+    return msgs.slice(i + 1)
+      .reduce((n, m) => n + (m.payload?.tool_calls?.length ?? 0), 0);
+  }
   const isEditing = (m: { id?: string }) => editing !== null && !!m.id && m.id === editing;
   function cancelEdit() { editing = null; draft = ''; }
 
@@ -72,7 +88,13 @@
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(m.id ?? ''); }
             }}></textarea>
           <div class="edit-row">
-            <span class="edit-note">the reply below is replaced</span>
+            <span class="edit-note">
+              {#if editing && toolsAfter(editing) > 0}
+                the reply below is replaced — files already written stay on disk
+              {:else}
+                the reply below is replaced
+              {/if}
+            </span>
             <button class="ebtn" onclick={cancelEdit}>Cancel</button>
             <button class="ebtn go" disabled={!draft.trim()} onclick={() => commitEdit(m.id ?? '')}>
               Send

@@ -18,6 +18,16 @@ import (
 // to the original. Keeping both would leave the model reading a question and a
 // correction with no way to know which one counts.
 //
+// SCOPE: this rewinds the CONVERSATION only. Files the model wrote or edited
+// after that point stay on disk, untouched.
+//
+// That asymmetry is deliberate. Deleting them would be far worse: the model may
+// have edited files the user also touched, the workspace may be a git repo with
+// its own history, and "undo three writes" is not reliably invertible from a
+// log. Silently reverting someone's workspace because they fixed a typo in a
+// prompt is indefensible; leaving the files is merely surprising, and the panel
+// says so before the edit is committed.
+//
 // The whole file is rewritten rather than truncated at an offset: the offset of
 // a given event is not recorded anywhere, and recomputing it from line lengths
 // would break the moment an event contains an escaped newline.
