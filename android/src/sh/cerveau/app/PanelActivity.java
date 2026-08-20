@@ -61,7 +61,7 @@ public class PanelActivity extends Activity {
                 android.util.Log.e("cerveau", "webview error " + e.getErrorCode()
                         + " " + e.getDescription() + " for " + req.getUrl());
                 if (req.isForMainFrame()) {
-                    offline("the bridge could not reach your machine\n" + e.getDescription());
+                    offline(String.valueOf(e.getDescription()));
                 }
             }
         });
@@ -157,24 +157,96 @@ public class PanelActivity extends Activity {
         if (hasFocus) goImmersive();
     }
 
+    /**
+     * The disconnected screen.
+     *
+     * It used to print the raw WebView failure — "net::ERR_EMPTY_RESPONSE" —
+     * which names a Chromium constant, not anything a person can act on. The
+     * common cause by far is that the phone is off the tailnet, and the screen
+     * never said so.
+     *
+     * What it shows now: the cracked mark, one plain sentence, and the two or
+     * three things actually worth checking, in the order they fail. The
+     * technical detail stays, small and last, for when it matters.
+     */
     private void offline(String detail) {
+        int dp = (int) getResources().getDisplayMetrics().density;
+
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
         box.setBackgroundColor(Color.parseColor(MainActivity.BG));
-        TextView t = new TextView(this);
-        // Say what actually failed. "is tailscale up?" was a guess that sent
-        // the user chasing a healthy network.
-        t.setText("◈ " + (detail == null || detail.isEmpty()
-                ? "could not load the panel" : detail) + "\n\ntap to retry");
-        t.setTextColor(Color.parseColor(MainActivity.ACCENT));
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(48, 0, 48, 0);
-        box.addView(t);
-        box.setOnClickListener(v -> recreate());
+        box.setPadding(32 * dp, 0, 32 * dp, 0);
+
+        android.widget.ImageView mark = new android.widget.ImageView(this);
+        mark.setImageResource(R.drawable.brain_broken);
+        mark.setAlpha(0.9f);
+        LinearLayout.LayoutParams mp =
+                new LinearLayout.LayoutParams(148 * dp, LinearLayout.LayoutParams.WRAP_CONTENT);
+        mp.bottomMargin = 26 * dp;
+        box.addView(mark, mp);
+
+        TextView head = new TextView(this);
+        head.setText("Can't reach Cerveau");
+        head.setTextColor(Color.WHITE);
+        head.setTextSize(21);
+        head.setGravity(Gravity.CENTER);
+        box.addView(head);
+
+        TextView sub = new TextView(this);
+        sub.setText("The app is running, but your machine did not answer.");
+        sub.setTextColor(Color.parseColor("#9A9AA2"));
+        sub.setTextSize(14);
+        sub.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams sp =
+                new LinearLayout.LayoutParams(-2, LinearLayout.LayoutParams.WRAP_CONTENT);
+        sp.topMargin = 8 * dp;
+        sp.bottomMargin = 22 * dp;
+        box.addView(sub, sp);
+
+        // Ordered by how often each one is the actual cause.
+        TextView checks = new TextView(this);
+        checks.setText("1.  Is this phone connected to your VPN?\n"
+                     + "2.  Is Cerveau running on your machine?\n"
+                     + "3.  Is the address in Settings still correct?");
+        checks.setTextColor(Color.parseColor("#C9C9D1"));
+        checks.setTextSize(14);
+        checks.setLineSpacing(7 * dp, 1f);
+        box.addView(checks);
+
+        TextView retry = new TextView(this);
+        retry.setText("Try again");
+        retry.setTextColor(Color.parseColor(MainActivity.ACCENT));
+        retry.setTextSize(15);
+        retry.setGravity(Gravity.CENTER);
+        retry.setPadding(30 * dp, 12 * dp, 30 * dp, 12 * dp);
+        android.graphics.drawable.GradientDrawable btn = new android.graphics.drawable.GradientDrawable();
+        btn.setCornerRadius(9 * dp);
+        btn.setStroke(1 * dp, Color.parseColor(MainActivity.ACCENT));
+        retry.setBackground(btn);
+        retry.setOnClickListener(v -> recreate());
+        LinearLayout.LayoutParams rp =
+                new LinearLayout.LayoutParams(-2, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = 28 * dp;
+        box.addView(retry, rp);
+
+        // Kept, but demoted: useful when the cause is NOT one of the three
+        // above, and noise every other time.
+        if (detail != null && !detail.isEmpty()) {
+            TextView tech = new TextView(this);
+            tech.setText(detail);
+            tech.setTextColor(Color.parseColor("#55555E"));
+            tech.setTextSize(11);
+            tech.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams tp =
+                    new LinearLayout.LayoutParams(-2, LinearLayout.LayoutParams.WRAP_CONTENT);
+            tp.topMargin = 22 * dp;
+            box.addView(tech, tp);
+        }
+
         box.setOnApplyWindowInsetsListener((v, insets) -> {
             Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            v.setPadding(32 * dp + bars.left, bars.top, 32 * dp + bars.right, bars.bottom);
             return insets;
         });
         setContentView(box);

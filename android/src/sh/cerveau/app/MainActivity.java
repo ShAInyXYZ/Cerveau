@@ -135,11 +135,27 @@ public class MainActivity extends Activity {
         try {
             String token = Vault.read(this, prefs);
             if (token == null) { showPortal(); return; }
-            Intent i = new Intent(this, PanelActivity.class);
-            i.putExtra("token", token);
-            i.putExtra("url", prefs.getString("url", ""));
-            i.putExtra("device_id", prefs.getString("device_id", ""));
-            startActivity(i);
+            final String url = prefs.getString("url", "");
+            final String devId = prefs.getString("device_id", "");
+
+            // Check reachability BEFORE launching the panel. Opening it first
+            // means the user lands inside the app and only then meets a
+            // WebView error — the failure looks like the app broke rather than
+            // like the machine being unreachable, which is the usual cause
+            // (phone off the tailnet).
+            status.setTextColor(Color.parseColor(MUTED));
+            status.setText("reaching your machine…");
+            new Thread(() -> {
+                boolean up = Gate.tailnetUp();
+                ui.post(() -> {
+                    if (!up) { showUnreachable(url); return; }
+                    Intent i = new Intent(this, PanelActivity.class);
+                    i.putExtra("token", token);
+                    i.putExtra("url", url);
+                    i.putExtra("device_id", devId);
+                    startActivity(i);
+                });
+            }).start();
         } catch (android.security.keystore.UserNotAuthenticatedException e) {
             promptUnlock();
         } catch (Exception e) {
@@ -202,6 +218,82 @@ public class MainActivity extends Activity {
     }
 
     // ── state 2: not paired → the pairing form ───────────────────────
+    /**
+     * Shown when the machine cannot be reached, instead of launching the panel
+     * into a WebView error.
+     *
+     * The old path opened the panel first, so the failure read as "the app is
+     * broken" rather than "your machine did not answer" — and the message was
+     * a raw Chromium constant. Same screen as PanelActivity.offline() so the
+     * two entry points look identical.
+     */
+    private void showUnreachable(String url) {
+        int dp = (int) getResources().getDisplayMetrics().density;
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setBackgroundColor(Color.parseColor(BG));
+        root.setPadding(32 * dp, 0, 32 * dp, 0);
+
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.brain_broken);
+        mark.setAlpha(0.9f);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(148 * dp, -2);
+        mp.bottomMargin = 26 * dp;
+        root.addView(mark, mp);
+
+        TextView head = new TextView(this);
+        head.setText("Can't reach Cerveau");
+        head.setTextColor(Color.WHITE);
+        head.setTextSize(21);
+        head.setGravity(Gravity.CENTER);
+        root.addView(head);
+
+        TextView sub = new TextView(this);
+        sub.setText("Your phone is not on the private network.");
+        sub.setTextColor(Color.parseColor(MUTED));
+        sub.setTextSize(14);
+        sub.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
+        sp.topMargin = 8 * dp; sp.bottomMargin = 22 * dp;
+        root.addView(sub, sp);
+
+        TextView checks = new TextView(this);
+        checks.setText("1.  Turn on your VPN, then try again.\n"
+                     + "2.  Check Cerveau is running on your machine.");
+        checks.setTextColor(Color.parseColor("#C9C9D1"));
+        checks.setTextSize(14);
+        checks.setLineSpacing(7 * dp, 1f);
+        root.addView(checks);
+
+        TextView retry = new TextView(this);
+        retry.setText("Try again");
+        retry.setTextColor(Color.parseColor(ACCENT));
+        retry.setTextSize(15);
+        retry.setGravity(Gravity.CENTER);
+        retry.setPadding(30 * dp, 12 * dp, 30 * dp, 12 * dp);
+        GradientDrawable btn = new GradientDrawable();
+        btn.setCornerRadius(9 * dp);
+        btn.setStroke(1 * dp, Color.parseColor(ACCENT));
+        retry.setBackground(btn);
+        retry.setOnClickListener(v -> recreate());
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, -2);
+        rp.topMargin = 28 * dp;
+        root.addView(retry, rp);
+
+        if (url != null && !url.isEmpty()) {
+            TextView where = new TextView(this);
+            where.setText(url);
+            where.setTextColor(Color.parseColor("#55555E"));
+            where.setTextSize(11);
+            where.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-2, -2);
+            wp.topMargin = 22 * dp;
+            root.addView(where, wp);
+        }
+        setContentView(root);
+    }
+
     private void showPortal() {
         LinearLayout root = column();
         root.addView(brandMark());
