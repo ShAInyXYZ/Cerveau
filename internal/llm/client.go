@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -73,9 +72,9 @@ type Client struct {
 	base  string
 	key   string
 	model string
-	temp  float64
-	topP  float64
-	http  *http.Client
+	// session default; a request may override it (see samplingFor)
+	sampling Sampling
+	http     *http.Client
 }
 
 // NewClient targets an OpenAI-compatible endpoint. CRV_MODEL_KEY supplies a
@@ -90,49 +89,33 @@ func NewClient(base string) *Client {
 	if model == "" {
 		model = "local"
 	}
-	// Sampling. CRV_TEMP names a preset or a raw value.
-	//   strict 0.4 · neutral 0.55 · creative 0.7
-	// Qwen's own guidance is 0.7/top_p 0.8 for instruct and 1.0/0.95 with
-	// thinking, so these presets sit at or below its instruct setting —
-	// deliberately tighter, because this harness writes code.
-	temp, topP := 0.2, 0.0
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("CRV_TEMP"))) {
-	case "strict":
-		// 0.2 / no top_p — MEASURED, not chosen. This was the default before
-		// the slider existed, and the benchmark run that produced the best
-		// output used it. A 0.4/0.8 "strict" preset lost visibly on all four
-		// projects: less complete, less correct. Qwen's own guidance (0.7/0.8
-		// instruct) is for chat; code generation wants the tighter setting.
-		temp, topP = 0.2, 0.0
-	case "neutral":
-		temp, topP = 0.55, 0.85
-	case "creative":
-		temp, topP = 0.7, 0.9
-	case "":
-		// unset: keep the long-standing 0.2 default
-	default:
-		if v, err := strconv.ParseFloat(os.Getenv("CRV_TEMP"), 64); err == nil && v >= 0 && v <= 2 {
-			temp = v
-		}
-	}
+	// CRV_TEMP seeds the SESSION DEFAULT only. It is no longer the last word:
+	// the panel changes it live, and a single turn can override it, because
+	// temperature is a per-request field and never needed a restart.
 	return &Client{
-		base:  base,
-		key:   strings.TrimSpace(os.Getenv("CRV_MODEL_KEY")),
-		model: model,
-		temp:  temp,
-		topP:  topP,
-		http:  &http.Client{Timeout: 10 * time.Minute},
+		base:     base,
+		key:      strings.TrimSpace(os.Getenv("CRV_MODEL_KEY")),
+		model:    model,
+		sampling: Preset(os.Getenv("CRV_TEMP")),
+		http:     &http.Client{Timeout: 10 * time.Minute},
 	}
 }
 
 func (c *Client) Complete(ctx context.Context, messages []Message, tools []ToolSpec, grammar string, maxTokens int) (Message, Usage, error) {
+	return c.CompleteWith(ctx, messages, tools, grammar, maxTokens, "")
+}
+
+// CompleteWith is Complete plus a one-turn sampling override. Empty keeps the
+// session default.
+func (c *Client) CompleteWith(ctx context.Context, messages []Message, tools []ToolSpec, grammar string, maxTokens int, sampling string) (Message, Usage, error) {
+	sp := c.samplingFor(sampling)
 	body := chatRequest{
 		Model:       c.model,
 		Messages:    messages,
 		Tools:       tools,
 		Grammar:     grammar,
-		Temperature: c.temp,
-		TopP:        c.topP,
+		Temperature: sp.Temp,
+		TopP:        sp.TopP,
 		MaxTokens:   maxTokens,
 		// Qwen3 is a reasoning model: left on, it burns the entire token budget
 		// inside a <think> block and never emits an answer (finish_reason=length,

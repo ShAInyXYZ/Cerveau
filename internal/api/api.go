@@ -552,6 +552,10 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 		// a supervised plan step (RFX_UI planner) is a build task — it runs
 		// on the long turn budget, not the conversational one
 		Step bool `json:"step"`
+		// one-turn sampling override from the chat bar; empty keeps the
+		// session default. Temperature is a per-request field — nothing about
+		// changing it needs a restart.
+		Sampling string `json:"sampling,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text required"})
@@ -572,6 +576,7 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 	if body.Step {
 		ctx = loop.WithLongTurn(ctx)
 	}
+	ctx = loop.WithSampling(ctx, body.Sampling)
 	if a.sctx != nil {
 		a.sctx.SessionID = id
 		a.sctx.LastEvtID = ""

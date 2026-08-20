@@ -683,6 +683,23 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 type longTurnKey struct{}
 
 // WithLongTurn returns a context whose turn runs on the long (step) budget.
+type samplingKey struct{}
+
+// WithSampling carries a ONE-TURN sampling override — the chat bar asking for
+// this message to run hotter or tighter, without changing the session default
+// everything else uses. Empty means "use the default".
+func WithSampling(ctx context.Context, preset string) context.Context {
+	if preset == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, samplingKey{}, preset)
+}
+
+func samplingOf(ctx context.Context) string {
+	v, _ := ctx.Value(samplingKey{}).(string)
+	return v
+}
+
 func WithLongTurn(ctx context.Context) context.Context {
 	return context.WithValue(ctx, longTurnKey{}, true)
 }
@@ -757,4 +774,19 @@ func (l *Loop) resumeFacts(sessionID string, events []episodic.Event, compacted 
 		}
 	}
 	return f
+}
+
+// SetSampling changes the session's default sampling preset, live. Temperature
+// is a per-request field; it never required a restart, only a way to say so.
+func (l *Loop) SetSampling(name string) {
+	if l.llm != nil {
+		l.llm.SetSampling(name)
+	}
+}
+
+func (l *Loop) SamplingName() string {
+	if l.llm == nil {
+		return "strict"
+	}
+	return l.llm.SamplingName()
 }

@@ -61,6 +61,27 @@
     return [bits.join('  ·  '), c.notes].filter(Boolean).join('\n');
   }
 
+  // ── sampling: the SESSION DEFAULT. A single turn can override it from the
+  // chat bar; this is the value everything else uses. No restart — temperature
+  // is a per-request field.
+  let sampling = $state({ active: 'strict', presets: [] });
+  const SAMPLING_TIP = {
+    strict:   'temperature 0.2, no top_p. The measured default — every good benchmark run this project has produced used it. Best for code.',
+    neutral:  'temperature 0.55, top_p 0.85. Looser, for drafting and exploration. Not benchmarked here.',
+    creative: 'temperature 0.7, top_p 0.9. Widest spread, for when there is no single correct answer. Not benchmarked here.'
+  };
+
+  async function loadSampling() {
+    try { sampling = await j('/api/sampling'); } catch { /* older core */ }
+  }
+  loadSampling();
+
+  async function setSampling(name) {
+    if (name === sampling.active) return;
+    sampling = { ...sampling, active: name };          // optimistic: it is instant
+    try { await jpost('/api/sampling', { name }); } catch { await loadSampling(); }
+  }
+
   async function copyStart(cmd) {
     try { await navigator.clipboard.writeText(cmd); copied = cmd; setTimeout(() => (copied = ''), 1600); }
     catch { /* clipboard blocked — the command is on screen to type */ }
@@ -150,6 +171,23 @@
         <p class="empty mono">
           No cores.json — running on {cores.endpoint || 'the configured endpoint'}.
         </p>
+      {/if}
+
+      {#if sampling.presets?.length}
+        <div class="samp">
+          <div class="samp-head">
+            <span class="samp-label">Sampling</span>
+            <span class="samp-hint">applies to every turn · changes instantly</span>
+          </div>
+          <div class="seg">
+            {#each sampling.presets as p (p)}
+              <button class="seg-b" class:on={p === sampling.active}
+                onclick={() => setSampling(p)} use:tooltip={SAMPLING_TIP[p] || p}>
+                {p}
+              </button>
+            {/each}
+          </div>
+        </div>
       {/if}
     </section>
 
@@ -280,6 +318,28 @@
   .core.on { border-color: var(--accent); background: var(--panel-raised, var(--panel)); }
 
   .core-name { font-size: 15px; font-weight: 640; color: var(--text); }
+
+  /* ── sampling ── */
+  .samp { margin-top: 18px; }
+  .samp-head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px;
+  }
+  .samp-label { font-size: 13px; font-weight: 620; color: var(--text); }
+  .samp-hint { font-size: 11px; color: var(--dim); }
+
+  /* A segmented control, not a slider: these are three named presets, and a
+     slider would imply a continuum the model does not actually offer. */
+  .seg {
+    display: inline-flex; padding: 3px; gap: 3px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+  }
+  .seg-b {
+    padding: 7px 18px; border: 0; border-radius: 6px; cursor: pointer;
+    background: none; color: var(--dim); font: inherit; font-size: 12.5px;
+    text-transform: capitalize; transition: background .12s, color .12s;
+  }
+  .seg-b:hover { color: var(--text); }
+  .seg-b.on { background: var(--accent); color: #0B0B0D; font-weight: 600; }
 
   /* ── restart prompt ── */
   .restart {

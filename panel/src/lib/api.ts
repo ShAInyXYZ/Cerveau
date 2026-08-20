@@ -84,8 +84,9 @@ export const api = {
     (await getJSON<{ skills?: unknown[] }>('/api/skills'))?.skills ?? [],
   deletePreview: (id: string) => getJSON<unknown>(`/api/sessions/${id}/delete-preview`),
 
-  chat: (id: string, text: string, mode: Mode, step: boolean) =>
-    postJSON<ChatResult>(`/api/sessions/${id}/chat`, { text, mode, step }),
+  chat: (id: string, text: string, mode: Mode, step: boolean, sampling?: string) =>
+    postJSON<ChatResult>(`/api/sessions/${id}/chat`, { text, mode, step, sampling }),
+  getSampling: () => getJSON<{ active: string; presets: string[] }>('/api/sampling'),
   steer: (id: string, text: string) => postJSON(`/api/sessions/${id}/steer`, { text }),
   pause: (id: string) => postJSON(`/api/sessions/${id}/pause`),
   kill: (id: string) => postJSON(`/api/sessions/${id}/kill`),

@@ -81,7 +81,7 @@ func (l *Loop) completeWithRetry(ctx context.Context, wr *episodic.Writer, messa
 			case <-time.After(time.Duration(attempt) * 1500 * time.Millisecond):
 			}
 		}
-		msg, usage, err := l.llm.Complete(ctx, messages, specs, grammar, proseCap)
+		msg, usage, err := l.llm.CompleteWith(ctx, messages, specs, grammar, proseCap, samplingOf(ctx))
 		if err == nil {
 			return msg, usage, nil
 		}

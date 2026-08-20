@@ -11,6 +11,8 @@ func New(addr string, a *api.API) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", a.Health)
 	mux.HandleFunc("GET /api/cores", a.ListCores)
+	mux.HandleFunc("GET /api/sampling", a.GetSampling)
+	mux.HandleFunc("POST /api/sampling", a.SetSampling)
 	mux.HandleFunc("POST /api/cores/select", a.SelectCore)
 	mux.HandleFunc("GET /api/sessions", a.ListSessions)
 	mux.HandleFunc("POST /api/sessions", a.CreateSession)

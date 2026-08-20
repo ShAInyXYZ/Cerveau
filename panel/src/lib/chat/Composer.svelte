@@ -3,6 +3,7 @@
   import AttachKnob from '../AttachKnob.svelte';
   import WorkspacePath from '../WorkspacePath.svelte';
   import PlanStrip from './PlanStrip.svelte';
+  import SamplingKnob from './SamplingKnob.svelte';
   import { tooltip } from '../../kit/tooltip.js';
   import { sessionStore } from '../stores/session.svelte.ts';
   import { healthStore } from '../stores/health.svelte.ts';
@@ -56,6 +57,7 @@
           {placeholder}
           onkeydown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), submit())}
         ></textarea>
+        <SamplingKnob />
         {#if running}<span class="steerbadge label">STEER</span>{/if}
         <button class="send" class:steer={running} disabled={!draft.trim()} onclick={submit}
           aria-label={running ? 'steer the running turn' : 'send message'}

@@ -18,6 +18,9 @@ let sessions = $state<SessionMeta[]>([]);
 // sessions with a turn executing now — CLI runs included, so a build started
 // outside the panel is visibly running instead of looking idle.
 let runningIds = $state<string[]>([]);
+// A ONE-TURN sampling override. It clears after the turn it applies to, so a
+// deliberate choice for one message never silently becomes the new normal.
+let turnSampling = $state<string>('');
 let activeId = $state<string | null>(null);
 let messages = $state<ChatMessage[]>([]);
 let ticks = $state<EpisodicEvent[]>([]);
@@ -107,6 +110,8 @@ export const sessionStore = {
   get report() { return report; },
   get skills() { return skills; },
   get runningIds() { return runningIds; },
+  get turnSampling() { return turnSampling; },
+  set turnSampling(v: string) { turnSampling = v; },
   // liveSteps is fed by the SSE stream, which only exists for turns this tab
   // started. For a CLI run, derive the same steps from the episodic ticks we
   // already poll — otherwise the working log is empty for the whole build.
@@ -171,7 +176,9 @@ export const sessionStore = {
       }
     });
 
-    const res = await api.chat(sid, text, mode, !!opts.step);
+    const used = turnSampling;
+    turnSampling = '';   // one turn only
+    const res = await api.chat(sid, text, mode, !!opts.step, used || undefined);
     running = false; runStarted = null;
     closeStream?.(); closeStream = null;
     liveSteps = [];

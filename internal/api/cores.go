@@ -6,6 +6,7 @@ import (
 
 	"cerveau/internal/config"
 	"cerveau/internal/cores"
+	"cerveau/internal/llm"
 )
 
 // GET /api/cores — the Brain Cores this machine knows about, which one is
@@ -73,4 +74,37 @@ func (a *API) SelectCore(w http.ResponseWriter, r *http.Request) {
 		"restart": true,
 		"note":    "the endpoint is switched; restart Cerveau so every component picks it up",
 	})
+}
+
+// GET /api/sampling — the session default and what a UI may offer.
+func (a *API) GetSampling(w http.ResponseWriter, r *http.Request) {
+	name := "strict"
+	if a.chat != nil {
+		name = a.chat.SamplingName()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"active":  name,
+		"presets": llm.PresetNames(),
+	})
+}
+
+// POST /api/sampling — change the session default, live.
+//
+// No restart: temperature and top_p are per-request fields. They were read once
+// from CRV_TEMP at startup purely because nothing had ever needed to change
+// them, which made a tuning knob look like a deploy-time decision.
+func (a *API) SetSampling(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
+		return
+	}
+	if a.chat == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "loop not wired"})
+		return
+	}
+	a.chat.SetSampling(body.Name)
+	writeJSON(w, http.StatusOK, map[string]any{"active": a.chat.SamplingName()})
 }
