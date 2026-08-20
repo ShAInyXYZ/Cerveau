@@ -62,13 +62,17 @@
     <div class="tbody">
       {#if user && isEditing(m)}
         <div class="edit">
+          <div class="edit-title">
+            <Pencil size={12} />
+            <span>Editing — Cerveau will answer this again</span>
+          </div>
           <textarea bind:value={draft} rows="3" aria-label="edit message"
             onkeydown={(e) => {
               if (e.key === 'Escape') cancelEdit();
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(m.id ?? ''); }
             }}></textarea>
           <div class="edit-row">
-            <span class="edit-note">everything after this message is discarded</span>
+            <span class="edit-note">the reply below is replaced</span>
             <button class="ebtn" onclick={cancelEdit}>Cancel</button>
             <button class="ebtn go" disabled={!draft.trim()} onclick={() => commitEdit(m.id ?? '')}>
               Send
@@ -92,7 +96,7 @@
         </button>
         {#if user && m.id && !sessionStore.running}
           <button class="act" onclick={() => startEdit(m.id, m.payload?.text ?? '')}
-            use:tooltip={'edit and resend — discards everything after this message'}
+            use:tooltip={'edit this message — Cerveau answers again from here, replacing what came after'}
             aria-label="edit message">
             <Pencil size={13} />
           </button>
@@ -133,6 +137,13 @@
 
   /* ── inline edit ── */
   .edit { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 320px; }
+  /* Name the mode. Without a label the editor is just a textarea that appeared
+     where a message used to be, so a mis-click reads as a rendering bug rather
+     than as a state the user entered. */
+  .edit-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; letter-spacing: .04em; color: var(--accent);
+  }
   .edit textarea {
     width: 100%; resize: vertical; font: inherit; font-size: 13.5px; line-height: 1.5;
     color: var(--text); background: var(--surface-raised);
