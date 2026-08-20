@@ -1,12 +1,18 @@
 <div align="center">
   <img src="banner.svg" width="880" alt="Cerveau — local-first agentic coding harness"/>
 
+  <!-- VERSION PILL — bump this on every release. It lives here, not in
+       banner.svg, because a version baked into the SVG goes stale silently. -->
+  <p>
+    <img src="https://img.shields.io/badge/v0.5.0--alpha-%22Cores%22-C0304A?style=for-the-badge&labelColor=000000" alt="v0.5.0-alpha Cores"/>
+  </p>
+
   <p><strong>A local-first agentic coding harness — built from scratch to squeeze every drop out of the hardware you already own.</strong></p>
 
   <p>
     <img src="https://img.shields.io/badge/Go-1.25-C0304A?style=flat-square&labelColor=17140F&logo=go&logoColor=F2E1DE" alt="Go 1.25"/>
     <img src="https://img.shields.io/badge/Svelte-5-C0304A?style=flat-square&labelColor=17140F&logo=svelte&logoColor=F2E1DE" alt="Svelte 5"/>
-    <img src="https://img.shields.io/badge/serving-llama.cpp-C0304A?style=flat-square&labelColor=17140F" alt="llama.cpp"/>
+    <img src="https://img.shields.io/badge/cores-llama.cpp_%2B_vLLM-C0304A?style=flat-square&labelColor=17140F" alt="Brain Cores: llama.cpp + vLLM"/>
     <img src="https://img.shields.io/badge/license-Apache--2.0-C0304A?style=flat-square&labelColor=17140F" alt="Apache-2.0"/>
     <img src="https://img.shields.io/badge/DCO-required-C0304A?style=flat-square&labelColor=17140F" alt="DCO"/>
     <img src="https://img.shields.io/badge/cloud-none-C0304A?style=flat-square&labelColor=17140F" alt="No cloud"/>
