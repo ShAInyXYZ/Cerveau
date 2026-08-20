@@ -2,6 +2,7 @@
 // Replaces the App.svelte god-component state + the 17-prop drill into Chat.
 import { api, streamEvents } from '../api';
 import { toStep, errorKey } from '../steps';
+import { ErrorChime } from '../errorchime';
 import { storage, storageKeys } from '../storage';
 import { play } from '../sound.js';
 import { healthStore } from './health.svelte.ts';
@@ -63,17 +64,21 @@ async function loadQuestion(): Promise<void> {
   question = next;
 }
 
+// Play on HAPPENING, not on display. Counting errors meant every session
+// switch (which empties the list) re-announced whatever was already there, so
+// opening a session that ended on a guard stop replayed its error out loud.
+const chime = new ErrorChime();
+
 async function loadErrors(): Promise<void> {
   if (!activeId) return;
   const all = await api.errors(activeId);
-  const prev = errors.length;
   // transient cards are auto-retry chatter the user cannot act on
-  errors = all
+  const kept = all
     .map((e, i) => ({ e, key: errorKey(e, i) }))
     .filter(({ e, key }) => e.class !== 'transient' && !dismissed.has(key))
-    .slice(-ERROR_CARDS)
-    .map(({ e }) => e);
-  if (errors.length > prev) play('error');
+    .slice(-ERROR_CARDS);
+  errors = kept.map(({ e }) => e);
+  if (chime.shouldPlay(kept.map(({ key }) => key))) play('error');
 }
 
 async function loadReport(): Promise<void> {
@@ -141,6 +146,7 @@ export const sessionStore = {
   select(id: string): void {
     activeId = id;
     messages = []; errors = []; question = null; report = null;
+    chime.reset();   // a session opened for the first time must be silent
     dismissed = new Set(storage.get<string[]>(storageKeys.dismissedErrors(id), []));
     void loadMessages(); void loadTicks(); void loadErrors(); void loadReport();
     void followSessionWorkspace(id);
