@@ -97,34 +97,102 @@ public class MainActivity extends Activity {
     }
 
     // ── state 1: paired → unlock to continue ─────────────────────────
+    /**
+     * The welcome screen for an already-paired device.
+     *
+     * It used to fire the biometric prompt 200ms after appearing — before the
+     * user had touched anything. That saves one tap and costs the user any say
+     * in it: the system dialog covers the app, and dismissing it leaves a
+     * screen you never chose to be on. Unlocking is now what the Unlock button
+     * does, and nothing else does it.
+     *
+     * Laid out like the disconnected screen: one centred column, mark,
+     * headline, one line of cause, the action.
+     */
     private void showLock() {
-        LinearLayout root = column();
-        root.addView(brandMark());
-        root.addView(label("CERVEAU", TEXT, 20));
-        TextView sub = text(Vault.isProtected(this)
-                ? "unlock to reach your machine"
-                : "no device lock set — your token is unguarded", MUTED);
-        root.addView(sub);
+        int dp = (int) getResources().getDisplayMetrics().density;
+        boolean guarded = Vault.isProtected(this);
 
-        Button unlock = button(Vault.isProtected(this) ? "UNLOCK" : "OPEN");
-        TextView status = text("", MUTED);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.brand_mark);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(112 * dp, 112 * dp);
+        mp.bottomMargin = 30 * dp;
+        col.addView(mark, mp);
+
+        TextView head = new TextView(this);
+        head.setText("Cerveau");
+        head.setTextColor(Color.WHITE);
+        head.setTextSize(25);
+        head.setGravity(Gravity.CENTER);
+        col.addView(head);
+
+        TextView sub = new TextView(this);
+        sub.setText(guarded
+                ? "This device is paired. Unlock to reach your machine."
+                : "This device is paired, but has no screen lock — your token is unguarded.");
+        sub.setTextColor(Color.parseColor(guarded ? "#8E8E98" : ERR));
+        sub.setTextSize(14);
+        sub.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
+        sp.topMargin = 10 * dp;
+        col.addView(sub, sp);
+
+        final TextView status = new TextView(this);
+        status.setTextColor(Color.parseColor(MUTED));
+        status.setTextSize(12.5f);
+        status.setGravity(Gravity.CENTER);
+
+        TextView unlock = new TextView(this);
+        unlock.setText(guarded ? "Unlock" : "Open");
+        unlock.setTextColor(Color.parseColor("#0B0B0D"));
+        unlock.setTextSize(15);
+        unlock.setGravity(Gravity.CENTER);
+        unlock.setPadding(44 * dp, 13 * dp, 44 * dp, 13 * dp);
+        GradientDrawable btn = new GradientDrawable();
+        btn.setCornerRadius(10 * dp);
+        btn.setColor(Color.parseColor(ACCENT));
+        unlock.setBackground(btn);
         unlock.setOnClickListener(v -> openPanel(status));
-        root.addView(unlock);
-        root.addView(status);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, -2);
+        bp.topMargin = 32 * dp;
+        col.addView(unlock, bp);
 
-        TextView unpair = text("unpair this device", FAINT);
-        unpair.setPadding(0, dp(28), 0, 0);
+        LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-2, -2);
+        stp.topMargin = 14 * dp;
+        col.addView(status, stp);
+
+        TextView unpair = new TextView(this);
+        unpair.setText("Unpair this device");
+        unpair.setTextColor(Color.parseColor("#55555E"));
+        unpair.setTextSize(12.5f);
+        unpair.setGravity(Gravity.CENTER);
+        unpair.setPadding(16 * dp, 10 * dp, 16 * dp, 10 * dp);
         unpair.setOnClickListener(v -> {
             Vault.clear(prefs);
             DeviceKey.clear();
             prefs.edit().remove("url").remove("device_id").apply();
             showPortal();
         });
-        root.addView(unpair);
-        setContentView(scroll(root));
+        LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(-2, -2);
+        up.topMargin = 26 * dp;
+        col.addView(unpair, up);
 
-        // straight to the biometric prompt — one tap less on every launch
-        ui.postDelayed(() -> openPanel(status), 200);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.parseColor(BG));
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER);
+        clp.leftMargin = 32 * dp; clp.rightMargin = 32 * dp;
+        root.addView(col, clp);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars());
+            v.setPadding(b.left, b.top, b.right, b.bottom);
+            return insets;
+        });
+        setContentView(root);
+        // NO automatic unlock. See the javadoc above.
     }
 
     /**
