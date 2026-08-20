@@ -16,6 +16,7 @@ import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -148,7 +149,7 @@ public class MainActivity extends Activity {
             new Thread(() -> {
                 boolean up = Gate.tailnetUp();
                 ui.post(() -> {
-                    if (!up) { showUnreachable(url); return; }
+                    if (!up) { showUnreachable(); return; }
                     Intent i = new Intent(this, PanelActivity.class);
                     i.putExtra("token", token);
                     i.putExtra("url", url);
@@ -223,75 +224,129 @@ public class MainActivity extends Activity {
      * into a WebView error.
      *
      * The old path opened the panel first, so the failure read as "the app is
-     * broken" rather than "your machine did not answer" — and the message was
-     * a raw Chromium constant. Same screen as PanelActivity.offline() so the
-     * two entry points look identical.
+     * broken" rather than "your machine did not answer" — and the message was a
+     * raw Chromium constant. Same screen as PanelActivity.offline() so the two
+     * entry points look identical.
      */
-    private void showUnreachable(String url) {
-        int dp = (int) getResources().getDisplayMetrics().density;
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(Color.parseColor(BG));
-        root.setPadding(32 * dp, 0, 32 * dp, 0);
+    private void showUnreachable() {
+        setContentView(brokenScreen(this, "Your phone is not on the private network.",
+                new String[]{
+                    "Turn on your VPN, then try again.",
+                    "Check Cerveau is running on your machine."
+                }, v -> recreate()));
+    }
 
-        ImageView mark = new ImageView(this);
+    /**
+     * The disconnected screen, shared by both entry points.
+     *
+     * One centred column: mark, headline, cause, what to do, the action. The
+     * first version stacked everything at the bottom of the screen with the top
+     * half empty — a layout that reads as a crash dump rather than a state the
+     * app understands.
+     */
+    static android.view.View brokenScreen(android.app.Activity a, String cause,
+                                          String[] steps,
+                                          android.view.View.OnClickListener onRetry) {
+        int dp = (int) a.getResources().getDisplayMetrics().density;
+
+        LinearLayout col = new LinearLayout(a);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        ImageView mark = new ImageView(a);
         mark.setImageResource(R.drawable.brain_broken);
-        mark.setAlpha(0.9f);
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(148 * dp, -2);
-        mp.bottomMargin = 26 * dp;
-        root.addView(mark, mp);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(172 * dp, -2);
+        mp.bottomMargin = 34 * dp;
+        col.addView(mark, mp);
 
-        TextView head = new TextView(this);
+        TextView head = new TextView(a);
         head.setText("Can't reach Cerveau");
         head.setTextColor(Color.WHITE);
-        head.setTextSize(21);
+        head.setTextSize(25);
+        head.setLetterSpacing(-0.01f);
         head.setGravity(Gravity.CENTER);
-        root.addView(head);
+        col.addView(head);
 
-        TextView sub = new TextView(this);
-        sub.setText("Your phone is not on the private network.");
-        sub.setTextColor(Color.parseColor(MUTED));
-        sub.setTextSize(14);
+        TextView sub = new TextView(a);
+        sub.setText(cause);
+        sub.setTextColor(Color.parseColor("#8E8E98"));
+        sub.setTextSize(15);
         sub.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
-        sp.topMargin = 8 * dp; sp.bottomMargin = 22 * dp;
-        root.addView(sub, sp);
+        sp.topMargin = 10 * dp;
+        col.addView(sub, sp);
 
-        TextView checks = new TextView(this);
-        checks.setText("1.  Turn on your VPN, then try again.\n"
-                     + "2.  Check Cerveau is running on your machine.");
-        checks.setTextColor(Color.parseColor("#C9C9D1"));
-        checks.setTextSize(14);
-        checks.setLineSpacing(7 * dp, 1f);
-        root.addView(checks);
+        // A hairline instead of a heading: the steps are visibly a separate
+        // thing from the diagnosis, without a word spent saying so.
+        android.view.View rule = new android.view.View(a);
+        rule.setBackgroundColor(Color.parseColor("#26262B"));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(56 * dp, Math.max(1, dp));
+        rlp.topMargin = 26 * dp; rlp.bottomMargin = 24 * dp;
+        col.addView(rule, rlp);
 
-        TextView retry = new TextView(this);
+        // The steps go in their own left-aligned block. Centring each row
+        // independently staggers the numbers, which reads as a mistake rather
+        // than a list.
+        LinearLayout list = new LinearLayout(a);
+        list.setOrientation(LinearLayout.VERTICAL);
+        for (int i = 0; i < steps.length; i++) {
+            LinearLayout row = new LinearLayout(a);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+
+            TextView n = new TextView(a);
+            n.setText(String.valueOf(i + 1));
+            n.setTextColor(Color.parseColor(ACCENT));
+            n.setTextSize(12);
+            n.setGravity(Gravity.CENTER);
+            GradientDrawable ring = new GradientDrawable();
+            ring.setShape(GradientDrawable.OVAL);
+            ring.setStroke(Math.max(1, dp), Color.parseColor("#4A2430"));
+            n.setBackground(ring);
+            row.addView(n, new LinearLayout.LayoutParams(24 * dp, 24 * dp));
+
+            TextView t = new TextView(a);
+            t.setText(steps[i]);
+            t.setTextColor(Color.parseColor("#C4C4CC"));
+            t.setTextSize(14.5f);
+            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-2, -2);
+            tp.leftMargin = 13 * dp;
+            row.addView(t, tp);
+
+            LinearLayout.LayoutParams rp2 = new LinearLayout.LayoutParams(-1, -2);
+            if (i > 0) rp2.topMargin = 14 * dp;
+            list.addView(row, rp2);
+        }
+        col.addView(list, new LinearLayout.LayoutParams(-2, -2));
+
+        TextView retry = new TextView(a);
         retry.setText("Try again");
-        retry.setTextColor(Color.parseColor(ACCENT));
+        retry.setTextColor(Color.parseColor("#0B0B0D"));
         retry.setTextSize(15);
         retry.setGravity(Gravity.CENTER);
-        retry.setPadding(30 * dp, 12 * dp, 30 * dp, 12 * dp);
+        retry.setPadding(38 * dp, 13 * dp, 38 * dp, 13 * dp);
         GradientDrawable btn = new GradientDrawable();
-        btn.setCornerRadius(9 * dp);
-        btn.setStroke(1 * dp, Color.parseColor(ACCENT));
+        btn.setCornerRadius(10 * dp);
+        btn.setColor(Color.parseColor(ACCENT));
         retry.setBackground(btn);
-        retry.setOnClickListener(v -> recreate());
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, -2);
-        rp.topMargin = 28 * dp;
-        root.addView(retry, rp);
+        retry.setOnClickListener(onRetry);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, -2);
+        bp.topMargin = 34 * dp;
+        col.addView(retry, bp);
 
-        if (url != null && !url.isEmpty()) {
-            TextView where = new TextView(this);
-            where.setText(url);
-            where.setTextColor(Color.parseColor("#55555E"));
-            where.setTextSize(11);
-            where.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-2, -2);
-            wp.topMargin = 22 * dp;
-            root.addView(where, wp);
-        }
-        setContentView(root);
+        // The column is centred in the window, not pinned to the bottom.
+        FrameLayout root = new FrameLayout(a);
+        root.setBackgroundColor(Color.parseColor(BG));
+        FrameLayout.LayoutParams clp =
+                new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER);
+        clp.leftMargin = 32 * dp; clp.rightMargin = 32 * dp;
+        root.addView(col, clp);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars());
+            v.setPadding(b.left, b.top, b.right, b.bottom);
+            return insets;
+        });
+        return root;
     }
 
     private void showPortal() {
