@@ -146,6 +146,26 @@ export const sessionStore = {
     void followSessionWorkspace(id);
   },
 
+  /**
+   * Edit a user message: drop it and everything after it, then send the new
+   * text as a fresh turn.
+   *
+   * The log is append-only, so an edit cannot be a patch — every turn after
+   * that message was a response to the ORIGINAL, and keeping both would leave
+   * the model reading a question and a correction with no way to know which
+   * one counts.
+   */
+  async editAndResend(eventId: string, text: string): Promise<void> {
+    if (!activeId || running || !text.trim()) return;
+    try {
+      await api.rewind(activeId, eventId);
+    } catch {
+      return;             // refused (a turn is running) — leave the log alone
+    }
+    await loadMessages();
+    await this.send(text);
+  },
+
   async send(text: string, opts: { step?: boolean } = {}): Promise<void> {
     if (!activeId || running) return;
     const sid = activeId;
