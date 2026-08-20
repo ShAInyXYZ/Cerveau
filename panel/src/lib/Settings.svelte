@@ -2,6 +2,8 @@
   import { Volume2, VolumeX, Play, Zap, RefreshCw } from 'lucide-svelte';
   import { play, isMuted, setMuted, getVolume, setVolume, getSoundVolume, setSoundVolume, available } from './sound.js';
   import { j, jpost } from './api';
+  import { tooltip } from '../kit/tooltip.js';
+  import EngineMark from './engines/EngineMark.svelte';
 
   // Settings — deliberately simple. First (and so far only) section: sounds.
   const TYPES = [
@@ -100,18 +102,13 @@
         <div class="cores">
           {#each cores.cores as c (c.id)}
             <button class="core" class:on={c.id === cores.active}
-              disabled={coreBusy === c.id} onclick={() => selectCore(c.id)}>
-              <div class="core-head">
-                <span class="core-dot" class:live={c.id === cores.active}></span>
-                <span class="core-name">{c.name}</span>
-                {#if c.id === cores.active}<span class="core-tag">ACTIVE</span>{/if}
-              </div>
-              <div class="core-meta mono">
-                <span>{c.model || c.engine}</span>
-                {#if c.ctx}<span>{Math.round(c.ctx / 1024)}K ctx</span>{/if}
-                <span class="core-ep">{c.endpoint.replace('http://', '')}</span>
-              </div>
-              {#if c.notes}<p class="core-notes">{c.notes}</p>{/if}
+              disabled={coreBusy === c.id} onclick={() => selectCore(c.id)}
+              use:tooltip={c.notes || c.engine}>
+              <EngineMark engine={c.engine} />
+              <span class="core-name">{c.engine}</span>
+              <span class="core-sub mono">{c.model || ''}</span>
+              {#if c.ctx}<span class="core-ctx mono">{Math.round(c.ctx / 1024)}K context</span>{/if}
+              {#if c.id === cores.active}<span class="core-tag">ACTIVE</span>{/if}
             </button>
           {/each}
         </div>
@@ -255,40 +252,37 @@
     margin: -6px 0 14px; font-size: 12.5px; line-height: 1.55; color: var(--dim);
     max-width: 60ch;
   }
-  .cores { display: grid; gap: 10px; }
+
+  /* Two Cores side by side: the choice is a comparison, and stacking them
+     vertically made it read as a list to scroll rather than two options to
+     weigh. Everything explanatory lives in the tooltip. */
+  .cores { display: flex; gap: 10px; }
 
   .core {
-    display: block; width: 100%; text-align: left; cursor: pointer;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
-    padding: 13px 15px; color: inherit; font: inherit;
-    transition: border-color .12s, background .12s;
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    cursor: pointer; text-align: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 11px;
+    padding: 20px 14px 16px; color: inherit; font: inherit;
+    transition: border-color .14s, background .14s;
   }
   .core:hover:not(:disabled) { border-color: var(--accent); }
   .core:disabled { opacity: .55; cursor: progress; }
-  /* the active Core is stated, not merely tinted — a user must be able to say
-     which engine is answering without comparing two shades of the same colour */
   .core.on { border-color: var(--accent); background: var(--panel-raised, var(--panel)); }
 
-  .core-head { display: flex; align-items: center; gap: 8px; }
-  .core-dot {
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-    background: var(--faint, #555);
+  .core-name {
+    margin-top: 12px;
+    font-size: 14.5px; font-weight: 640; color: var(--text);
   }
-  .core-dot.live { background: var(--ok, #7fa650); }
-  .core-name { font-size: 14px; font-weight: 620; color: var(--text); }
+  .core-sub, .core-ctx {
+    font-size: 10.5px; color: var(--dim);
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .core-ctx { opacity: .72; }
   .core-tag {
-    font-size: 9px; letter-spacing: .1em; font-weight: 700; color: var(--accent);
-    border: 1px solid var(--accent); border-radius: 3px; padding: 1px 5px;
-  }
-
-  .core-meta {
-    display: flex; flex-wrap: wrap; gap: 12px; margin-top: 7px;
-    font-size: 11px; color: var(--dim);
-  }
-  .core-ep { opacity: .7; }
-  .core-notes {
-    margin: 9px 0 0; font-size: 12px; line-height: 1.5; color: var(--dim);
-    max-width: 62ch;
+    margin-top: 11px;
+    font-size: 8.5px; letter-spacing: .11em; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 3px; padding: 2px 7px;
   }
 
   /* ── restart prompt ── */
