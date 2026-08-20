@@ -23,6 +23,37 @@
   // test always audible (force), so you can tune while muted
   function test(name) { play(name, { force: true }); }
 
+  // ── Engine section — which Brain Core answers, and how to change it ──
+  //
+  // The panel never STARTS an engine. Bringing one up is a command the user
+  // runs: a harness able to stop the engine it is talking to has a failure mode
+  // where the machine ends up with no model and no way to say so. What the UI
+  // owns is the choice and the instruction.
+  let cores = $state({ cores: [], active: '', selected: '', endpoint: '' });
+  let coreBusy = $state('');
+  let pendingCore = $state(null);   // chosen, waiting on the restart
+  let copied = $state('');
+
+  async function loadCores() {
+    try { cores = await j('/api/cores'); } catch { /* core older than /api/cores */ }
+  }
+  loadCores();
+
+  async function selectCore(id) {
+    if (id === cores.active) return;
+    coreBusy = id;
+    try {
+      const res = await jpost('/api/cores/select', { id });
+      pendingCore = res.core;
+      await loadCores();
+    } finally { coreBusy = ''; }
+  }
+
+  async function copyStart(cmd) {
+    try { await navigator.clipboard.writeText(cmd); copied = cmd; setTimeout(() => (copied = ''), 1600); }
+    catch { /* clipboard blocked — the command is on screen to type */ }
+  }
+
   // ── RFX section — reflex/talent management (the base UI for RFX) ──
   let rfx = $state({ packs: [], reflexes: [], notices: [], errors: [] });
   let rfxBusy = $state('');
@@ -57,6 +88,66 @@
 <main class="settings">
   <div class="wrap">
     <div class="shead"><span class="label">SETTINGS</span></div>
+
+    <section>
+      <div class="sect-title">Engine</div>
+      <p class="sect-note">
+        A <b>Brain Core</b> is a whole inference runtime — engine, quantisation,
+        KV format — behind one endpoint. Cerveau only picks a URL.
+      </p>
+
+      {#if cores.cores?.length}
+        <div class="cores">
+          {#each cores.cores as c (c.id)}
+            <button class="core" class:on={c.id === cores.active}
+              disabled={coreBusy === c.id} onclick={() => selectCore(c.id)}>
+              <div class="core-head">
+                <span class="core-dot" class:live={c.id === cores.active}></span>
+                <span class="core-name">{c.name}</span>
+                {#if c.id === cores.active}<span class="core-tag">ACTIVE</span>{/if}
+              </div>
+              <div class="core-meta mono">
+                <span>{c.model || c.engine}</span>
+                {#if c.ctx}<span>{Math.round(c.ctx / 1024)}K ctx</span>{/if}
+                <span class="core-ep">{c.endpoint.replace('http://', '')}</span>
+              </div>
+              {#if c.notes}<p class="core-notes">{c.notes}</p>{/if}
+            </button>
+          {/each}
+        </div>
+
+        {#if pendingCore}
+          <div class="restart">
+            <div class="restart-head">
+              <RefreshCw size={14} />
+              <span>Switched to <b>{pendingCore.name}</b> — restart to apply</span>
+            </div>
+            <p class="restart-why">
+              The endpoint is saved. Start that engine if it is not already up,
+              then restart Cerveau so every component picks up the change.
+            </p>
+            {#if pendingCore.start}
+              <div class="cmd">
+                <code class="mono">{pendingCore.start}</code>
+                <button class="copy" onclick={() => copyStart(pendingCore.start)}>
+                  {copied === pendingCore.start ? 'copied' : 'copy'}
+                </button>
+              </div>
+            {/if}
+            <div class="cmd">
+              <code class="mono">systemctl --user restart cerveau.service</code>
+              <button class="copy" onclick={() => copyStart('systemctl --user restart cerveau.service')}>
+                {copied === 'systemctl --user restart cerveau.service' ? 'copied' : 'copy'}
+              </button>
+            </div>
+          </div>
+        {/if}
+      {:else}
+        <p class="empty mono">
+          No cores.json — running on {cores.endpoint || 'the configured endpoint'}.
+        </p>
+      {/if}
+    </section>
 
     <section>
       <div class="sect-title">Sound</div>
@@ -158,6 +249,79 @@
   .shead { margin-bottom: 22px; }
 
   .sect-title { font-size: 15px; font-weight: 640; color: var(--text); margin-bottom: 14px; }
+
+  /* ── Engine ── */
+  .sect-note {
+    margin: -6px 0 14px; font-size: 12.5px; line-height: 1.55; color: var(--dim);
+    max-width: 60ch;
+  }
+  .cores { display: grid; gap: 10px; }
+
+  .core {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    padding: 13px 15px; color: inherit; font: inherit;
+    transition: border-color .12s, background .12s;
+  }
+  .core:hover:not(:disabled) { border-color: var(--accent); }
+  .core:disabled { opacity: .55; cursor: progress; }
+  /* the active Core is stated, not merely tinted — a user must be able to say
+     which engine is answering without comparing two shades of the same colour */
+  .core.on { border-color: var(--accent); background: var(--panel-raised, var(--panel)); }
+
+  .core-head { display: flex; align-items: center; gap: 8px; }
+  .core-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    background: var(--faint, #555);
+  }
+  .core-dot.live { background: var(--ok, #7fa650); }
+  .core-name { font-size: 14px; font-weight: 620; color: var(--text); }
+  .core-tag {
+    font-size: 9px; letter-spacing: .1em; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 3px; padding: 1px 5px;
+  }
+
+  .core-meta {
+    display: flex; flex-wrap: wrap; gap: 12px; margin-top: 7px;
+    font-size: 11px; color: var(--dim);
+  }
+  .core-ep { opacity: .7; }
+  .core-notes {
+    margin: 9px 0 0; font-size: 12px; line-height: 1.5; color: var(--dim);
+    max-width: 62ch;
+  }
+
+  /* ── restart prompt ── */
+  .restart {
+    margin-top: 14px; padding: 13px 15px;
+    border: 1px solid var(--accent); border-radius: 9px;
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+  .restart-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600; color: var(--text);
+  }
+  .restart-why {
+    margin: 7px 0 11px; font-size: 12px; line-height: 1.55; color: var(--dim);
+    max-width: 60ch;
+  }
+  .cmd {
+    display: flex; align-items: center; gap: 8px; margin-top: 7px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 9px;
+  }
+  .cmd code {
+    flex: 1; min-width: 0; font-size: 11.5px; color: var(--text);
+    overflow-x: auto; white-space: nowrap;
+  }
+  .copy {
+    flex-shrink: 0; font-size: 10.5px; letter-spacing: .06em; cursor: pointer;
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: 3px 8px; color: var(--dim);
+  }
+  .copy:hover { color: var(--accent); border-color: var(--accent); }
+
+  .empty { font-size: 12px; color: var(--dim); }
 
   /* master volume bar */
   .master {
