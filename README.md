@@ -30,74 +30,81 @@
 ### 🧠 v0.5 — "Cores" · 2026-08-19
 
 <p>
-  <img src="https://img.shields.io/badge/core-vLLM_dense-C0304A?style=flat-square&labelColor=17140F" alt="vllm core"/>
+  <img src="https://img.shields.io/badge/cores-llama.cpp_%2B_vLLM-C0304A?style=flat-square&labelColor=17140F" alt="two cores"/>
   <img src="https://img.shields.io/badge/context-96K-E88BA0?style=flat-square&labelColor=17140F" alt="96k context"/>
   <img src="https://img.shields.io/badge/verify-runtime_eval-C0304A?style=flat-square&labelColor=17140F" alt="runtime eval"/>
 </p>
 
-**One harness, swappable runtimes.** A second Brain Core joins the first — a
-whole different engine behind the same face — with three times the context and a
-verification loop that replaced forty bash calls with one question to the page.
+**Cerveau stops being a llama.cpp app.** The inference engine is now a
+swappable part, and the model can check its own work at runtime instead of
+guessing.
 
 **Brain Cores**
-- **A second Core, not a second profile.** A profile is flags for one engine; a
-  Core is a whole runtime — engine, quantisation, KV format — behind one
-  OpenAI-compatible face. The llama.cpp MoE Core stays the default and is
-  untouched; the new one is Qwen3.8-27B W4A16 on vLLM. Cerveau only ever picks a
-  URL, so the harness needs no knowledge of what is behind it.
-- **Swaps survive because context lives outside the KV cache.** Session state is
-  in Typesense and the embedder, so switching Cores carries a briefing rather
-  than a memory. Do it at task boundaries, never mid-turn.
-- **The embedder moved to the CPU — because on the GPU it was failing.** Sharing
-  a 24 GB card with the Core left ~50 MiB free: a short string embedded in 15ms
-  while a realistic batch of code returned HTTP 500. That reads as "memory never
-  retrieves anything useful", not as an error. On CPU it is bf16 across 8
-  threads, ~297ms per code chunk — invisible inside a 30-second turn, and it
-  hands 2.6 GB back to the Core.
-- **96K of context, from fp8 and honesty about speed.** fp8 KV and dropping
-  speculative decoding took the cache from 40,329 to 179,443 tokens. Both were
-  latency choices, and latency is not the metric — the mid-build 502 that killed
-  long runs now sits three times further away.
+- **The engine became a component.** A Core is a whole inference runtime —
+  engine, quantisation, KV format, serving strategy — presented as one
+  OpenAI-compatible endpoint. Cerveau picks a URL and nothing more, so it
+  needs no knowledge of what runs behind it. **llama.cpp** stays the default
+  Core. **vLLM** joins it as the second.
+- **Two Cores, two different jobs.** llama.cpp offloads MoE experts to system
+  RAM, which is nearly free when only ~3B of 35B parameters activate per
+  token — that Core runs a large mixture-of-experts model on a 24 GB card.
+  vLLM keeps weights resident and batches continuously, so that Core runs
+  dense models with real throughput. Neither can do the other's job; that is
+  why there are two.
+- **Switching Cores keeps the session.** Context lives in Typesense and the
+  embedder, not in the engine's KV cache, so a swap carries a briefing rather
+  than a memory. Switch at task boundaries, never mid-turn.
 
-**Verification**
-- **`check_page` can run JavaScript and hand back the value.** Previously it
-  reported console errors and whether an element existed, which is not the
-  question a model actually has. It wants to know whether blade omega really
-  reaches 14 rad/s. Lacking that, one benchmark run spent 26 of its 46 tool calls
-  hunting for a browser driver this project has never shipped. Now it asks the
-  page directly.
-- **Repeated dead ends get a question instead of another error.** Failures are
-  counted by shape rather than by command, so `playwright` and `playwright-core`
-  are recognised as the same wall. Three of a shape and the tool stops answering
-  with an error and starts asking whether the thing is installed at all, naming
-  the capability that already exists.
-- **Churn is measured by whether the work moved, not by how many errors.** The
-  two most wasteful runs on record had almost no errors — one edited for four
-  minutes while the file changed by a single byte. The harness now fingerprints
-  the workspace and says so. A nudge, never a kill: an unchanging workspace is
-  also exactly what a finished task looks like.
+**Making room for the Core**
+- **The embedder moved to the CPU — it was failing on the GPU, not merely
+  slow.** Sharing a 24 GB card left ~50 MiB free: a short string embedded in
+  15 ms while a realistic batch of code returned HTTP 500. That surfaces as
+  "memory never retrieves anything useful", not as an error anyone would
+  notice. On CPU it costs ~297 ms per chunk — invisible inside a
+  thirty-second turn — and returns 2.6 GB.
+- **96K of context, bought by spending speed.** fp8 KV plus dropping
+  speculative decoding took the cache from 40,329 to 179,443 tokens. Both
+  were latency optimisations, and latency was never the metric: the
+  mid-build 502 that used to end long runs now sits three times further away.
 
-**Context**
-- **Compaction hands over a briefing, not a tombstone.** Dropping the oldest
-  turns silently made the model believe the session began later than it did, so
-  it redid finished work. What replaces them is assembled from the log — the
-  original request, the plan, completed steps, the files on disk — never
-  summarised by the model, since asking it to describe what it just lost is
-  circular.
-- **Exactly one system prompt, at position zero.** Strict chat templates reject a
-  second system message even at the front of the conversation, which ended whole
-  sessions mid-build. Recalled memory and skill notes now travel as user-role
-  `<system-reminder>` text, escaped so a stored note cannot close the envelope
-  and be read as something you typed.
+**The model can check its own work**
+- **`check_page` runs JavaScript in the page and hands back the value.** It
+  used to report console errors and whether an element existed — never the
+  question actually being asked, which is whether the thing *behaves*. One
+  benchmark run spent 26 of its 46 tool calls hunting for a browser driver
+  this project has never shipped, because there was no other way to read
+  runtime state.
+- **A wall gets recognised as a wall.** Repeated failures are counted by
+  shape rather than by command, so `playwright` and `playwright-core` register
+  as the same dead end. The third one returns a question — is this installed,
+  what do you already have — instead of a fourth error.
+- **Churn is measured by whether the work moved.** The two most wasteful runs
+  on record had almost no errors; one edited for four minutes while the file
+  changed by a single byte. The harness now watches the workspace, not the
+  error count, and says something. A nudge rather than a kill — an unchanging
+  workspace is also what a finished task looks like.
+
+**Context that degrades honestly**
+- **Compaction hands over a briefing, not a gap.** Dropping the oldest turns
+  silently made the model believe the session began later than it did, so it
+  redid finished work. What replaces them is assembled from the log — original
+  request, plan, completed steps, files on disk — and never written by the
+  model, since asking it to summarise what it just lost is circular.
+- **Exactly one system prompt, at position zero.** Strict chat templates
+  reject a second system message even at the front of the conversation, which
+  ended whole sessions mid-build. Recalled memory and skill notes now travel
+  as user-role `<system-reminder>` text, escaped so a stored note cannot close
+  the envelope and be read as something you typed.
 
 **Panel**
-- **A run started from the terminal is visible in the browser.** The panel could
-  only see turns it started itself, so a fifteen-minute CLI build rendered as a
-  dead screen — made worse by assistant messages during a build carrying no text
-  at all, because the model is working rather than talking. Live sessions now
-  pulse green in the rail and stream their tool calls wherever they began.
+- **A run started in the terminal is visible in the browser.** The panel could
+  only see turns it started itself, so a CLI build rendered as a dead screen —
+  made worse by assistant messages during a build carrying no text at all,
+  because the model is working rather than talking. Live sessions now pulse in
+  the rail and stream their tool calls wherever they began.
 
-### 📱 v0.4 — "Pocket" · 2026-08-18
+<details>
+<summary><b>📱 v0.4 — "Pocket" · 2026-08-18</b></summary>
 
 <p>
   <img src="https://img.shields.io/badge/phone-paired_%2B_biometric-C0304A?style=flat-square&labelColor=17140F" alt="phone access"/>
@@ -159,6 +166,8 @@ deserve the small screen.
 - Several error messages stopped asserting causes they never tested
   ("is tailscale up?", "wrong or expired code", "is it awake?"). An error
   now reports what was observed.
+
+</details>
 
 <details>
 <summary><b>🧭 v0.3 — "Guidebook" · 2026-08-03</b></summary>
