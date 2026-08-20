@@ -117,29 +117,49 @@ public class MainActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
 
+        // The mark carries the screen. At 112dp it was an illustration beside
+        // some text; at 168 it is the thing you see, which is what a brand mark
+        // on an otherwise empty screen is for.
         ImageView mark = new ImageView(this);
         mark.setImageResource(R.drawable.brand_mark);
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(112 * dp, 112 * dp);
-        mp.bottomMargin = 30 * dp;
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(168 * dp, 168 * dp);
+        mp.bottomMargin = 26 * dp;
         col.addView(mark, mp);
 
+        // CERVEAU in tracked uppercase mono — the same wordmark as the panel
+        // header and the README banner. A plain sans "Cerveau" was a different
+        // brand wearing the same logo.
         TextView head = new TextView(this);
-        head.setText("Cerveau");
+        head.setText("CERVEAU");
         head.setTextColor(Color.WHITE);
-        head.setTextSize(25);
+        head.setTextSize(23);
+        head.setLetterSpacing(0.34f);
+        head.setTypeface(android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD));
         head.setGravity(Gravity.CENTER);
-        col.addView(head);
+        // Tracking puts a trailing gap after the last letter, so a centred
+        // string sits visually left. The padding compensates — but the view
+        // must be full-width or that padding eats the final glyph, which is
+        // exactly how this rendered as "CERVEA".
+        head.setPadding((int) (0.34f * 23 * dp), 0, 0, 0);
+        col.addView(head, new LinearLayout.LayoutParams(-1, -2));
+
+        // A hairline under the wordmark, the same device the disconnected
+        // screen uses to separate identity from instruction.
+        View rule = new View(this);
+        rule.setBackgroundColor(Color.parseColor("#2A2A30"));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(52 * dp, Math.max(1, dp));
+        rlp.topMargin = 22 * dp; rlp.bottomMargin = 20 * dp;
+        col.addView(rule, rlp);
 
         TextView sub = new TextView(this);
         sub.setText(guarded
-                ? "This device is paired. Unlock to reach your machine."
-                : "This device is paired, but has no screen lock — your token is unguarded.");
+                ? "This device is paired.\nUnlock to reach your machine."
+                : "This device is paired, but has no screen lock.\nYour token is unguarded.");
         sub.setTextColor(Color.parseColor(guarded ? "#8E8E98" : ERR));
-        sub.setTextSize(14);
+        sub.setTextSize(14.5f);
+        sub.setLineSpacing(5 * dp, 1f);
         sub.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
-        sp.topMargin = 10 * dp;
-        col.addView(sub, sp);
+        col.addView(sub, new LinearLayout.LayoutParams(-1, -2));
 
         final TextView status = new TextView(this);
         status.setTextColor(Color.parseColor(MUTED));
@@ -147,18 +167,20 @@ public class MainActivity extends Activity {
         status.setGravity(Gravity.CENTER);
 
         TextView unlock = new TextView(this);
-        unlock.setText(guarded ? "Unlock" : "Open");
+        unlock.setText(guarded ? "UNLOCK" : "OPEN");
         unlock.setTextColor(Color.parseColor("#0B0B0D"));
-        unlock.setTextSize(15);
+        unlock.setTextSize(14);
+        unlock.setLetterSpacing(0.16f);
+        unlock.setTypeface(android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD));
         unlock.setGravity(Gravity.CENTER);
-        unlock.setPadding(44 * dp, 13 * dp, 44 * dp, 13 * dp);
+        unlock.setPadding(52 * dp, 15 * dp, (int) (52 * dp + 0.16f * 14 * dp), 15 * dp);
         GradientDrawable btn = new GradientDrawable();
-        btn.setCornerRadius(10 * dp);
+        btn.setCornerRadius(11 * dp);
         btn.setColor(Color.parseColor(ACCENT));
         unlock.setBackground(btn);
         unlock.setOnClickListener(v -> openPanel(status));
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-2, -2);
-        bp.topMargin = 32 * dp;
+        bp.topMargin = 30 * dp;
         col.addView(unlock, bp);
 
         LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-2, -2);
@@ -167,10 +189,10 @@ public class MainActivity extends Activity {
 
         TextView unpair = new TextView(this);
         unpair.setText("Unpair this device");
-        unpair.setTextColor(Color.parseColor("#55555E"));
+        unpair.setTextColor(Color.parseColor("#4A4A52"));
         unpair.setTextSize(12.5f);
         unpair.setGravity(Gravity.CENTER);
-        unpair.setPadding(16 * dp, 10 * dp, 16 * dp, 10 * dp);
+        unpair.setPadding(16 * dp, 12 * dp, 16 * dp, 12 * dp);
         unpair.setOnClickListener(v -> {
             Vault.clear(prefs);
             DeviceKey.clear();
@@ -178,13 +200,13 @@ public class MainActivity extends Activity {
             showPortal();
         });
         LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(-2, -2);
-        up.topMargin = 26 * dp;
+        up.topMargin = 30 * dp;
         col.addView(unpair, up);
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor(BG));
-        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER);
-        clp.leftMargin = 32 * dp; clp.rightMargin = 32 * dp;
+        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        clp.leftMargin = 28 * dp; clp.rightMargin = 28 * dp;
         root.addView(col, clp);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets b = insets.getInsets(WindowInsets.Type.systemBars());
@@ -192,7 +214,10 @@ public class MainActivity extends Activity {
             return insets;
         });
         setContentView(root);
-        // NO automatic unlock. See the javadoc above.
+        // NO automatic unlock: the biometric prompt is what the Unlock button
+        // does. Firing it on launch covers the app with a system dialog the
+        // user never asked for, and dismissing it strands them on a screen they
+        // did not choose.
     }
 
     /**
