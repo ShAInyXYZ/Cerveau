@@ -31,7 +31,11 @@ function injectStyles() {
       padding: 5px 9px; border-radius: 7px;
       background: var(--s3, #262320); color: var(--text, #ece8e0);
       font-family: var(--font-sans, system-ui, sans-serif);
-      font-size: 11.5px; line-height: 1.2; white-space: nowrap;
+      font-size: 11.5px; line-height: 1.45;
+      /* Short labels stay on one line; anything longer wraps at 400px. Without
+         a cap, nowrap turned a sentence into a single line the width of the
+         screen — technically a tooltip, practically unreadable. */
+      max-width: 400px; white-space: pre-line; overflow-wrap: break-word;
       box-shadow: 0 0 0 1px var(--line2, #34302b), 0 8px 18px -8px rgba(0,0,0,.7);
       opacity: 0; transform: translateY(2px);
       transition: opacity .12s ease, transform .12s ease;

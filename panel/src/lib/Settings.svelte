@@ -51,6 +51,16 @@
     } finally { coreBusy = ''; }
   }
 
+  // Everything the card no longer shows. The logo identifies the engine at a
+  // glance — model, context and rationale are what you want on demand, not
+  // competing with the choice itself.
+  function coreTip(c) {
+    const bits = [];
+    if (c.model) bits.push(c.model);
+    if (c.ctx) bits.push(`${Math.round(c.ctx / 1024)}K context`);
+    return [bits.join('  ·  '), c.notes].filter(Boolean).join('\n');
+  }
+
   async function copyStart(cmd) {
     try { await navigator.clipboard.writeText(cmd); copied = cmd; setTimeout(() => (copied = ''), 1600); }
     catch { /* clipboard blocked — the command is on screen to type */ }
@@ -103,12 +113,9 @@
           {#each cores.cores as c (c.id)}
             <button class="core" class:on={c.id === cores.active}
               disabled={coreBusy === c.id} onclick={() => selectCore(c.id)}
-              use:tooltip={c.notes || c.engine}>
-              <EngineMark engine={c.engine} />
+              use:tooltip={coreTip(c)}>
+              <EngineMark engine={c.engine} size={64} />
               <span class="core-name">{c.engine}</span>
-              <span class="core-sub mono">{c.model || ''}</span>
-              {#if c.ctx}<span class="core-ctx mono">{Math.round(c.ctx / 1024)}K context</span>{/if}
-              {#if c.id === cores.active}<span class="core-tag">ACTIVE</span>{/if}
             </button>
           {/each}
         </div>
@@ -260,30 +267,19 @@
 
   .core {
     flex: 1; min-width: 0;
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
     cursor: pointer; text-align: center;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 11px;
-    padding: 20px 14px 16px; color: inherit; font: inherit;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 26px 16px; color: inherit; font: inherit;
     transition: border-color .14s, background .14s;
   }
   .core:hover:not(:disabled) { border-color: var(--accent); }
   .core:disabled { opacity: .55; cursor: progress; }
+  /* The outline already says which Core is live — an ACTIVE badge underneath
+     was the same fact twice, and it made the two cards different heights. */
   .core.on { border-color: var(--accent); background: var(--panel-raised, var(--panel)); }
 
-  .core-name {
-    margin-top: 12px;
-    font-size: 14.5px; font-weight: 640; color: var(--text);
-  }
-  .core-sub, .core-ctx {
-    font-size: 10.5px; color: var(--dim);
-    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .core-ctx { opacity: .72; }
-  .core-tag {
-    margin-top: 11px;
-    font-size: 8.5px; letter-spacing: .11em; font-weight: 700; color: var(--accent);
-    border: 1px solid var(--accent); border-radius: 3px; padding: 2px 7px;
-  }
+  .core-name { font-size: 15px; font-weight: 640; color: var(--text); }
 
   /* ── restart prompt ── */
   .restart {
