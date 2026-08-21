@@ -410,14 +410,14 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		}
 		if len(reply.ToolCalls) == 0 {
 			iterCancel()
-			if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply)); err != nil {
+			if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage)); err != nil {
 				return nil, err
 			}
 			wr.Append(episodic.TurnClose, map[string]any{"iterations": i, "pulls": len(turnPulls)})
 			l.runBoundary(sessionID)
 			return &Result{Reply: reply.Content, Iterations: i, StopReason: StopFinalAnswer, Pulls: len(turnPulls), Window: &winRep}, nil
 		}
-		if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply)); err != nil {
+		if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage)); err != nil {
 			iterCancel()
 			return nil, err
 		}
@@ -572,10 +572,33 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	}
 }
 
-func assistantPayload(m llm.Message) map[string]any {
+// assistantPayload records what the model said AND what the call cost.
+//
+// Usage was parsed from every response, handed to the turn guard, and then
+// dropped — so the episodic log had no token counts at all, and questions like
+// "which Core reached a working answer for fewer tokens" could not be answered
+// from the record however many benchmarks were run. It is written now.
+//
+// Cached tokens are kept separate from the prompt total. With prefix caching a
+// 31k prompt that is 28k cache read is nothing like a 31k prompt sent fresh,
+// and one number describes both.
+func assistantPayload(m llm.Message, u llm.Usage) map[string]any {
 	p := map[string]any{"text": m.Content}
 	if len(m.ToolCalls) > 0 {
 		p["tool_calls"] = m.ToolCalls
+	}
+	// omit entirely when the server reported nothing, so absent stays
+	// distinguishable from zero
+	if u.PromptTokens > 0 || u.CompletionTokens > 0 {
+		usage := map[string]any{
+			"prompt_tokens":     u.PromptTokens,
+			"completion_tokens": u.CompletionTokens,
+		}
+		if u.CachedTokens > 0 {
+			usage["cached_tokens"] = u.CachedTokens
+			usage["fresh_prompt_tokens"] = u.FreshPromptTokens()
+		}
+		p["usage"] = usage
 	}
 	return p
 }

@@ -52,9 +52,64 @@ type chatRequest struct {
 	TemplateKW  map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
+// Usage is what one model call cost.
+//
+// CachedTokens matters as much as the totals: with prefix caching on, a prompt
+// that is 90% cache read is nothing like a prompt of the same size sent fresh,
+// and a single "31,402 prompt tokens" figure describes both. Claw Code's
+// usage.rs tracks cache reads separately for the same reason.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
+
+	// CachedTokens is filled from prompt_tokens_details.cached_tokens, the
+	// OpenAI shape.
+	//
+	// MEASURED 2026-08-21: the vLLM Core in use here returns
+	// "prompt_tokens_details": null on every response, so this stays 0 even
+	// when the prefix cache is plainly working. Zero therefore means "no hit
+	// OR not reported" and must never be rendered as a confident 0% hit rate.
+	// The field is parsed anyway because it costs nothing and a newer vLLM,
+	// llama.cpp, or a hosted endpoint will fill it.
+	CachedTokens int `json:"-"`
+
+	Details *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+}
+
+// UnmarshalJSON lifts the nested cache count into a flat field, so every
+// consumer reads one struct rather than nil-checking a pointer.
+func (u *Usage) UnmarshalJSON(b []byte) error {
+	type raw Usage // alias sheds the custom method, avoiding recursion
+	var r raw
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*u = Usage(r)
+	if u.Details != nil {
+		u.CachedTokens = u.Details.CachedTokens
+	}
+	return nil
+}
+
+// FreshPromptTokens is the prompt work actually done — total minus what was
+// served from cache. This is the number that reflects effort.
+func (u Usage) FreshPromptTokens() int {
+	n := u.PromptTokens - u.CachedTokens
+	if n < 0 {
+		return 0 // malformed report; a negative would corrupt every total
+	}
+	return n
+}
+
+// CacheHitRate is the share of the prompt served from cache, 0 when there is
+// nothing to divide by. No prompt tokens is no data, not a perfect score.
+func (u Usage) CacheHitRate() float64 {
+	if u.PromptTokens <= 0 {
+		return 0
+	}
+	return float64(u.CachedTokens) / float64(u.PromptTokens)
 }
 
 type chatResponse struct {

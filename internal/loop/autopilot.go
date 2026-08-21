@@ -180,7 +180,7 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 		if len(reply.ToolCalls) == 0 {
 			return reply.Content, nil
 		}
-		wr.Append(episodic.MsgAssistant, assistantPayload(reply))
+		wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
 		items = append(items, window.Item{Msg: llm.Message{Role: "assistant", Content: reply.Content, ToolCalls: reply.ToolCalls}, Kind: "assistant"})
 		for _, tc := range reply.ToolCalls {
 			args := json.RawMessage(tc.Function.Arguments)

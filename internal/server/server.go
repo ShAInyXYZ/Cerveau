@@ -26,6 +26,7 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("GET /api/sessions/{id}/state", a.SessionState)
 	mux.HandleFunc("GET /api/sessions/{id}/errors", a.SessionErrors)
 	mux.HandleFunc("GET /api/sessions/{id}/report", a.SessionReport)
+	mux.HandleFunc("GET /api/sessions/{id}/usage", a.SessionUsage)
 	mux.HandleFunc("POST /api/sessions/{id}/rewind", a.Rewind)
 	mux.HandleFunc("POST /api/sessions/{id}/chat", a.Chat)
 	mux.HandleFunc("POST /api/sessions/{id}/autopilot", a.Autopilot)
