@@ -291,11 +291,11 @@
   .wrap { width: 100%; max-width: 640px; padding: 26px 26px 60px; }
   .shead { margin-bottom: 22px; }
 
-  .sect-title { font-size: 15px; font-weight: 640; color: var(--text); margin-bottom: 14px; }
+  .sect-title { font-size: var(--fs-title); font-weight: 640; color: var(--text); margin-bottom: 14px; }
 
   /* ── Engine ── */
   .sect-note {
-    margin: -6px 0 14px; font-size: 12.5px; line-height: 1.55; color: var(--dim);
+    margin: -6px 0 14px; font-size: var(--fs-body); line-height: 1.55; color: var(--dim);
     max-width: 60ch;
   }
 
@@ -318,15 +318,15 @@
      was the same fact twice, and it made the two cards different heights. */
   .core.on { border-color: var(--accent); background: var(--panel-raised, var(--panel)); }
 
-  .core-name { font-size: 15px; font-weight: 640; color: var(--text); }
+  .core-name { font-size: var(--fs-title); font-weight: 640; color: var(--text); }
 
   /* ── sampling ── */
   .samp { margin-top: 18px; }
   .samp-head {
     display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px;
   }
-  .samp-label { font-size: 13px; font-weight: 620; color: var(--text); }
-  .samp-hint { font-size: 11px; color: var(--dim); }
+  .samp-label { font-size: var(--fs-body); font-weight: 620; color: var(--text); }
+  .samp-hint { font-size: var(--fs-small); color: var(--dim); }
 
 
   /* ── restart prompt ── */
@@ -337,10 +337,10 @@
   }
   .restart-head {
     display: flex; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 600; color: var(--text);
+    font-size: var(--fs-body); font-weight: 600; color: var(--text);
   }
   .restart-why {
-    margin: 7px 0 11px; font-size: 12px; line-height: 1.55; color: var(--dim);
+    margin: 7px 0 11px; font-size: var(--fs-small); line-height: 1.55; color: var(--dim);
     max-width: 60ch;
   }
   .cmd {
@@ -349,17 +349,17 @@
     padding: 7px 9px;
   }
   .cmd code {
-    flex: 1; min-width: 0; font-size: 11.5px; color: var(--text);
+    flex: 1; min-width: 0; font-size: var(--fs-small); color: var(--text);
     overflow-x: auto; white-space: nowrap;
   }
   .copy {
-    flex-shrink: 0; font-size: 10.5px; letter-spacing: .06em; cursor: pointer;
+    flex-shrink: 0; font-size: var(--fs-micro); letter-spacing: .06em; cursor: pointer;
     background: none; border: 1px solid var(--line); border-radius: 4px;
     padding: 3px 8px; color: var(--dim);
   }
   .copy:hover { color: var(--accent); border-color: var(--accent); }
 
-  .empty { font-size: 12px; color: var(--dim); }
+  .empty { font-size: var(--fs-small); color: var(--dim); }
 
   /* master volume bar */
   .master {
@@ -375,7 +375,7 @@
   }
   .mute:hover { color: var(--text); }
   .mute.on { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
-  .mlabel { font-size: 13px; color: var(--muted); min-width: 96px; }
+  .mlabel { font-size: var(--fs-body); color: var(--muted); min-width: 96px; }
 
   /* per-sound rows */
   .rows { display: flex; flex-direction: column; gap: 6px; transition: opacity .15s; }
@@ -396,9 +396,9 @@
   .test:active:not(:disabled) { transform: scale(.92); }
   .test:disabled { opacity: .3; cursor: default; }
   .rtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .rname { font-size: 13px; font-weight: 550; color: var(--text); }
-  .rdesc { font-size: 11.5px; color: var(--dim); }
-  .missing { font-size: 10px; color: var(--faint); }
+  .rname { font-size: var(--fs-body); font-weight: 550; color: var(--text); }
+  .rdesc { font-size: var(--fs-small); color: var(--dim); }
+  .missing { font-size: var(--fs-micro); color: var(--faint); }
 
   /* sliders — themed range input */
   .slider {
@@ -422,7 +422,7 @@
   .slider:disabled { cursor: default; }
   .slider:disabled::-webkit-slider-thumb { background: var(--faint); box-shadow: none; }
 
-  .pct { width: 38px; text-align: right; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .pct { width: 38px; text-align: right; font-size: var(--fs-small); color: var(--dim); font-variant-numeric: tabular-nums; }
 
   /* ── RFX section ── */
   section { margin-bottom: 30px; }
@@ -435,19 +435,19 @@
   .reload:hover { color: var(--text); background: var(--s3); }
   .rfx-empty {
     display: flex; align-items: flex-start; gap: 10px;
-    padding: 14px 16px; border-radius: 10px; font-size: 12.5px; color: var(--dim);
+    padding: 14px 16px; border-radius: 10px; font-size: var(--fs-body); color: var(--dim);
     background: color-mix(in srgb, #fff 2.5%, transparent); box-shadow: inset 0 0 0 1px var(--line);
   }
-  .rfx-empty code, .rfx-foot code { font-size: 11px; color: var(--accent); }
+  .rfx-empty code, .rfx-foot code { font-size: var(--fs-small); color: var(--accent); }
   .pack { margin-bottom: 14px; }
   .pack-name {
-    font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
+    font-size: var(--fs-small); font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
     color: var(--muted); margin: 0 2px 7px; display: flex; align-items: baseline; gap: 10px;
   }
   .pack-desc { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--faint); }
   .row.off { opacity: .45; }
   .chip {
-    flex-shrink: 0; font-size: 10px; font-weight: 600; letter-spacing: .04em;
+    flex-shrink: 0; font-size: var(--fs-micro); font-weight: 600; letter-spacing: .04em;
     padding: 3px 8px; border-radius: 6px; color: var(--dim);
     background: var(--s3); box-shadow: inset 0 0 0 1px var(--line);
   }
@@ -468,10 +468,10 @@
   .switch.on .knob { transform: translateX(14px); }
   .rfx-issues { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
   .issue {
-    font-size: 11.5px; padding: 9px 12px; border-radius: 8px;
+    font-size: var(--fs-small); padding: 9px 12px; border-radius: 8px;
     background: color-mix(in srgb, #fff 2.5%, transparent); box-shadow: inset 0 0 0 1px var(--line);
   }
   .issue.notice { color: var(--amber, #b87a00); }
   .issue.err { color: var(--err); }
-  .rfx-foot { margin-top: 12px; font-size: 11px; color: var(--faint); }
+  .rfx-foot { margin-top: 12px; font-size: var(--fs-small); color: var(--faint); }
 </style>
