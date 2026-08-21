@@ -9,7 +9,9 @@
    only provided preflight and two font variables. The token system below IS
    the styling system; this minimal reset replaces preflight. */
 :root {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  /* 'Inter Variable' is the bundled family name @fontsource ships;
+     'Inter' catches a system install; then the platform stack. */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 }
 *, *::before, *::after { box-sizing: border-box; }

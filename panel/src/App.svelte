@@ -1,5 +1,14 @@
 <script lang="ts">
   import { PanelLeftOpen, PanelLeftClose } from 'lucide-svelte';
+  // Inter, bundled — not fetched from Google. The token has named Inter since
+  // the start while nothing ever loaded it, so the panel has been rendering in
+  // whatever system-ui resolves to (DejaVu Sans on this machine).
+  //
+  // Every subset ships, not just latin: @font-face carries unicode-range, so a
+  // browser downloads only the ranges the text on screen actually uses. Cyrillic
+  // and Greek cost disk in the binary, not bytes on the wire, and a session that
+  // needs them renders instead of falling back mid-sentence.
+  import '@fontsource-variable/inter';
   import './tokens.css';
   import StatusBar from './lib/StatusBar.svelte';
   import WorkspaceRail from './lib/WorkspaceRail.svelte';
