@@ -132,7 +132,7 @@
 
 
   :global(.menu) {
-    z-index: 70; min-width: 264px;
+    z-index: var(--z-popover); min-width: 264px;
     background: var(--surface); border-radius: 10px;
     padding: 6px; box-shadow: var(--elev-2);
   }

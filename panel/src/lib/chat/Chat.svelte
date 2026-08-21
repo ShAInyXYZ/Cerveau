@@ -7,17 +7,41 @@
   import WorkingLog from './WorkingLog.svelte';
   import Composer from './Composer.svelte';
   import { sessionStore } from '../stores/session.svelte.ts';
+  import { shouldFollow } from './autoscroll';
 
   let scroller = $state<HTMLElement | undefined>();
 
+  // Follow the tail ONLY while already at it.
+  //
+  // This used to scroll unconditionally, so scrolling up to re-read something
+  // during a long build meant the next message yanked you straight back down —
+  // at exactly the moment you most want to look at earlier output.
+  //
+  // The decision is recorded ON SCROLL rather than measured inside the effect:
+  // $effect runs after the DOM has already grown, so measuring there would ask
+  // "are we at the bottom of the taller container", which is false the instant
+  // anything arrives — and following would never resume.
+  let following = $state(true);
+
+  function onScroll() {
+    if (scroller) following = shouldFollow(scroller);
+  }
+
   $effect(() => {
     void sessionStore.messages.length;
-    if (scroller) queueMicrotask(() => (scroller!.scrollTop = scroller!.scrollHeight));
+    if (scroller && following) {
+      queueMicrotask(() => (scroller!.scrollTop = scroller!.scrollHeight));
+    }
   });
+
 </script>
 
 <main class="chat">
-  <div class="stream" bind:this={scroller}>
+  <!-- aria-live: the panel had none, so a streaming answer was either silent to
+       a screen reader or re-read from the top on every token. atomic=false
+       announces only what was added. -->
+  <div class="stream" bind:this={scroller} onscroll={onScroll}
+    aria-live="polite" aria-atomic="false" aria-relevant="additions text">
     <Turns />
     <ErrorCards />
     <QuestionCard />

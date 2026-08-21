@@ -34,7 +34,9 @@
 </script>
 
 {#if sessionStore.running}
-  <section class="working" aria-label="agent working log">
+  <!-- role=status: tool calls are progress, announced politely and without
+       interrupting whatever the reader is on -->
+  <section role="status" aria-live="polite" aria-atomic="false" class="working" aria-label="agent working log">
     <div class="whead">
       <span class="wname label">CERVEAU</span>
       <span class="wstatus">{anyRunning ? 'working' : 'thinking'}<span class="ell">…</span></span>

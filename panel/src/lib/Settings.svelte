@@ -4,6 +4,7 @@
   import { j, jpost } from './api';
   import { tooltip } from '../kit/tooltip.js';
   import EngineMark from './engines/EngineMark.svelte';
+  import { Segmented } from '../kit/index.js';
 
   // Settings — deliberately simple. First (and so far only) section: sounds.
   const TYPES = [
@@ -179,13 +180,13 @@
             <span class="samp-label">Sampling</span>
             <span class="samp-hint">applies to every turn · changes instantly</span>
           </div>
-          <div class="seg">
-            {#each sampling.presets as p (p)}
-              <button class="seg-b" class:on={p === sampling.active}
-                onclick={() => setSampling(p)} use:tooltip={SAMPLING_TIP[p] || p}>
-                {p}
-              </button>
-            {/each}
+          <!-- kit/Segmented, not a local copy: it carries role="tablist" and
+               aria-selected, which a hand-rolled row of buttons does not. -->
+          <div use:tooltip={SAMPLING_TIP[sampling.active] || ''}>
+            <Segmented
+              options={sampling.presets.map((p) => ({ value: p, label: p }))}
+              value={sampling.active}
+              onchange={setSampling} />
           </div>
         </div>
       {/if}
@@ -327,19 +328,6 @@
   .samp-label { font-size: 13px; font-weight: 620; color: var(--text); }
   .samp-hint { font-size: 11px; color: var(--dim); }
 
-  /* A segmented control, not a slider: these are three named presets, and a
-     slider would imply a continuum the model does not actually offer. */
-  .seg {
-    display: inline-flex; padding: 3px; gap: 3px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
-  }
-  .seg-b {
-    padding: 7px 18px; border: 0; border-radius: 6px; cursor: pointer;
-    background: none; color: var(--dim); font: inherit; font-size: 12.5px;
-    text-transform: capitalize; transition: background .12s, color .12s;
-  }
-  .seg-b:hover { color: var(--text); }
-  .seg-b.on { background: var(--accent); color: #0B0B0D; font-weight: 600; }
 
   /* ── restart prompt ── */
   .restart {

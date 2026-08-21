@@ -80,6 +80,28 @@ img, svg, canvas { display: block; max-width: 100%; }
   --r-lg: 4px;
 
   /* ---- rhythm ---- */
+  /* SPACING SCALE — snap to these.
+     Audited 2026-08-21: every integer from 1px to 14px was in use, including
+     11 and 13, which is not a scale but an accumulation. Four-based, with 2px
+     kept for hairline gaps inside controls. */
+  --sp-1:  2px;
+  --sp-2:  4px;
+  --sp-3:  6px;
+  --sp-4:  8px;
+  --sp-5:  12px;
+  --sp-6:  16px;
+  --sp-7:  20px;
+  --sp-8:  24px;
+  --sp-9:  32px;
+
+  /* TYPE SCALE — 17 distinct sizes were in use (8 → 34px). Five roles instead.
+     MICRO is for text nobody reads unless something went wrong. */
+  --fs-micro:   9.5px;
+  --fs-small:   11.5px;
+  --fs-body:    13px;
+  --fs-title:   15px;
+  --fs-display: 21px;
+
   --gap:   8px;
   --pad:   14px;
   --rail-w: 240px;

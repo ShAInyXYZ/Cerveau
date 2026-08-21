@@ -294,10 +294,10 @@
   /* filter bar floats over the graph canvas, top-left */
   /* graph: same bar, floated top-center over the canvas */
   .gfilters {
-    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: var(--z-raised);
   }
   .ghint, .gsearchnote {
-    position: absolute; z-index: 4; display: flex; align-items: center; gap: 8px;
+    position: absolute; z-index: var(--z-raised); display: flex; align-items: center; gap: 8px;
   }
   .ghint { inset: 0; justify-content: center; }
   .gsearchnote {
@@ -308,7 +308,7 @@
 
   /* provenance overlay */
   .provoverlay {
-    position: fixed; inset: 0; z-index: 80;
+    position: fixed; inset: 0; z-index: var(--z-modal);
     background: rgba(0,0,0,.5); backdrop-filter: blur(2px);
     display: flex; align-items: center; justify-content: center; padding: 40px;
   }

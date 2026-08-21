@@ -53,7 +53,7 @@
   .tname { text-transform: uppercase; }
 
   :global(.menu) {
-    z-index: 60;
+    z-index: var(--z-overlay);
     min-width: 268px;
     background: var(--s1);
     border: 1px solid var(--line2);

@@ -49,7 +49,7 @@
   :global(.sel-chev.open) { transform: rotate(180deg); }
 
   :global(.sel-menu) {
-    z-index: 70; min-width: 200px; max-height: 320px; overflow-y: auto;
+    z-index: var(--z-popover); min-width: 200px; max-height: 320px; overflow-y: auto;
     background: var(--surface); border-radius: 10px;
     padding: 5px; box-shadow: var(--elev-2);
   }

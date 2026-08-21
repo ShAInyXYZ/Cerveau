@@ -85,7 +85,7 @@
   /* capability grid — a compact row of icon tiles, each with a corner status badge */
   .cap-bar {
     position: absolute; bottom: calc(100% + 10px); right: 0;
-    display: flex; gap: 6px; z-index: 40;
+    display: flex; gap: 6px; z-index: var(--z-dropdown);
     background: var(--surface); border-radius: 12px;
     box-shadow: 0 0 0 1px var(--line2), 0 1px 0 0 var(--lift) inset;
     padding: 8px; animation: rise .16s cubic-bezier(.16,1,.3,1);
