@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os/exec"
 	"regexp"
@@ -48,7 +49,84 @@ type WebFetch struct {
 }
 
 func NewWebFetch() *WebFetch {
-	return &WebFetch{http: &http.Client{Timeout: webFetchTimeout}}
+	// SSRF guard: web_fetch takes a model-supplied URL and reads the response
+	// back to the LLM, so it must never be usable to reach the machine's own
+	// loopback, the LAN, link-local metadata endpoints, etc. We enforce at
+	// DIAL time on the RESOLVED ip — this re-validates every redirect hop and
+	// closes DNS-rebinding (the address we check is the address we connect to).
+	base := &net.Dialer{Timeout: 10 * time.Second}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, fmt.Errorf("dns lookup for %q failed", host) // fail closed
+			}
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("no addresses for %q", host)
+			}
+			for _, ip := range ips {
+				if !ipAllowed(ip.IP) {
+					return nil, fmt.Errorf("refusing to connect to non-public address %s", ip.IP)
+				}
+			}
+			return base.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+		},
+	}
+	return &WebFetch{http: &http.Client{Timeout: webFetchTimeout, Transport: transport}}
+}
+
+// ipAllowed is the egress policy the SSRF guard enforces. It defaults to the
+// strict publicIP check; tests override it to permit loopback httptest servers.
+// Never relax it in production code.
+var ipAllowed = publicIP
+
+// publicIP reports whether ip is a routable public address — i.e. NOT
+// loopback, private (RFC1918), link-local (incl. 169.254 metadata + fe80::),
+// CGNAT (100.64/10), unspecified, multicast, or IPv6 ULA (fc00::/7).
+func publicIP(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() || ip.IsUnspecified() {
+		return false
+	}
+	if v4 := ip.To4(); v4 != nil {
+		// CGNAT 100.64.0.0/10 — not covered by IsPrivate.
+		if v4[0] == 100 && v4[1]&0xc0 == 64 {
+			return false
+		}
+	}
+	return true
+}
+
+// hostAllowedForFetch resolves a URL's host and reports whether every one of
+// its addresses is public. Used to pre-screen the headless-Chromium render
+// path, which does its own dialing outside our http.Transport guard.
+func hostAllowedForFetch(ctx context.Context, rawURL string) bool {
+	u, err := nurl.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ipAllowed(ip)
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(ips) == 0 {
+		return false // fail closed
+	}
+	for _, ip := range ips {
+		if !ipAllowed(ip.IP) {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *WebFetch) Name() string { return "web_fetch" }
@@ -95,7 +173,7 @@ func (t *WebFetch) Execute(ctx context.Context, args json.RawMessage) (string, e
 
 	// JS-required probe: if the first response is an empty SPA shell, render
 	// once with the shipped headless Chromium and re-extract. Disclosed.
-	if needsJS(rawHTML) {
+	if needsJS(rawHTML) && hostAllowedForFetch(ctx, a.URL) {
 		if rendered, rerr := renderWithChromium(ctx, a.URL); rerr == nil && len(rendered) > len(rawHTML) {
 			rawHTML = rendered
 			note += "[rendered with headless browser — the page required JavaScript]\n"

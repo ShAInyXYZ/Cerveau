@@ -2,11 +2,13 @@ package server
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,12 +81,37 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 	invites := newPairSessions()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
+		// CSRF: the loopback trust above is a network property, and a browser
+		// on the user's machine can be driven cross-site by any web page.
+		// Native clients (the Android app, curl, the CLI) never send Origin;
+		// a same-origin panel always matches r.Host. Reject any state-changing
+		// request whose Origin is foreign.
+		if origin := r.Header.Get("Origin"); origin != "" &&
+			r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			u, err := url.Parse(origin)
+			if err != nil || !strings.EqualFold(u.Host, r.Host) {
+				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+				return
+			}
+		}
 		// The pairing portal: shows a QR + short code so a phone never has to
 		// type a tailnet hostname (and the APK never has to contain one).
-		// Only reachable by someone already on the network.
+		// The portal DISPLAYS a live pairing code — that code is a credential,
+		// so once a token exists the portal itself is restricted to the
+		// loopback operator or an already-trusted device. Slug resolution
+		// (/p/<slug>) stays open for the not-yet-paired phone, but shares the
+		// /api/pair rate limit so slugs cannot be enumerated within the TTL.
 		if path == "/pair" || strings.HasPrefix(path, "/p/") {
+			if path == "/pair" && !trustedForPairing(cfg, r) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 			gate := gateOrigin(r)
 			if strings.HasPrefix(path, "/p/") {
+				if !limiter.allow() {
+					http.Error(w, "too many attempts", http.StatusTooManyRequests)
+					return
+				}
 				if inv, ok := invites.bySlug(strings.TrimPrefix(path, "/p/")); ok {
 					// The phone asks for JSON to resolve a typed slug into
 					// {gate, code}; a browser gets the page.
@@ -104,11 +131,18 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 			return
 		}
 		// The desktop panel mints an invitation for its "pair a phone" dialog.
-		// Open like /pair itself: reachable only by someone already on the
-		// machine or the tailnet, and it grants nothing without the code.
+		// A minted invitation IS a pairing credential, so minting one
+		// requires the same trust as reading it off the /pair page: the
+		// loopback operator, or an already-paired device. Before this check
+		// existed, any network caller could mint a code and pair their own
+		// device, collapsing the whole token+signature gate.
 		if path == "/api/pair/invite" {
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if !trustedForPairing(cfg, r) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			invites.serveInviteJSON(w, gateOrigin(r))
@@ -151,7 +185,7 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 		}
 
 		// The full proof: bearer token AND a live device signature.
-		if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") != token {
+		if !tokenMatch(r, token) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -162,11 +196,34 @@ func authGate(cfg authCfg, inner http.Handler) http.Handler {
 		// Fleet management, deliberately placed after the full proof above:
 		// only an already-trusted device may list or revoke devices.
 		if path == "/api/devices" || path == "/api/devices/revoke" {
-			serveDevices(w, r)
+			serveDevices(cfg, w, r)
 			return
 		}
 		inner.ServeHTTP(w, r)
 	})
+}
+
+// tokenMatch compares the request's bearer token to the configured one in
+// constant time, so a network attacker cannot recover the token byte-by-byte
+// from response-timing differences.
+func tokenMatch(r *http.Request, token string) bool {
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
+// trustedForPairing reports whether this request may mint or read a pairing
+// invitation. True for: a fresh install with no token yet (nothing to
+// protect), the loopback operator (same trust root as the console pair ID),
+// and a fully-authenticated device (bearer token + live signature).
+func trustedForPairing(cfg authCfg, r *http.Request) bool {
+	token := cfg.RemoteToken()
+	if token == "" {
+		return true
+	}
+	if isLocalRequest(r) {
+		return true
+	}
+	return tokenMatch(r, token) && isDeviceAuth(r)
 }
 
 func servePair(cfg authCfg, limiter *pairLimiter, invites *pairSessions, w http.ResponseWriter, r *http.Request) {

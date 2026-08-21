@@ -94,7 +94,9 @@ func Save(path string, cfg *Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	// 0o600: the config holds the remote_access_token (a bearer credential).
+	// World-readable (0o644) leaked it to any local user. See SECURITY.
+	return os.WriteFile(path, data, 0o600)
 }
 
 func applyEnv(cfg *Config) {

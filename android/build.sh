@@ -23,10 +23,25 @@ zip -q unsigned.apk classes.dex
 "$BT/zipalign" -f 4 unsigned.apk aligned.apk
 
 # keystore: keep your own — this generates a throwaway one if absent.
+# The signing password is NEVER hardcoded. Provide it via $KS_PASS. For the
+# auto-generated throwaway keystore we mint a random password and stash it in
+# the gitignored cerveau.keystore.pass so re-signing the same keystore works.
+PASS_FILE="cerveau.keystore.pass"
 if [ ! -f cerveau.keystore ]; then
+  KS_PASS="${KS_PASS:-$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)}"
+  printf '%s' "$KS_PASS" > "$PASS_FILE"
+  chmod 600 "$PASS_FILE"
   keytool -genkeypair -keystore cerveau.keystore -alias cerveau \
     -keyalg RSA -keysize 2048 -validity 10950 \
-    -storepass cerveau -keypass cerveau -dname "CN=Cerveau,O=shiny" 2>/dev/null
+    -storepass "$KS_PASS" -keypass "$KS_PASS" -dname "CN=Cerveau,O=shiny" 2>/dev/null
 fi
-"$BT/apksigner" sign --ks cerveau.keystore --ks-pass pass:cerveau --out Cerveau.apk aligned.apk
+# Resolve the password: explicit env wins; else the stashed throwaway password.
+if [ -z "${KS_PASS:-}" ] && [ -f "$PASS_FILE" ]; then
+  KS_PASS="$(cat "$PASS_FILE")"
+fi
+if [ -z "${KS_PASS:-}" ]; then
+  echo "error: KS_PASS is unset and no $PASS_FILE exists — export KS_PASS to sign." >&2
+  exit 1
+fi
+"$BT/apksigner" sign --ks cerveau.keystore --ks-pass "pass:$KS_PASS" --out Cerveau.apk aligned.apk
 echo "built android/Cerveau.apk"

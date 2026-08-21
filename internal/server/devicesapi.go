@@ -23,7 +23,7 @@ type deviceView struct {
 }
 
 // serveDevices handles GET /api/devices and POST /api/devices/revoke.
-func serveDevices(w http.ResponseWriter, r *http.Request) {
+func serveDevices(cfg authCfg, w http.ResponseWriter, r *http.Request) {
 	me := r.Header.Get("X-Cerveau-Device")
 
 	if strings.HasSuffix(r.URL.Path, "/revoke") {
@@ -46,7 +46,7 @@ func serveDevices(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "cannot revoke the device you are using", http.StatusConflict)
 			return
 		}
-		removed, err := revokeDevice(body.ID, body.Cascade)
+		removed, remaining, err := revokeDevice(body.ID, body.Cascade)
 		if err != nil {
 			http.Error(w, "revoke failed", http.StatusInternalServerError)
 			return
@@ -55,7 +55,19 @@ func serveDevices(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no such device", http.StatusNotFound)
 			return
 		}
-		writeJSON(w, map[string]any{"removed": removed})
+		// A bearer token with no trusted device left behind it is a shared
+		// secret nobody holds — retire it so a leaked-but-unrevoked token
+		// cannot pair a fresh attacker device. Clearing it returns the
+		// server to its unpaired state; the next pair mints a new token.
+		tokenCleared := false
+		if remaining == 0 {
+			if err := cfg.SetRemoteToken(""); err != nil {
+				http.Error(w, "revoke saved but token rotation failed", http.StatusInternalServerError)
+				return
+			}
+			tokenCleared = true
+		}
+		writeJSON(w, map[string]any{"removed": removed, "token_cleared": tokenCleared})
 		return
 	}
 

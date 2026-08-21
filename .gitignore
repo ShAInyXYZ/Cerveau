@@ -87,6 +87,7 @@ android/Cerveau.apk
 
 # APK signing key — never commit
 android/cerveau.keystore
+android/cerveau.keystore.pass
 
 # ── android build output (build.sh regenerates all of this) ───────────────
 android/classes/
@@ -98,3 +99,7 @@ android/aligned.apk
 android/res.zip
 android/*.apk
 android/*.idsig
+
+# ── strix pentest output (scan artifacts, never code) ──────────────────────
+strix_runs/
+strix_runs_launch.log

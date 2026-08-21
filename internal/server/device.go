@@ -113,8 +113,9 @@ func registerDeviceVouched(id, pubkeyB64, approvedBy, label string) error {
 // Without cascade the admitted devices survive but are flagged, so the trail
 // never points at an approver that no longer exists.
 //
-// Returns the ids actually removed.
-func revokeDevice(id string, cascade bool) ([]string, error) {
+// Returns the ids actually removed and the number of devices still trusted
+// afterwards (so the caller can retire a now-orphaned bearer token).
+func revokeDevice(id string, cascade bool) ([]string, int, error) {
 	devMu.Lock()
 	defer devMu.Unlock()
 	ds := loadDevices()
@@ -147,9 +148,9 @@ func revokeDevice(id string, cascade bool) ([]string, error) {
 		out = append(out, d)
 	}
 	if len(removed) == 0 {
-		return nil, nil
+		return nil, len(ds), nil
 	}
-	return removed, saveDevices(out)
+	return removed, len(out), saveDevices(out)
 }
 
 func findDevice(id string) *device {

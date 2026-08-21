@@ -4,11 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
+
+// TestMain relaxes the SSRF egress policy for this package's tests only: the
+// httptest servers below bind loopback, which the production guard (publicIP)
+// correctly refuses. We allow loopback IN TESTS while keeping every other
+// non-public range blocked, so the guard's real behaviour is still exercised.
+func TestMain(m *testing.M) {
+	strict := ipAllowed
+	ipAllowed = func(ip net.IP) bool { return ip.IsLoopback() || strict(ip) }
+	os.Exit(m.Run())
+}
 
 func fetchArgs(t *testing.T, w *WebFetch, args string) (string, error) {
 	t.Helper()
@@ -178,5 +190,25 @@ func TestWebFetchEmptyExtractionFallback(t *testing.T) {
 	}
 	if !strings.Contains(out, "42") {
 		t.Errorf("fallback should return the page content: %q", out)
+	}
+}
+
+// TestWebFetchBlocksPrivateAddress asserts the SSRF guard refuses non-public
+// targets. We temporarily restore the strict policy so loopback is blocked
+// here even though TestMain relaxed it for the httptest servers.
+func TestWebFetchBlocksPrivateAddress(t *testing.T) {
+	relaxed := ipAllowed
+	ipAllowed = publicIP // strict, for this test only
+	defer func() { ipAllowed = relaxed }()
+
+	for _, target := range []string{
+		"http://127.0.0.1/",
+		"http://169.254.169.254/latest/meta-data/", // cloud metadata
+		"http://192.168.1.1/",
+		"http://10.0.0.5/",
+	} {
+		if _, err := fetchArgs(t, NewWebFetch(), `{"url":"`+target+`"}`); err == nil {
+			t.Errorf("SSRF guard let through %s — must be refused", target)
+		}
 	}
 }

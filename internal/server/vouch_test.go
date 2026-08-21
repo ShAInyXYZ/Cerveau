@@ -52,7 +52,7 @@ func TestRevokeCascadeReachesVouchedDevices(t *testing.T) {
 	_ = registerDeviceVouched("laptop1", "K2", "phone1", "laptop")
 	_ = registerDeviceVouched("desk1", "K3", "", "desktop")
 
-	removed, err := revokeDevice("phone1", true)
+	removed, _, err := revokeDevice("phone1", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestRevokeWithoutCascadeKeepsVouchedDevices(t *testing.T) {
 	_ = registerDeviceVouched("phone1", "K1", "", "phone")
 	_ = registerDeviceVouched("laptop1", "K2", "phone1", "laptop")
 
-	removed, err := revokeDevice("phone1", false)
+	removed, _, err := revokeDevice("phone1", false)
 	if err != nil {
 		t.Fatal(err)
 	}

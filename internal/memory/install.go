@@ -49,22 +49,23 @@ func InstallFrom(destPath, baseURL, version string) error {
 		return err
 	}
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), version, asset)
-	sums, sumErr := fetchText(url + ".sha256")
-	if sumErr == nil && sums != "" {
-		slog.Info("typesense: verifying checksum")
+	sums, err := fetchText(url + ".sha256")
+	if err != nil {
+		return fmt.Errorf("checksum download: %w", err)
 	}
+	fields := strings.Fields(sums)
+	if len(fields) == 0 {
+		return fmt.Errorf("checksum file empty for %s", url)
+	}
+	slog.Info("typesense: verifying checksum")
 	data, err := fetchBytes(url)
 	if err != nil {
 		return err
 	}
-	if sums != "" {
-		want := strings.ToLower(strings.Fields(sums)[0])
-		got := strings.ToLower(hex.EncodeToString(sha256Of(data)))
-		if want != got {
-			return fmt.Errorf("checksum mismatch: want %s got %s", want, got)
-		}
-	} else {
-		slog.Warn("typesense: no checksum available, proceeding unverified")
+	want := strings.ToLower(fields[0])
+	got := strings.ToLower(hex.EncodeToString(sha256Of(data)))
+	if want != got {
+		return fmt.Errorf("checksum mismatch: want %s got %s", want, got)
 	}
 	return extractBinary(data, destPath)
 }
