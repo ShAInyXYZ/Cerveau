@@ -3,6 +3,7 @@
   import { fmtTime } from '../api';
   import { sessionStore } from '../stores/session.svelte.ts';
   import { tooltip } from '../../kit/tooltip.js';
+  import { splitStreaming } from '../markdown-safe';
   import { Copy, Check, Pencil } from 'lucide-svelte';
 
   // Assistant turns that carry ONLY a tool call have empty text — their tool
@@ -104,7 +105,17 @@
       {:else if user}
         <span class="utext">{m.payload?.text ?? ''}</span>
       {:else}
-        <Markdown source={m.payload?.text ?? ''} />
+        {@const live = sessionStore.running && i === visible.length - 1}
+        {@const md = live ? splitStreaming(m.payload?.text ?? '') : null}
+        {#if md && md.pending}
+          <!-- Mid-stream: render the completed blocks and hold the unfinished
+               tail as plain text. A half-open fence otherwise renders broken
+               and reflows the whole message when it closes. -->
+          <Markdown source={md.ready} />
+          <span class="pending">{md.pending}</span>
+        {:else}
+          <Markdown source={m.payload?.text ?? ''} />
+        {/if}
       {/if}
     </div>
 
@@ -141,6 +152,12 @@
   }
   .turn.user { align-self: flex-end; align-items: flex-end; max-width: 620px; }
   .tmeta { display: flex; align-items: baseline; gap: 8px; }
+
+  /* the still-arriving tail: same metrics as rendered prose so releasing it
+     into markdown does not jump the layout */
+  .pending {
+    white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; color: var(--text);
+  }
 
   /* Actions appear on hover. Always-visible buttons on every turn would put
      two icons beside every line of a long conversation — the actions matter
