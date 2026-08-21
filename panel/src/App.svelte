@@ -8,7 +8,11 @@
   // browser downloads only the ranges the text on screen actually uses. Cyrillic
   // and Greek cost disk in the binary, not bytes on the wire, and a session that
   // needs them renders instead of falling back mid-sentence.
-  import '@fontsource-variable/inter';
+  // Manrope, bundled — not fetched from Google, so the panel still renders
+  // with no internet. Ships cyrillic, cyrillic-ext and greek alongside latin,
+  // so a Russian or Greek word stays in the SAME typeface instead of switching
+  // mid-sentence.
+  import '@fontsource-variable/manrope';
   import './tokens.css';
   import StatusBar from './lib/StatusBar.svelte';
   import WorkspaceRail from './lib/WorkspaceRail.svelte';

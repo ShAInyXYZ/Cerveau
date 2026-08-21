@@ -11,7 +11,7 @@
 :root {
   /* 'Inter Variable' is the bundled family name @fontsource ships;
      'Inter' catches a system install; then the platform stack. */
-  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Manrope Variable', system-ui, -apple-system, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 }
 *, *::before, *::after { box-sizing: border-box; }
