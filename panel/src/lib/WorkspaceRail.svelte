@@ -165,7 +165,8 @@
   .railhead {
     display: flex; align-items: center; gap: 8px;
     height: 34px; flex-shrink: 0; padding: 0 12px;
-    border-bottom: 1px solid var(--line);
+    /* No border-bottom: the app header above already draws a full-width rule,
+       and a second one 34px under it read as a thick, uneven double edge. */
   }
   .instant-btn {
     margin-left: auto; display: inline-flex; align-items: center; justify-content: center;

@@ -194,7 +194,7 @@
   .edit-note { flex: 1; font-size: 11px; color: var(--dim); text-align: left; }
   .ebtn {
     padding: 6px 14px; border-radius: 7px; cursor: pointer; font: inherit; font-size: 12.5px;
-    background: none; border: 1px solid var(--line); color: var(--dim);
+    background: none; border: 1px solid var(--line2); color: var(--dim);
   }
   .ebtn:hover { color: var(--text); border-color: var(--dim); }
   .ebtn.go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }

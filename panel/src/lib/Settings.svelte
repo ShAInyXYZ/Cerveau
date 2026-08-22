@@ -308,7 +308,7 @@
     flex: 1; min-width: 0;
     display: flex; flex-direction: column; align-items: center; gap: 14px;
     cursor: pointer; text-align: center;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel); border: 1px solid var(--line2); border-radius: 12px;
     padding: 26px 16px; color: inherit; font: inherit;
     transition: border-color .14s, background .14s;
   }
@@ -345,7 +345,7 @@
   }
   .cmd {
     display: flex; align-items: center; gap: 8px; margin-top: 7px;
-    background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); border: 1px solid var(--line2); border-radius: 6px;
     padding: 7px 9px;
   }
   .cmd code {
@@ -354,7 +354,7 @@
   }
   .copy {
     flex-shrink: 0; font-size: var(--fs-micro); letter-spacing: .06em; cursor: pointer;
-    background: none; border: 1px solid var(--line); border-radius: 4px;
+    background: none; border: 1px solid var(--line2); border-radius: 4px;
     padding: 3px 8px; color: var(--dim);
   }
   .copy:hover { color: var(--accent); border-color: var(--accent); }

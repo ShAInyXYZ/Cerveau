@@ -35,8 +35,16 @@ img, svg, canvas { display: block; max-width: 100%; }
   --s3:    #2B2B2B;   /* control / hover */
 
   /* ---- hairlines ---- */
-  --line:  #333333;   /* default divider — must sit above --s3 */
-  --line2: #3D3D3D;   /* emphasized / focusable edge */
+  /* ONE rule, so edges stop competing:
+       --line   STRUCTURE — separates regions of the app shell (header from
+                body, rail from chat). Used sparingly; two structural lines
+                should never meet.
+       --line2  CONTROLS — the edge of a thing you can interact with: an
+                input, a menu, a focusable card. Slightly brighter so a
+                control reads as raised rather than as another divider.
+     Anything else that needs an edge is a SURFACE change, not a line. */
+  --line:  #2E2E2E;   /* structure — quieter than a control edge */
+  --line2: #3D3D3D;   /* control edge */
 
   /* ---- ink ---- */
   --text:  #FAFAFA;   /* primary */
