@@ -25,6 +25,7 @@
   import { api, onAuthRequired, setAuthToken } from './lib/api';
   import { healthStore } from './lib/stores/health.svelte.ts';
   import { sessionStore } from './lib/stores/session.svelte.ts';
+  import { tooltip } from './kit/tooltip.js';
   import { uiStore } from './lib/stores/ui.svelte.ts';
   import type { SessionMeta } from './lib/types';
 
@@ -84,7 +85,7 @@
   {/if}
 
   <div class="body">
-    <div class="railwrap" class:open={uiStore.railOpen}>
+    <div class="railwrap" class:open={uiStore.railOpen} class:collapsed={uiStore.railCollapsed}>
       <WorkspaceRail sessions={sessionStore.sessions} activeId={sessionStore.activeId}
         runningIds={sessionStore.runningIds}
         lastEvents={sessionStore.lastEvents} skills={sessionStore.skills}
@@ -100,6 +101,17 @@
     <!-- The drawer toggle rides the RAIL's edge rather than sitting in the
          header: the control stays attached to the column it opens and closes,
          so its meaning is positional instead of learned. -->
+    <!-- Desktop: folds the rail away to reclaim its width. Separate from the
+         mobile drawer handle below — that one slides an overlay over the
+         content, this one changes the layout. -->
+    <button class="railfold" class:collapsed={uiStore.railCollapsed}
+      onclick={() => uiStore.toggleRailCollapsed()}
+      aria-label={uiStore.railCollapsed ? 'show the project tree' : 'hide the project tree'}
+      aria-expanded={!uiStore.railCollapsed}
+      use:tooltip={uiStore.railCollapsed ? 'show the project tree' : 'hide the project tree'}>
+      {#if uiStore.railCollapsed}<PanelLeftOpen size={15} />{:else}<PanelLeftClose size={15} />{/if}
+    </button>
+
     <button class="railtoggle" class:open={uiStore.railOpen}
       onclick={() => uiStore.toggleRail()}
       aria-label={uiStore.railOpen ? 'close the session drawer' : 'open the session drawer'}
@@ -200,8 +212,33 @@
   .railwrap { display: flex; min-height: 0; }
   .scrim { display: none; }
 
-  /* desktop keeps the rail permanently open, so the toggle is phone-only */
+  /* desktop keeps the rail permanently open, so the DRAWER toggle is
+     phone-only — the fold control below replaces it there */
   .railtoggle { display: none; }
+
+  /* ── desktop: fold the rail away, reclaiming its width ── */
+  .railwrap.collapsed {
+    width: 0; overflow: hidden;
+    transition: width var(--t-med) var(--ease-out);
+  }
+  .railfold {
+    position: absolute; left: 0; top: 10px; z-index: var(--z-raised);
+    display: flex; align-items: center; justify-content: center;
+    width: 22px; height: 34px; padding: 0;
+    background: var(--s2); color: var(--faint);
+    border: none; border-radius: 0 8px 8px 0;
+    cursor: pointer;
+    transition: transform var(--t-med) var(--ease-out), color var(--t-fast), opacity var(--t-fast);
+    /* rides the rail's edge, so it reads as belonging to the column it folds */
+    transform: translateX(var(--rail-w, 260px));
+    opacity: 0;
+  }
+  /* stays out of the way until wanted; a control that never fades is a
+     permanent fixture, and this one is used rarely */
+  .railwrap:hover ~ .railfold,
+  .railfold:hover, .railfold:focus-visible { opacity: 1; }
+  .railfold:hover { color: var(--text); }
+  .railfold.collapsed { transform: none; opacity: 1; color: var(--dim); }
 
   /* ── compact: the rail becomes an overlay drawer ── */
   @media (max-width: 900px) {
@@ -218,6 +255,13 @@
       background: rgba(0, 0, 0, .5);
       border: none; cursor: pointer;
     }
+
+    /* the drawer handle owns this job below 900px; two controls for one
+       column would be a choice the user has to decode */
+    .railfold { display: none; }
+    /* a rail collapsed on desktop must not stay collapsed on a phone, where
+       the drawer is the only way to reach it */
+    .railwrap.collapsed { width: auto; overflow: visible; }
 
     .railtoggle {
       display: flex; align-items: center; justify-content: center;
