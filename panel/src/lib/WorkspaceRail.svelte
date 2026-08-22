@@ -170,11 +170,13 @@
   .instant-btn {
     margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 26px; color: var(--dim);
-    background: var(--s2); border: 1px solid var(--line2);
+    /* surface, not an outline — the header already carries a border-bottom,
+       and a boxed icon beside it read as a second frame */
+    background: var(--s2); border: 1px solid transparent;
     border-radius: 7px; cursor: pointer;
     transition: color .1s, background .1s, border-color .1s, transform .05s;
   }
-  .instant-btn:hover { color: var(--text); background: var(--s3); border-color: var(--faint); }
+  .instant-btn:hover { color: var(--text); background: var(--s3); border-color: var(--line); }
   .instant-btn:active { transform: translateY(1px); }
   .screate { padding: 2px 0 4px; }
 
@@ -185,8 +187,11 @@
   .pfolder {
     width: 100%; display: flex; align-items: center; gap: 8px;
     padding: 8px 12px; border: none; border-radius: 999px;
+    /* Surface only, no elevation ring. --elev-1 is THREE edges (a 1px ring
+       plus two insets); with one per pill, a border-left on every session
+       list and the rail's own border-right, a 250px column was drawing five
+       overlapping lines. Depth here comes from the surface gradient. */
     background: var(--surface-raised);
-    box-shadow: var(--elev-1);
     color: var(--muted); cursor: pointer;
     transition: box-shadow .12s, color .12s;
   }
@@ -230,7 +235,9 @@
   .sessions {
     display: flex; flex-direction: column; gap: 1px;
     margin: 4px 0 0 20px; padding-left: 12px;
-    border-left: 1px solid var(--line);
+    /* one quiet guide showing these belong to the pill above, not a
+       divider competing with the rail edge */
+    border-left: 1px solid var(--s3);
   }
   .sess {
     position: relative;
@@ -245,7 +252,8 @@
     width: 8px; height: 1px; background: var(--line);
   }
   .sess:hover { background: color-mix(in srgb, #fff 3.5%, transparent); }
-  .sess.on { background: var(--surface-raised); box-shadow: var(--elev-1); }
+  /* the ::before accent bar already says which session is active */
+  .sess.on { background: var(--surface-raised); }
   .sess.on::before { background: var(--accent-line); }
   .sdot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); margin-top: 5px; flex-shrink: 0; }
   .sess :global(.dot) { margin-top: 5px; }
