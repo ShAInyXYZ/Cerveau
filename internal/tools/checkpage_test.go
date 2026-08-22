@@ -90,3 +90,37 @@ func TestCheckPageClassSelector(t *testing.T) {
 		t.Errorf(".missing should not be found: %q", got)
 	}
 }
+
+// TestCheckPageBlocksSSRF asserts the SSRF guard on the url arg: LAN,
+// link-local/metadata, and private addresses are refused, while loopback (the
+// local serve tool, the intended use) and public hosts are allowed through the
+// guard. We restore the strict ipAllowed policy so 10.x/192.168/169.254 block
+// regardless of any test-wide relaxation.
+func TestCheckPageBlocksSSRF(t *testing.T) {
+	relaxed := ipAllowed
+	ipAllowed = publicIP
+	defer func() { ipAllowed = relaxed }()
+
+	cp := &CheckPage{}
+	blocked := []string{
+		"http://169.254.169.254/latest/meta-data/", // cloud metadata
+		"http://192.168.1.1/",
+		"http://10.0.0.5/admin",
+		"ftp://example.com/x", // non-http scheme
+	}
+	for _, u := range blocked {
+		args, _ := json.Marshal(map[string]string{"url": u})
+		if _, err := cp.Execute(context.Background(), args); err == nil {
+			t.Errorf("check_page SSRF guard let through %s — must be refused", u)
+		}
+	}
+
+	// Loopback is the intended serve-tool case: the guard must NOT reject it.
+	// (No server is listening, so Execute still errors later — but not with the
+	// SSRF refusal.) We assert the error, if any, is not the guard's message.
+	args, _ := json.Marshal(map[string]string{"url": "http://127.0.0.1:65500/"})
+	if _, err := cp.Execute(context.Background(), args); err != nil &&
+		strings.Contains(err.Error(), "non-public") {
+		t.Errorf("loopback serve URL must pass the SSRF guard, got: %v", err)
+	}
+}

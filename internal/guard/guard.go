@@ -54,6 +54,10 @@ func New(workspace string) *Guard {
 			// blocked legitimate in-project deletes like rm -rf <ws>/dist.
 			{TierCatastrophic, regexp.MustCompile(`:\(\)\s*\{`), "fork bomb", "never allowed"},
 			{TierCatastrophic, regexp.MustCompile(`\bdd\b[^|]*\bof=/dev/`), "dd writing to a device", "never allowed"},
+			// dd whose target is a shell variable (of=$T) can't be proven safe —
+			// `T=/dev/sda; dd if=x of=$T` reaches a raw device while dodging the
+			// literal /dev/ match above. Refuse the unverifiable form outright.
+			{TierCatastrophic, regexp.MustCompile(`\bdd\b[^|]*\bof=(["']?\$|\$)`), "dd writing to a shell-variable target (unverifiable — may be a device)", "never allowed — use an explicit path"},
 			{TierCatastrophic, regexp.MustCompile(`\bmkfs[.\s]`), "filesystem format", "never allowed"},
 			{TierCatastrophic, regexp.MustCompile(`\b(shutdown|reboot|poweroff|halt)\b`), "system power operation", "never allowed"},
 			{TierCatastrophic, regexp.MustCompile(`\bgit\s+push\b[^|]*(--force\b|-f\b)`), "force push rewrites remote history", "never allowed — use a normal push"},
@@ -62,8 +66,14 @@ func New(workspace string) *Guard {
 			{TierCatastrophic, regexp.MustCompile(`\bchmod\s+(-R\s+)?777\s+/(\s|$)`), "chmod 777 on root", "never allowed"},
 			{TierSensitive, regexp.MustCompile(`\bgit\s+push\b`), "push publishes to a remote", "external side effect — needs user confirmation"},
 			{TierSensitive, regexp.MustCompile(`\b(npm|pip|cargo|gem)\s+publish\b`), "package publish", "external side effect — needs user confirmation"},
-			{TierSensitive, regexp.MustCompile(`(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|fi)?sh\b`), "piping remote script into a shell", "download first, review, then run"},
-			{TierSensitive, regexp.MustCompile(`\b(ssh|scp|rsync)\b[^|]*@`), "remote connection", "remote operations need user confirmation"},
+			// Piping a downloaded script into a shell. The interpreter may be
+			// reached directly (sh/bash/zsh/fish) OR laundered through a runner
+			// (env sh, xargs sh, sudo sh) — match all of those so `curl … | env sh`
+			// cannot slip past the bare-`sh` pattern.
+			{TierSensitive, regexp.MustCompile(`(curl|wget)\b[^|]*\|\s*(sudo\s+|env\s+|xargs\s+(-\S+\s+)*)*(ba|z|fi)?sh\b`), "piping remote script into a shell", "download first, review, then run"},
+			// Remote command execution. `@` is optional: `ssh 192.168.1.5 id`
+			// runs a command on another host with no user in the target.
+			{TierSensitive, regexp.MustCompile(`\b(ssh|scp|rsync)\b[^|]*(@|\s+\S)`), "remote connection", "remote operations need user confirmation"},
 		},
 		pathRules: []rule{
 			{TierSensitive, regexp.MustCompile(`(^|[\s/"'=])\.env($|[.\s:"'/])`), "environment file may contain secrets", "use config example files instead"},

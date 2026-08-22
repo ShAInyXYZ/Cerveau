@@ -228,7 +228,11 @@ func gateOrigin(r *http.Request) string {
 		host = r.Host
 	}
 	if h, _, err := net.SplitHostPort(host); err == nil {
-		if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+		// "localhost" is loopback too, and does not parse as an IP. A CLI
+		// pairing from an SSH session sends exactly that Host, and without
+		// this the invite handed back a localhost URL — unreachable from the
+		// phone it is meant for, which is the whole point on a headless box.
+		if ip := net.ParseIP(h); (ip != nil && ip.IsLoopback()) || strings.EqualFold(h, "localhost") {
 			if ts := tailnetSelf(); ts != "" {
 				return "http://" + net.JoinHostPort(ts, ignitePort)
 			}

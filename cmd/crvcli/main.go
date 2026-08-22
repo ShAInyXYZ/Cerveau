@@ -59,6 +59,10 @@ func main() {
 		err = c.sessions()
 	case "health":
 		err = c.health()
+	case "pair":
+		// mint a pairing invitation from a terminal — the only route on a
+		// headless install, where the /pair page has no browser to open in
+		err = c.pair(hasFlag(args[1:], "--qr"))
 	case "rfx":
 		err = c.cmdRfx(args[1:])
 	case "help", "-h", "--help":
@@ -220,6 +224,17 @@ func (c *client) health() error {
 
 // --- HTTP helpers ---
 
+// hasFlag is enough for the one boolean a subcommand takes; a second flag set
+// per command would cost more than it saves.
+func hasFlag(args []string, want string) bool {
+	for _, a := range args {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *client) get(path string) (map[string]any, error) {
 	return c.do("GET", path, nil)
 }
@@ -331,6 +346,8 @@ commands:
   new <name>        create a session, print its id
   sessions          list sessions
   health            show component readiness
+  pair [--qr]       mint a pairing code for a phone or tablet.
+                    Works over SSH on a headless box — no browser needed.
   rfx <sub>         reflex management: list | show | install | remove | test
                     (local, no server needed — see: crvcli rfx)
 

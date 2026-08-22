@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	nurl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +50,35 @@ func (t *CheckPage) Schema() map[string]any {
 			"eval":   map[string]any{"type": "string", "description": "JS expression evaluated in the page after it loads; its value is returned to you. Use it to READ RUNTIME STATE, e.g. \"JSON.stringify({omega: window.__state.omega})\". Objects are JSON-stringified automatically."},
 		},
 	}
+}
+
+// checkPageHostAllowed reports whether every resolved address of a URL's host
+// is safe for check_page to load: loopback (the local serve tool) or a public
+// address. LAN, link-local/metadata, CGNAT and private ranges are refused.
+// Fails closed on parse or DNS error. Reuses publicIP from webfetch.go.
+func checkPageHostAllowed(ctx context.Context, rawURL string) bool {
+	u, err := nurl.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "" {
+		return false
+	}
+	allow := func(ip net.IP) bool { return ip.IsLoopback() || ipAllowed(ip) }
+	if ip := net.ParseIP(host); ip != nil {
+		return allow(ip)
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(ips) == 0 {
+		return false
+	}
+	for _, ip := range ips {
+		if !allow(ip.IP) {
+			return false
+		}
+	}
+	return true
 }
 
 // findChrome locates a usable headless chromium. Playwright's cache first
@@ -99,6 +130,20 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 			return "", fmt.Errorf("%s does not exist", a.Path)
 		}
 		target = "file://" + full
+	} else {
+		// SSRF guard: a model-supplied url is loaded in a real browser (which
+		// can fetch subresources) AND may carry an eval that reads the page
+		// back. The intended use is checking the local `serve` tool, which
+		// binds 127.0.0.1 — so LOOPBACK is allowed (it is the agent's own
+		// server, same trust as the workspace). Everything else non-public
+		// (LAN, link-local/metadata, private ranges) is blocked: those are
+		// OTHER hosts the model must not be able to reach and read back.
+		if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+			return "", fmt.Errorf("url must start with http:// or https:// (use path for a workspace file)")
+		}
+		if !checkPageHostAllowed(ctx, target) {
+			return "", fmt.Errorf("refusing to load a non-public, non-loopback address (LAN/link-local/metadata blocked)")
+		}
 	}
 
 	// eval: wrap the page so the expression runs after load and its value is
