@@ -19,7 +19,22 @@ type deviceView struct {
 	AddedAt      string `json:"added_at"`
 	ApprovedBy   string `json:"approved_by,omitempty"`
 	ApproverGone bool   `json:"approver_gone,omitempty"`
+	LastSeen     string `json:"last_seen,omitempty"`
 	Self         bool   `json:"self,omitempty"` // the device making this request
+}
+
+// registerDeviceRoutes puts the fleet endpoints on the router.
+//
+// They used to exist ONLY inside authGate, after the full token+signature
+// proof. That works for a remote phone, but a loopback request short-circuits
+// above that branch — so on the machine running Cerveau the routes 404'd and
+// the desktop panel could never list or revoke devices. Registering them makes
+// the local case work; authGate still intercepts remote requests first and
+// applies the full proof, so nothing is loosened.
+func registerDeviceRoutes(mux *http.ServeMux, cfg authCfg) {
+	h := func(w http.ResponseWriter, r *http.Request) { serveDevices(cfg, w, r) }
+	mux.HandleFunc("/api/devices", h)
+	mux.HandleFunc("/api/devices/revoke", h)
 }
 
 // serveDevices handles GET /api/devices and POST /api/devices/revoke.
@@ -76,7 +91,8 @@ func serveDevices(cfg authCfg, w http.ResponseWriter, r *http.Request) {
 		out = append(out, deviceView{
 			ID: d.ID, Label: d.Label, AddedAt: d.AddedAt,
 			ApprovedBy: d.ApprovedBy, ApproverGone: d.ApproverGone,
-			Self: d.ID == me,
+			LastSeen: d.LastSeen,
+			Self:     d.ID == me,
 		})
 	}
 	writeJSON(w, map[string]any{"devices": out})

@@ -47,6 +47,12 @@ type device struct {
 	// Set when the approver was revoked but this device was kept. The trail
 	// must never silently point at an id that no longer exists.
 	ApproverGone bool `json:"approver_gone,omitempty"`
+
+	// LastSeen is the last time this device proved itself with a signature.
+	// Without it "is this still in use?" is unanswerable — a phone paired in
+	// March and one used this morning looked identical in the list, so
+	// revoking safely meant guessing.
+	LastSeen string `json:"last_seen,omitempty"`
 }
 
 var (
@@ -200,7 +206,13 @@ func verifyDeviceSig(id, nonceB64, sigB64 string) bool {
 	if !ok2 {
 		return false
 	}
-	return ecdsa.Verify(pub, h[:], r, s)
+	if !ecdsa.Verify(pub, h[:], r, s) {
+		return false
+	}
+	// A successful signature is the only reliable proof a device is alive, so
+	// it is the right place to record it. Throttled inside touchDevice.
+	touchDevice(id)
+	return true
 }
 
 // parseASN1ECDSA pulls r,s out of a DER ECDSA signature using encoding/asn1.
@@ -271,4 +283,35 @@ func voucherVerified(id, nonceB64, sigB64 string) bool {
 		return false
 	}
 	return verifyDeviceSig(id, nonceB64, sigB64)
+}
+
+// touchLimit is how stale a last-seen may get before it is rewritten.
+//
+// Every authenticated request verifies a signature, so an unthrottled write
+// would rewrite devices.json continuously under load. A minute is far finer
+// than "is this device still in use", which is the only question the field
+// answers.
+const touchLimit = time.Minute
+
+// touchDevice records that a device just proved itself. Unknown ids are
+// ignored rather than creating a phantom entry.
+func touchDevice(id string) {
+	devMu.Lock()
+	defer devMu.Unlock()
+	ds := loadDevices()
+	now := time.Now().UTC()
+	for i := range ds {
+		if ds[i].ID != id {
+			continue
+		}
+		if ds[i].LastSeen != "" {
+			if prev, err := time.Parse(time.RFC3339, ds[i].LastSeen); err == nil &&
+				now.Sub(prev) < touchLimit {
+				return // recent enough; skip the write
+			}
+		}
+		ds[i].LastSeen = now.Format(time.RFC3339)
+		_ = saveDevices(ds)
+		return
+	}
 }

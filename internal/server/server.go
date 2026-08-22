@@ -53,6 +53,10 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("GET /api/fs/list", a.FSList)
 	mux.HandleFunc("POST /api/codegraph/index", a.ReindexCode)
 	mux.HandleFunc("GET /api/system/stats", a.SystemStats)
+	// Fleet management. authGate handles these for REMOTE callers behind the
+	// full proof; registering them here is what makes them reachable from
+	// loopback, where the gate short-circuits before that branch.
+	registerDeviceRoutes(mux, a)
 	mux.Handle("/", panel.Handler())
 	return &http.Server{Addr: addr, Handler: authGate(a, mux)}
 }
