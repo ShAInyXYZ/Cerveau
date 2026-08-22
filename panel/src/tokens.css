@@ -25,14 +25,18 @@ img, svg, canvas { display: block; max-width: 100%; }
      The upper steps are deliberately neutral gray rather than hue-240:
      a blue-tinted surface reads visibly cool over large areas like the
      tree rail, so panels stay truly neutral. ---- */
-  --bg:    #09090B;   /* app base */
-  --s1:    #0F0F11;   /* panel / tree */
-  --s2:    #1B1B1E;   /* raised / input */
-  --s3:    #222225;   /* control / hover */
+  /* Surface ladder. Rebased on #161616 (2026-08-22): the old base was
+     #09090B, nearly black with a blue cast. Each step must stay LIGHTER than
+     the one below or depth inverts — panels would read as darker than the
+     canvas they sit on. Luminance steps match the previous ladder's. */
+  --bg:    #161616;   /* app base */
+  --s1:    #1C1C1C;   /* panel / tree */
+  --s2:    #242424;   /* raised / input */
+  --s3:    #2B2B2B;   /* control / hover */
 
   /* ---- hairlines ---- */
-  --line:  #262629;   /* default divider */
-  --line2: #2C2C30;   /* emphasized / focusable edge */
+  --line:  #333333;   /* default divider — must sit above --s3 */
+  --line2: #3D3D3D;   /* emphasized / focusable edge */
 
   /* ---- ink ---- */
   --text:  #FAFAFA;   /* primary */
@@ -45,6 +49,10 @@ img, svg, canvas { display: block; max-width: 100%; }
      so it keeps text-contrast against the near-black background. ---- */
   --accent:      #E54866;
   --accent-ink:  #FFFFFF;
+  /* Text ON a filled accent surface. Dark, not white: measured against
+     #E54866 it is 5.10:1 versus white's 3.85:1. Several buttons had this
+     value hardcoded as #0B0B0D. */
+  --on-accent:   #0B0B0D;
   --accent-soft: rgba(229,72,102,.12);
   --accent-line: rgba(229,72,102,.42);
 

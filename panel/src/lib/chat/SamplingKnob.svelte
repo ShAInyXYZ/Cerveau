@@ -77,7 +77,7 @@
   .menu {
     position: absolute; bottom: calc(100% + 7px); left: 0; z-index: var(--z-dropdown);
     min-width: 148px; padding: 4px;
-    background: var(--s2, #1B1B1E); border: 1px solid var(--line);
+    background: var(--s2); border: 1px solid var(--line);
     border-radius: 9px; box-shadow: 0 10px 24px -10px rgba(0,0,0,.75);
   }
   .item {

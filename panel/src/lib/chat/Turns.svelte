@@ -197,7 +197,7 @@
     background: none; border: 1px solid var(--line); color: var(--dim);
   }
   .ebtn:hover { color: var(--text); border-color: var(--dim); }
-  .ebtn.go { background: var(--accent); border-color: var(--accent); color: #0B0B0D; font-weight: 600; }
+  .ebtn.go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
   .ebtn.go:disabled { opacity: .5; cursor: not-allowed; }
   .turn.user .tmeta { flex-direction: row-reverse; }
   .utext {
