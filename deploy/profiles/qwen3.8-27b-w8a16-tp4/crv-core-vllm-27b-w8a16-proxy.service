@@ -1,0 +1,14 @@
+[Unit]
+Description=Cerveau Brain Core — socket proxy to vLLM W8A16 TP=4
+# Pulls the Core up behind it; the socket holds the client meanwhile.
+Requires=crv-core-vllm-27b-w8a16.service
+After=crv-core-vllm-27b-w8a16.service
+
+[Service]
+# simple, NOT notify: systemd-socket-proxyd never calls sd_notify, so under
+# Type=notify systemd kills the proxy at the start timeout and the socket
+# respawns it — every in-flight model call dies with EOF. Readiness of the
+# Core is gated by the Core unit's ExecStartPost.
+Type=simple
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=infinity 127.0.0.1:18041
+PrivateTmp=no

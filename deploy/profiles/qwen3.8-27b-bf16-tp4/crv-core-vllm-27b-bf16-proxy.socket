@@ -1,0 +1,13 @@
+[Unit]
+Description=Cerveau Brain Core — wake-on-request socket (vLLM BF16 TP=4)
+# Name-matched to crv-core-vllm-27b-bf16-proxy.service: systemd activates the
+# unit sharing this socket's base name, and that must be the PROXY, not vLLM.
+
+[Socket]
+# The endpoint in ~/.config/cerveau/cores.json for this Core.
+ListenStream=127.0.0.1:18030
+# Hold the connection while the Core loads instead of refusing it.
+Accept=no
+
+[Install]
+WantedBy=sockets.target

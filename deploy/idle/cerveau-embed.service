@@ -1,0 +1,21 @@
+[Unit]
+Description=Cerveau embedder (Nemotron-3-Embed-1B)
+Before=cerveau.service
+
+[Service]
+Type=simple
+# Defaults for a one-GPU machine: the GPU is fully committed to the Core, so
+# the embedder lives on the CPU.
+Environment=EMBED_DEVICE=cpu
+Environment=EMBED_THREADS=8
+# The active Core profile decides where the embedder runs. Restart in the
+# panel writes this file from the profile's `embed` settings (the lab rig's
+# BF16 profile puts it on the 3060) and the park watchdog restarts this unit.
+# Missing file = the defaults above.
+EnvironmentFile=-%h/.config/cerveau/embed.env
+ExecStart=/home/shiny/miniconda3/bin/python3 /home/shiny/Documents/GitHub/Cerveau/sidecars/nemotron_embed.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

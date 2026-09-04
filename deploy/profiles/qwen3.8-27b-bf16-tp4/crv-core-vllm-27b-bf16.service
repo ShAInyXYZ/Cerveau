@@ -1,0 +1,55 @@
+[Unit]
+Description=Cerveau Brain Core — vLLM (Qwen3.8-27B BF16, bf16 KV, vision, TP=4 on 4×3090)
+# Pulled up by crv-core-vllm-27b-bf16-proxy.service on the first request.
+# Never enable this unit: a Core that loads at boot defeats idle parking.
+
+[Service]
+Type=exec
+WorkingDirectory=%h/Documents/GitHub/Gpu-Rig
+
+# Backend port. The proxy owns the public one (18030 — the endpoint in
+# cores.json) and forwards here.
+# The BF16 weights live on the NAS only (the local copy was removed 2026-09-04
+# after a three-way size + checksum verification). This unit therefore needs
+# /mnt/nas-personal mounted, and its first load reads 55.6 GB over the LAN —
+# minutes, not seconds. Copy the folder back to Gpu-Rig/models to make it fast.
+Environment=MODEL=/mnt/nas-personal/Backup/models/Qwen3.8-27B
+# The shared launcher defaults to W8A16/auto; this Core is the BF16 reference.
+Environment=DTYPE=bfloat16
+Environment=PORT=18031
+Environment=MAX_LEN=262144
+Environment=TP=4
+Environment=CUDA_VISIBLE_DEVICES=0,1,2,3
+# Full capabilities: bf16 KV (no approximation anywhere) and the vision tower
+# loaded, so the Core reads screenshots. Both cost KV pool; see the launcher.
+# bf16 KV keeps the split-KV verify kernel; the launcher now defaults to fp8.
+Environment=KV=bf16
+Environment=VISION=1
+# Prefix caching: off by default in vLLM for this hybrid model; on here so a
+# turn only prefills what is new since the last call.
+Environment=PREFIX_CACHE=1
+Environment=DRAFT_TOKENS=3
+# 0.92 OOMed on the first request (2026-09-04): rank 0 also carries the API
+# server and sampler, and ComfyUI idles with ~1.3 GB on GPU 0. 0.88 leaves each
+# card ~1.5 GB of headroom and still pools ~650k KV tokens (2.5× a 262k window).
+Environment=GPU_UTIL=0.88
+# Overrides written from the panel (Settings → Engine → Profile). Values here
+# take precedence over the Environment= lines above and apply on the next
+# start. Missing file = the profile as installed.
+EnvironmentFile=-%h/.config/cerveau/cores.d/vllm-27b-bf16.env
+ExecStart=%h/Documents/GitHub/Gpu-Rig/quad/start_qwen_tp4.sh
+
+# Four ranks loading 55 GB and capturing CUDA graphs: a cold start is minutes,
+# not seconds. Do not let systemd mistake it for a hang.
+TimeoutStartSec=900
+# Type=exec calls the unit active when the process spawns; vLLM binds the port
+# much later. Gate readiness on the port, and on $MAINPID so a crash fails fast
+# instead of leaving clients blocked on the socket for the whole timeout.
+ExecStartPost=/bin/bash -c 'for i in $(seq 1 440); do kill -0 $MAINPID 2>/dev/null || exit 1; (echo > /dev/tcp/127.0.0.1/18031) 2>/dev/null && exit 0; sleep 2; done; exit 1'
+# The park watchdog stops this unit; a Restart policy would undo it.
+Restart=no
+KillSignal=SIGINT
+TimeoutStopSec=90
+
+[Install]
+WantedBy=default.target

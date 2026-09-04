@@ -1,0 +1,38 @@
+[Unit]
+Description=Cerveau Brain Core — vLLM (Qwen3.8-27B W4A16)
+# Started BY the socket, not at boot: the whole point of parking is that a
+# stopped Core stays stopped until someone actually asks for it.
+# NOT socket-activated itself: the proxy is. This unit is pulled in by
+# the proxy, which is what holds the public port.
+
+[Service]
+Type=exec
+WorkingDirectory=%h/qwen-serving
+
+# The Core listens on the BACKEND port; the socket owns the public one
+# (18020, the endpoint in cores.json) and proxies through.
+Environment=PORT=18021
+Environment=CTX=long
+Environment=MAX_LEN=98304
+Environment=DRAFT_TOKENS=0
+Environment=GPU_UTIL=0.90
+ExecStart=%h/qwen-serving/single-user/start_qwen.sh
+
+# A cold start is 60-120s (KV pool + CUDA graph capture). systemd must not
+# mistake that for a hang and kill it half-loaded.
+TimeoutStartSec=600
+# Type=exec calls the unit "active" the moment the process spawns, but vLLM
+# needs 60-120s before it binds 18021. The proxy would forward into a closed
+# port in that window, so the unit is not considered started until the port
+# actually answers.
+# $MAINPID is checked each pass: without it a crashed vLLM leaves the unit
+# "activating" for the full timeout while the poll waits for a port that will
+# never open, and the client blocks on the socket the whole time.
+ExecStartPost=/bin/bash -c 'for i in $(seq 1 300); do kill -0 $MAINPID 2>/dev/null || exit 1; (echo > /dev/tcp/127.0.0.1/18021) 2>/dev/null && exit 0; sleep 2; done; exit 1'
+# The watchdog stops this unit; a Restart policy would immediately undo it.
+Restart=no
+KillSignal=SIGINT
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

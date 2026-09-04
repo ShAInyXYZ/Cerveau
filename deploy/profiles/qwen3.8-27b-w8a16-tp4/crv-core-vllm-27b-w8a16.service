@@ -1,0 +1,46 @@
+[Unit]
+Description=Cerveau Brain Core — vLLM (Qwen3.8-27B W8A16 + MTP, TP=4 on 4×3090)
+# Pulled up by crv-core-vllm-27b-w8a16-proxy.service on the first request.
+# Never enable this unit: a Core that loads at boot defeats idle parking.
+
+[Service]
+Type=exec
+WorkingDirectory=%h/Documents/GitHub/Gpu-Rig
+
+Environment=MODEL=%h/Documents/GitHub/Gpu-Rig/models/Qwen3.8-27B-W8A16-MTP
+# auto: compressed-tensors resolves int8 weights / 16-bit activations itself.
+Environment=DTYPE=auto
+# Backend port. The proxy owns the public one (18040 — the endpoint in
+# cores.json) and forwards here.
+Environment=PORT=18041
+Environment=MAX_LEN=262144
+Environment=TP=4
+Environment=CUDA_VISIBLE_DEVICES=0,1,2,3
+# fp8 KV on FlashInfer: half the KV bytes at KLD ~0, and the path reported to
+# hold up at 100k context with speculative decoding. KV=bf16 switches to
+# FlashAttention and the split-KV verify kernel instead.
+Environment=KV=fp8
+Environment=VISION=1
+Environment=PREFIX_CACHE=1
+Environment=DRAFT_TOKENS=3
+# int8 weights are half the bytes of BF16, so the same pool holds far more KV.
+Environment=GPU_UTIL=0.88
+# Marlin int8 ACTIVATIONS — experimental, see the launcher. 0 keeps the
+# checkpoint's own W8A16 arithmetic.
+Environment=MARLIN_INT8=0
+# Overrides written from the panel (Settings → Engine → Profile).
+EnvironmentFile=-%h/.config/cerveau/cores.d/vllm-27b-w8a16.env
+ExecStart=%h/Documents/GitHub/Gpu-Rig/quad/start_qwen_tp4.sh
+
+# Four ranks loading 31.6 GB and capturing CUDA graphs.
+TimeoutStartSec=900
+# Type=exec calls the unit active when the process spawns; vLLM binds the port
+# much later. Gate readiness on the port, and on $MAINPID so a crash fails fast.
+ExecStartPost=/bin/bash -c 'for i in $(seq 1 440); do kill -0 $MAINPID 2>/dev/null || exit 1; (echo > /dev/tcp/127.0.0.1/18041) 2>/dev/null && exit 0; sleep 2; done; exit 1'
+# The park watchdog stops this unit; a Restart policy would undo it.
+Restart=no
+KillSignal=SIGINT
+TimeoutStopSec=90
+
+[Install]
+WantedBy=default.target

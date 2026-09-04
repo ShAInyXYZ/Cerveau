@@ -1,0 +1,17 @@
+[Unit]
+Description=Cerveau — park the Brain Core when idle
+Documentation=file:///home/shiny/Documents/GitHub/Cerveau/deploy/idle/README.md
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/crv-park-watchdog.sh
+Restart=always
+RestartSec=10
+# Parking only ever STOPS units; waking is the socket's job, so a bug there
+# can cost power, never availability. The one start it performs is a SWITCH
+# the panel asked for (switch-request.json): stop the other Cores, start the
+# chosen one, restart cerveau.service.
+Environment=CRV_PARK_POLL=15
+
+[Install]
+WantedBy=default.target

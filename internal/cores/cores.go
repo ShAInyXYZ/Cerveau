@@ -30,6 +30,20 @@ type Core struct {
 	Notes string `json:"notes,omitempty"`
 	Model string `json:"model,omitempty"`
 	Ctx   int    `json:"ctx,omitempty"`
+	// Unit is the systemd --user unit that runs this Core. With it, the panel
+	// can ask the park watchdog to switch Cores (stop the others, start this
+	// one, restart Cerveau); without it the user gets the commands to run.
+	Unit string `json:"unit,omitempty"`
+	// Params are the runtime parameters the Core's unit sets — KV dtype, vision,
+	// window, GPU pool — as install.sh read them from its Environment= lines.
+	// They are the profile's DEFAULTS. What the user changes lives in an
+	// overrides file the unit reads at start (see params.go), never here.
+	Params map[string]string `json:"params,omitempty"`
+	// Embed is where the embedder runs under this Core: the environment for
+	// cerveau-embed.service (EMBED_DEVICE, CUDA_VISIBLE_DEVICES, EMBED_THREADS).
+	// A profile for a one-GPU machine leaves it unset — CPU; the lab rig's
+	// BF16 profile puts it on the 3060. Applied by a Restart, like Params.
+	Embed map[string]string `json:"embed,omitempty"`
 }
 
 type Registry struct {
@@ -38,6 +52,9 @@ type Registry struct {
 }
 
 func DefaultPath() string {
+	if p := os.Getenv("CRV_CORES_JSON"); p != "" {
+		return p
+	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "cerveau", "cores.json")
 }
@@ -63,6 +80,15 @@ func Load(path string) (*Registry, error) {
 func (r *Registry) ActiveCore() *Core {
 	for i := range r.Cores {
 		if r.Cores[i].ID == r.Active {
+			return &r.Cores[i]
+		}
+	}
+	return nil
+}
+
+func (r *Registry) ByID(id string) *Core {
+	for i := range r.Cores {
+		if r.Cores[i].ID == id {
 			return &r.Cores[i]
 		}
 	}

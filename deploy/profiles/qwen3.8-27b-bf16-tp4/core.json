@@ -1,0 +1,10 @@
+{
+  "id": "vllm-27b-bf16",
+  "name": "vLLM · BF16 · TP=4",
+  "endpoint": "http://localhost:18030",
+  "engine": "vLLM",
+  "start": "systemctl --user start crv-core-vllm-27b-bf16.service",
+  "notes": "The reference Core for the professional rig — full capabilities. Qwen3.8-27B exactly as Qwen shipped it: bfloat16 weights, bfloat16 KV cache, no quantization or approximation anywhere, vision tower loaded (reads screenshots and images), the full 262k native window, MTP speculative decoding, tensor-parallel across the four 3090s. Wakes on the first request when parked (~2 min cold, ~40 s warm). Needs all four 3090s — park any other Core first.",
+  "model": "Qwen3.8-27B BF16 + vision",
+  "ctx": 262144
+}

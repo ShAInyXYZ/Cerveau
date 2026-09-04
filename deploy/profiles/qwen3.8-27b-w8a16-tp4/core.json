@@ -1,0 +1,11 @@
+{
+  "id": "vllm-27b-w8a16",
+  "name": "vLLM · W8A16 · TP=4",
+  "endpoint": "http://localhost:18040",
+  "engine": "vLLM",
+  "unit": "crv-core-vllm-27b-w8a16.service",
+  "start": "systemctl --user start crv-core-vllm-27b-w8a16.service",
+  "notes": "Qwen3.8-27B with int8 weights and 16-bit activations (compressed-tensors, group-wise, symmetric), tensor-parallel across the four 3090s. 31.6 GB instead of 55.6, so the marlin int8 kernels the Ampere patch set was written for actually engage — the BF16 profile leaves five of the eight patches inert. Measured 99.36% top-1 agreement with BF16 (KLD 0.0009), and the vision tower is excluded from quantisation, so it keeps its eyes. fp8 KV on FlashInfer with MTP drafts is the combination the checkpoint's author reports for long-context speculative decoding. Full 262k window.",
+  "model": "Qwen3.8-27B W8A16 + MTP",
+  "ctx": 262144
+}

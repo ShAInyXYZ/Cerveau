@@ -1,0 +1,17 @@
+[Unit]
+Description=Cerveau Brain Core — wake-on-request socket (vLLM)
+# Name-matched to crv-core-vllm-proxy.service: systemd activates the unit
+# sharing this socket's base name, and that must be the PROXY, not vLLM
+# itself — vLLM binds its own port and ignores an inherited socket FD.
+
+[Socket]
+# This is the endpoint in ~/.config/cerveau/cores.json. Cerveau always talks
+# here; whether the Core behind it is loaded is systemd's problem, not the
+# harness's.
+ListenStream=127.0.0.1:18020
+# Hold the connection while the Core loads instead of refusing it, so the
+# first request after a park WAITS rather than failing.
+Accept=no
+
+[Install]
+WantedBy=sockets.target
