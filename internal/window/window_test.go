@@ -2,6 +2,9 @@ package window
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -131,5 +134,34 @@ func TestToolCallArgsAreCounted(t *testing.T) {
 				t.Fatalf("arguments still %d chars in the sent window", len(tc.Function.Arguments))
 			}
 		}
+	}
+}
+
+func TestBudgetFollowsTheCore(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			io.WriteString(w, `{"data":[{"id":"qwen3.8-27b","max_model_len":262144}]}`)
+		case "/tokenize":
+			io.WriteString(w, `{"tokens":[1,2,3]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	m := NewManager(32768, 2048, NewHTTPCounter(srv.URL))
+	_, rep := m.Build(context.Background(), []Item{{Msg: llm.Message{Role: "user", Content: "hi"}}})
+	if rep.Budget != 262144 || m.Budget() != 262144 {
+		t.Fatalf("budget = %d, want the Core's 262144", rep.Budget)
+	}
+}
+
+func TestBudgetKeepsConfigWhenCoreIsSilent(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	m := NewManager(98304, 2048, NewHTTPCounter(srv.URL))
+	_, rep := m.Build(context.Background(), []Item{{Msg: llm.Message{Role: "user", Content: "hi"}}})
+	if rep.Budget != 98304 {
+		t.Fatalf("budget = %d, want configured 98304", rep.Budget)
 	}
 }

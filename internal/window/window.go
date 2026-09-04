@@ -37,6 +37,9 @@ type Manager struct {
 	keepLast    int
 	counter     Counter
 	resumeBrief func(dropped int) string
+	// probed is set once the Core has told us its real window; until then
+	// budget is the configured fallback.
+	probed bool
 }
 
 func NewManager(budget, reserve int, counter Counter) *Manager {
@@ -58,7 +61,38 @@ func NewManager(budget, reserve int, counter Counter) *Manager {
 // have had.
 func (m *Manager) usable() int { return int(float64(m.budget-m.reserve) * 0.75) }
 
+// Budget is the window the packer is currently working against.
+func (m *Manager) Budget() int { return m.budget }
+
+// Sync asks the Core for its window now, if it has not answered yet. Health
+// calls it once the Core has already answered a ping, so the panel shows the
+// Core's real window (262k for the BF16 profile) instead of the config
+// fallback until the first turn. It never wakes anything: the caller only
+// invokes it when the Core is already up.
+func (m *Manager) Sync(ctx context.Context) { m.syncBudget(ctx) }
+
+// syncBudget replaces the configured window with the Core's own, the first
+// time the Core answers. Done here rather than at startup because startup
+// must not wake a parked Core — Build only runs when a turn is about to hit
+// it anyway. A Core that cannot be asked (llama.cpp behind a proxy, a
+// remote endpoint) leaves the configured number in place.
+func (m *Manager) syncBudget(ctx context.Context) {
+	if m.probed {
+		return
+	}
+	p, ok := m.counter.(ContextProber)
+	if !ok {
+		m.probed = true
+		return
+	}
+	if n := p.MaxContext(ctx); n > 0 {
+		m.budget = n
+		m.probed = true
+	}
+}
+
 func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Report) {
+	m.syncBudget(ctx)
 	rep := Report{Budget: m.budget, Zone: ZoneGreen}
 	counts := make([]int, len(items))
 	total := 0
