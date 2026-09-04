@@ -145,3 +145,30 @@ func TestOwnFilesStillReconcileFromDisk(t *testing.T) {
 		t.Fatalf("missing file must stay pending: %+v", rep.Steps[2])
 	}
 }
+
+// A checkpoint carrying an index belongs to exactly that step. Matching on
+// title alone marked every same-named step at once and lost which revision
+// wrote it — the car run's four steps were all called after the same file.
+func TestCheckpointIndexBeatsTitleMatching(t *testing.T) {
+	ts := time.Date(2026, 9, 5, 10, 0, 0, 0, time.UTC)
+	mk := func(id string, typ episodic.EventType, payload string) episodic.Event {
+		return episodic.Event{ID: id, TS: ts, Type: typ, Payload: json.RawMessage(payload)}
+	}
+	events := []episodic.Event{
+		mk("evt_000001", episodic.Plan, `{"title":"P","steps":[
+			{"title":"build","files":["a.js"]},
+			{"title":"build","files":["b.js"]}]}`),
+		// same title, different steps: only step 2 passed
+		mk("evt_000002", episodic.Checkpoint, `{"step":"build","index":1,"status":"done","summary":"verified: b.js contains x"}`),
+	}
+	rep := BuildReport(events)
+	if rep.Steps[0].Status == "done" {
+		t.Errorf("step 1 has no checkpoint and must not inherit step 2's: %+v", rep.Steps[0])
+	}
+	if rep.Steps[1].Status != "done" {
+		t.Errorf("step 2 owns the checkpoint: %+v", rep.Steps[1])
+	}
+	if rep.Done != 1 {
+		t.Errorf("done = %d, want 1", rep.Done)
+	}
+}

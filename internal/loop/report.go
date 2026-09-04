@@ -63,16 +63,29 @@ func BuildReportAt(events []episodic.Event, workspace string) *Report {
 				Status  string `json:"status"`
 				Summary string `json:"summary"`
 				Detail  string `json:"detail"`
+				// Index is written by the step supervisor. Matching on TITLE
+				// alone puts one checkpoint on every step that happens to share
+				// a name, and loses which revision it came from.
+				Index *int `json:"index"`
 			}
 			if json.Unmarshal(ev.Payload, &cp) != nil {
 				continue
 			}
+			summary := cp.Summary
+			if summary == "" {
+				summary = cp.Detail
+			}
+			if cp.Index != nil {
+				if i := *cp.Index; i >= 0 && i < len(plan.Steps) {
+					stepStatus[i] = StepReport{
+						Title: plan.Steps[i].Title, Status: cp.Status, Summary: summary,
+						TS: ev.TS.Format("15:04:05"),
+					}
+				}
+				continue
+			}
 			for idx, ps := range plan.Steps {
 				if ps.Title == cp.Step {
-					summary := cp.Summary
-					if summary == "" {
-						summary = cp.Detail
-					}
 					stepStatus[idx] = StepReport{
 						Title: cp.Step, Status: cp.Status, Summary: summary,
 						TS: ev.TS.Format("15:04:05"),
