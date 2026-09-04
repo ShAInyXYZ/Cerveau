@@ -1,0 +1,814 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "How a Run reaches the screen",
+    "description": "One autopilot turn, from prompt to the two places a plan is displayed. Shows why the RFX planner sees the plan and the in-chat strip does not: they read different endpoints, built from the same event log by different code, with different failure behaviour.",
+    "updated": "2026-09-04",
+    "colorBy": "kind",
+    "driftIgnore": [
+      "android",
+      "cmd",
+      "docs",
+      "deploy",
+      "sidecars",
+      "internal/api",
+      "internal/cores",
+      "internal/codeintel",
+      "internal/config",
+      "internal/guard",
+      "internal/idle",
+      "internal/llm",
+      "internal/memory",
+      "internal/panel",
+      "internal/rfx",
+      "internal/server",
+      "internal/session",
+      "internal/skills",
+      "internal/tools",
+      "internal/window",
+      "panel"
+    ]
+  },
+  "frames": [
+    {
+      "tone": "amber",
+      "id": "produce",
+      "label": "1 · Produce — the turn writes events",
+      "position": {
+        "x": 400,
+        "y": 0
+      },
+      "size": {
+        "width": 996,
+        "height": 349
+      }
+    },
+    {
+      "tone": "neutral",
+      "id": "store",
+      "label": "2 · Store — one append-only log",
+      "position": {
+        "x": 1536,
+        "y": 0
+      },
+      "size": {
+        "width": 348,
+        "height": 285
+      }
+    },
+    {
+      "tone": "cyan",
+      "id": "serve",
+      "label": "3 · Serve — two endpoints, two shapes",
+      "position": {
+        "x": 2024,
+        "y": 0
+      },
+      "size": {
+        "width": 672,
+        "height": 600
+      }
+    },
+    {
+      "tone": "violet",
+      "id": "show",
+      "label": "4 · Show — two readers, two behaviours",
+      "position": {
+        "x": 0,
+        "y": 740
+      },
+      "size": {
+        "width": 672,
+        "height": 567
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "loop",
+      "kind": "service",
+      "label": "Agent Loop",
+      "sublabel": "observe → think → act, one iteration at a time",
+      "frame": "produce",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/loop/loop.go",
+      "position": {
+        "x": 444,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "plangate",
+      "kind": "module",
+      "label": "Plan gate",
+      "sublabel": "first call is restricted to commit_plan",
+      "note": "Asks the model to divide the task. If the model answers with TEXT instead of a tool call, the prose is translated into a real plan and committed anyway (\"plan written as text — translated and committed\"). That salvage is why the planner has a plan at all: the model has not once called commit_plan as a tool in the runs on record.",
+      "frame": "produce",
+      "tech": "Go",
+      "status": "wip",
+      "path": "internal/loop/autopilot.go",
+      "position": {
+        "x": 768,
+        "y": 64
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "writer",
+      "kind": "module",
+      "label": "Episodic writer",
+      "sublabel": "appends every event as it happens",
+      "frame": "produce",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/episodic",
+      "position": {
+        "x": 1092,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "events",
+      "kind": "storage",
+      "label": "events.jsonl",
+      "sublabel": "the ONLY source of truth · plan, tool.call, tool.result, checkpoint, turn.close, error",
+      "note": "~/.crv/sessions/<id>/events.jsonl. Both display paths are derived from this one file. Nothing else is persisted, so anything the UI shows is a projection built on read.",
+      "frame": "store",
+      "status": "done",
+      "position": {
+        "x": 1580,
+        "y": 60
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "{plan, running, …}"
+        }
+      ],
+      "tags": [],
+      "id": "state",
+      "kind": "api",
+      "label": "GET /state",
+      "sublabel": "raw projection · plan as committed",
+      "note": "Hands back the plan exactly as committed — titles, details, files. It makes no claim about what is finished; there is no status field to be wrong about.",
+      "frame": "serve",
+      "tech": "Go net/http",
+      "status": "done",
+      "path": "internal/api/api.go",
+      "position": {
+        "x": 2068,
+        "y": 60
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "{steps[{title,status,summary}], done, failed}"
+        }
+      ],
+      "tags": [],
+      "id": "report",
+      "kind": "api",
+      "label": "GET /report",
+      "sublabel": "INTERPRETED · plan + a status per step",
+      "note": "404s with \"no plan in this session\" until a plan event exists. That 404 is the first half of the chat bug: the panel's fetch helper turns any non-200 into null.",
+      "frame": "serve",
+      "tech": "Go net/http",
+      "status": "wip",
+      "path": "internal/api/api.go",
+      "position": {
+        "x": 2392,
+        "y": 332
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "idea",
+          "title": "Two endpoints for one plan, and only the simpler one is reliable",
+          "note": "/state and /report are both built from the same events.jsonl on every request. /state hands back the plan verbatim and cannot be wrong about progress because it makes no claim. /report adds a status per step, and every bug in this diagram lives in that added interpretation: the 404 before a plan exists, the disk inference, the false \"done\". The planner survives on the plain endpoint and derives progress itself from the files it can see.",
+          "fix": "Make the strip read what the planner reads: take the plan from /state so it appears the moment it commits and cannot be erased by a 404, and treat per-step status as an overlay that arrives later when /report has something real to say. The strip then shows the steps during the run even before any status is known — which is the whole point of a progress indicator.",
+          "by": "agent",
+          "at": "2026-09-04T21:25:50.407Z"
+        }
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "buildreport",
+      "kind": "module",
+      "label": "BuildReportAt",
+      "sublabel": "decides done / partial / pending per step",
+      "note": "Status comes from checkpoint events. When there are none it falls back to DISK RECONCILIATION: if every file a step declared exists, call it done.\n\nZero checkpoints have been written in any run on record, so this fallback decides every status. It was also reporting 4/4 done for a plan whose four steps all declared index.html — fixed 2026-09-04 to require a step's files to be its own.",
+      "frame": "serve",
+      "tech": "Go",
+      "status": "wip",
+      "path": "internal/loop/report.go",
+      "position": {
+        "x": 2068,
+        "y": 300
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "issue",
+          "title": "Step status is inferred from disk because no checkpoint is ever written",
+          "note": "BuildReportAt prefers checkpoint events and falls back to disk reconciliation. Every run on record has ZERO checkpoint events, so the fallback is not a fallback — it is the only source of truth for \"done\". Existence of a file cannot distinguish which step wrote it, and can never show that a verification passed. That is how the car run reported 4/4 green, Verify included, while the turn was dying in a check_page loop. The shared-files case is fixed, but the underlying gap remains: the loop never records that a step finished, so a plan whose steps DO own distinct files is still marked done the moment the file appears, not when the step's work succeeded.",
+          "fix": "Have the loop write a checkpoint event when it moves off a step: which step, whether its tool calls succeeded, and what verified it. Then disk reconciliation goes back to being a fallback for chat-mode turns, and \"done\" means the work was observed, not that a file exists.",
+          "by": "agent",
+          "at": "2026-09-04T21:25:39.979Z"
+        }
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rfxbridge",
+      "kind": "bridge",
+      "label": "RFX bridge",
+      "sublabel": "postMessage ↔ sandboxed panel · rfx.session() / rfx.files()",
+      "note": "Fetches /state and /events on its own timer, independently of the chat store.",
+      "frame": "show",
+      "tech": "Svelte 5",
+      "status": "done",
+      "path": "panel/src/lib/RfxCustomPanel.svelte",
+      "position": {
+        "x": 44,
+        "y": 838
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "planner",
+      "kind": "ui",
+      "label": "Planner panel",
+      "sublabel": "a CONTROL surface · shows the tree, runs steps",
+      "note": "~/.crv/rfx/planner/ui/panel.html. Renders whatever rfx.session().plan holds, and checks the declared files itself via rfx.files(). It is not told which steps are done — it derives that, which is why it survived the false-done bug in the report.",
+      "frame": "show",
+      "tech": "HTML in a sandboxed iframe",
+      "status": "done",
+      "position": {
+        "x": 368,
+        "y": 800
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "store2",
+      "kind": "module",
+      "label": "Session store",
+      "sublabel": "polls every 2 s · holds `report`",
+      "note": "loadReport() assigns the fetch result UNCONDITIONALLY, and the fetch helper returns null for any non-200. So every poll during the seconds before the plan commits overwrites `report` with null — and the poll was gated on `report` being set in the first place.",
+      "frame": "show",
+      "tech": "Svelte 5 runes",
+      "status": "wip",
+      "path": "panel/src/lib/stores/session.svelte.ts",
+      "position": {
+        "x": 44,
+        "y": 1052
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "issue",
+          "title": "A failed poll erases the plan the strip is waiting for",
+          "note": "loadReport() does `report = await api.report(id)` with no guard, and the fetch helper returns null for ANY non-200. /report answers 404 with \"no plan in this session\" for the first seconds of every turn, before the plan event exists — three seconds in the car run. So each poll in that window assigns null. Combined with the poll being gated on `report` already being set, the strip could never appear: the only unconditional fetches happen after the turn ends, by which time the plan reads complete and the strip archives itself on arrival. The planner is immune because it reads /state, which returns the plan verbatim and is never gated.",
+          "fix": "Keep the last good report: only assign when the fetch returns a value, and clear it explicitly on session switch (where it is already reset). Poll whenever a turn is running, not only once a report exists.",
+          "by": "agent",
+          "at": "2026-09-04T21:25:28.348Z"
+        }
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "strip",
+      "kind": "ui",
+      "label": "Plan strip",
+      "sublabel": "a PROGRESS surface · above the composer",
+      "note": "Renders only when store.report is non-null. Archives itself once every step reads done, and remembers that in localStorage per plan id — so a plan that arrives ALREADY complete is hidden the instant it appears.",
+      "frame": "show",
+      "tech": "Svelte 5",
+      "status": "wip",
+      "path": "panel/src/lib/chat/PlanStrip.svelte",
+      "position": {
+        "x": 368,
+        "y": 1059
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "model",
+      "kind": "model",
+      "label": "Brain Core",
+      "sublabel": "Qwen3.8-27B · the thing being asked for a plan",
+      "status": "done",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "workspace",
+      "kind": "storage",
+      "label": "Workspace",
+      "sublabel": "the files the build actually produces",
+      "status": "done",
+      "position": {
+        "x": 0,
+        "y": 142
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "sync",
+      "id": "loop-model",
+      "source": "loop",
+      "target": "model",
+      "protocol": "http",
+      "label": "one call per iteration"
+    },
+    {
+      "kind": "import",
+      "id": "loop-plangate",
+      "source": "loop",
+      "target": "plangate",
+      "label": "first call only"
+    },
+    {
+      "kind": "data",
+      "id": "plangate-writer",
+      "source": "plangate",
+      "target": "writer",
+      "protocol": "fs",
+      "label": "plan event (committed, or salvaged from prose)"
+    },
+    {
+      "kind": "data",
+      "id": "loop-writer",
+      "source": "loop",
+      "target": "writer",
+      "protocol": "fs",
+      "label": "tool.call · tool.result · note · turn.close · error"
+    },
+    {
+      "kind": "data",
+      "id": "loop-workspace",
+      "source": "loop",
+      "target": "workspace",
+      "protocol": "fs",
+      "label": "write / edit — the real output"
+    },
+    {
+      "kind": "data",
+      "id": "writer-events",
+      "source": "writer",
+      "target": "events",
+      "protocol": "fs",
+      "label": "append"
+    },
+    {
+      "kind": "data",
+      "id": "events-state",
+      "source": "events",
+      "target": "state",
+      "protocol": "fs",
+      "label": "replay → last plan event, verbatim",
+      "ack": "the handler reads the log to build its response; it does not call itself over http"
+    },
+    {
+      "kind": "data",
+      "id": "events-buildreport",
+      "source": "events",
+      "target": "buildreport",
+      "protocol": "fs",
+      "label": "replay → plan + checkpoints"
+    },
+    {
+      "kind": "data",
+      "id": "buildreport-workspace",
+      "source": "buildreport",
+      "target": "workspace",
+      "protocol": "fs",
+      "label": "disk reconciliation: does each declared file exist?"
+    },
+    {
+      "kind": "import",
+      "id": "buildreport-report",
+      "source": "buildreport",
+      "target": "report",
+      "label": "the interpreted shape"
+    },
+    {
+      "kind": "sync",
+      "id": "rfxbridge-state",
+      "source": "rfxbridge",
+      "target": "state",
+      "protocol": "http",
+      "label": "rfx.session() — own timer, never gated",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "async",
+      "id": "rfxbridge-planner",
+      "source": "rfxbridge",
+      "target": "planner",
+      "protocol": "jsbridge",
+      "label": "postMessage: {plan, checkpoints, running}"
+    },
+    {
+      "kind": "data",
+      "id": "planner-workspace",
+      "source": "planner",
+      "target": "workspace",
+      "protocol": "http",
+      "label": "rfx.files(declared) — derives its own progress"
+    },
+    {
+      "kind": "sync",
+      "id": "store2-report",
+      "source": "store2",
+      "target": "report",
+      "protocol": "http",
+      "label": "loadReport() every 2 s — 404 before the plan commits",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "data",
+      "id": "store2-strip",
+      "source": "store2",
+      "target": "strip",
+      "protocol": "ipc",
+      "label": "store.report (null hides the strip entirely)"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "produce",
+      "op": "add",
+      "label": "1 · Produce — the turn writes events"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "store",
+      "op": "add",
+      "label": "2 · Store — one append-only log"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "serve",
+      "op": "add",
+      "label": "3 · Serve — two endpoints, two shapes"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "show",
+      "op": "add",
+      "label": "4 · Show — two readers, two behaviours"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "loop",
+      "op": "add",
+      "kind": "service",
+      "label": "Agent Loop"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "add",
+      "kind": "module",
+      "label": "Plan gate"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "writer",
+      "op": "add",
+      "kind": "module",
+      "label": "Episodic writer"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "events",
+      "op": "add",
+      "kind": "storage",
+      "label": "events.jsonl"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "state",
+      "op": "add",
+      "kind": "api",
+      "label": "GET /state"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "add",
+      "kind": "api",
+      "label": "GET /report"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "buildreport",
+      "op": "add",
+      "kind": "module",
+      "label": "BuildReportAt"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rfxbridge",
+      "op": "add",
+      "kind": "bridge",
+      "label": "RFX bridge"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "add",
+      "kind": "ui",
+      "label": "Planner panel"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store2",
+      "op": "add",
+      "kind": "module",
+      "label": "Session store"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "add",
+      "kind": "ui",
+      "label": "Plan strip"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "model",
+      "op": "add",
+      "kind": "model",
+      "label": "Brain Core"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "node",
+      "id": "workspace",
+      "op": "add",
+      "kind": "storage",
+      "label": "Workspace"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "loop-model",
+      "op": "add",
+      "kind": "sync",
+      "label": "loop → model"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "loop-plangate",
+      "op": "add",
+      "kind": "import",
+      "label": "loop → plangate"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "plangate-writer",
+      "op": "add",
+      "kind": "data",
+      "label": "plangate → writer"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "loop-writer",
+      "op": "add",
+      "kind": "data",
+      "label": "loop → writer"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "loop-workspace",
+      "op": "add",
+      "kind": "data",
+      "label": "loop → workspace"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "writer-events",
+      "op": "add",
+      "kind": "data",
+      "label": "writer → events"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "events-state",
+      "op": "add",
+      "kind": "data",
+      "label": "events → state"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "events-buildreport",
+      "op": "add",
+      "kind": "data",
+      "label": "events → buildreport"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "buildreport-workspace",
+      "op": "add",
+      "kind": "data",
+      "label": "buildreport → workspace"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "buildreport-report",
+      "op": "add",
+      "kind": "import",
+      "label": "buildreport → report"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rfxbridge-state",
+      "op": "add",
+      "kind": "sync",
+      "label": "rfxbridge → state"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rfxbridge-planner",
+      "op": "add",
+      "kind": "async",
+      "label": "rfxbridge → planner"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "planner-workspace",
+      "op": "add",
+      "kind": "data",
+      "label": "planner → workspace"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "store2-report",
+      "op": "add",
+      "kind": "sync",
+      "label": "store2 → report"
+    },
+    {
+      "at": "2026-09-04T21:25:10.886Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "store2-strip",
+      "op": "add",
+      "kind": "data",
+      "label": "store2 → strip"
+    },
+    {
+      "at": "2026-09-04T21:25:18.791Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "events-state",
+      "op": "change",
+      "fields": [
+        {
+          "field": "ack",
+          "to": "the handler reads the log to build its response; it does not call itself over…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:25:18.791Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "to": "android, cmd, docs, deploy, sidecars, internal/api, internal/cores, internal/codeintel, internal/config, internal/guard, internal/idle, internal/llm, internal/memory, internal/panel, internal/rfx, internal/server, internal/session, internal/skills, internal/tools, internal/window, panel"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:25:28.348Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store2",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "A failed poll erases the plan the strip is waiting for"
+      }
+    },
+    {
+      "at": "2026-09-04T21:25:39.979Z",
+      "by": "agent",
+      "type": "node",
+      "id": "buildreport",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Step status is inferred from disk because no checkpoint is ever written"
+      }
+    },
+    {
+      "at": "2026-09-04T21:25:50.407Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "idea",
+        "title": "Two endpoints for one plan, and only the simpler one is reliable"
+      }
+    }
+  ]
+}

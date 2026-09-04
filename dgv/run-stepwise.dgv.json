@@ -1,0 +1,1172 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "Stepwise runs — one step, one run, one verdict",
+    "description": "The plan becomes the execution unit: each step gets its own generated prompt and its own run, verified against that step's own criteria before the next starts. A step that needs earlier work reopens it as rev_n and resumes. The mechanism lives in the CORE and both surfaces drive it — the native strip simply, the RFX planner with every control exposed.",
+    "updated": "2026-09-04",
+    "colorBy": "kind",
+    "driftIgnore": [
+      "android",
+      "cmd",
+      "docs",
+      "deploy",
+      "sidecars",
+      "internal/api",
+      "internal/codeintel",
+      "internal/config",
+      "internal/cores",
+      "internal/episodic",
+      "internal/guard",
+      "internal/idle",
+      "internal/llm",
+      "internal/memory",
+      "internal/panel",
+      "internal/rfx",
+      "internal/server",
+      "internal/session",
+      "internal/skills",
+      "internal/window",
+      "panel"
+    ]
+  },
+  "frames": [
+    {
+      "tone": "amber",
+      "id": "plan",
+      "label": "1 · Plan — once per task",
+      "position": {
+        "x": 400,
+        "y": 0
+      },
+      "size": {
+        "width": 996,
+        "height": 570
+      }
+    },
+    {
+      "tone": "rose",
+      "id": "drive",
+      "label": "2 · Drive — the new part: who decides what runs next",
+      "position": {
+        "x": 1536,
+        "y": 0
+      },
+      "size": {
+        "width": 672,
+        "height": 874
+      }
+    },
+    {
+      "tone": "cyan",
+      "id": "run",
+      "label": "3 · Run — one step, start to verdict",
+      "position": {
+        "x": 2348,
+        "y": 0
+      },
+      "size": {
+        "width": 996,
+        "height": 412
+      }
+    },
+    {
+      "tone": "neutral",
+      "id": "record",
+      "label": "4 · Record — what makes progress real",
+      "position": {
+        "x": 0,
+        "y": 1014
+      },
+      "size": {
+        "width": 996,
+        "height": 315
+      }
+    },
+    {
+      "tone": "violet",
+      "id": "show",
+      "label": "5 · Show",
+      "position": {
+        "x": 1136,
+        "y": 1014
+      },
+      "size": {
+        "width": 672,
+        "height": 694
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "userprompt",
+      "kind": "external",
+      "label": "The user's prompt",
+      "sublabel": "written once, at the start",
+      "note": "TODAY this same text is injected into every iteration of one long run, so the model must hold the whole task in mind at once and is trusted to touch each point on its own. In the new design it is used ONCE, to plan.",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "plangate",
+      "kind": "module",
+      "label": "Plan gate",
+      "sublabel": "divide the task · commit_plan",
+      "frame": "plan",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/loop/autopilot.go",
+      "position": {
+        "x": 444,
+        "y": 246
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "criteria",
+      "kind": "module",
+      "label": "Step criteria",
+      "sublabel": "NEW · each step declares a check that CAN FAIL",
+      "note": "commit_plan gains a `verify` field per step: the concrete observation that proves the step done. Without it there is nothing to verify against and \"done\" falls back to guessing from disk — the bug in run-dataflow.\n\nThe model writes its own exam, so the SHAPE is constrained rather than the wording trusted (decided 2026-09-04). A verify must be one of three runnable forms:\n  • a check_page eval that returns a boolean\n  • a command whose exit code decides it\n  • a file that must contain a named symbol\n\nExistence-only checks are REJECTED at commit time, the way the plan gate already rejects a prose plan — \"index.html exists\" is the disk guess wearing a costume.\n\nAnd a criterion can be impossible as easily as it can be lazy: the car run's own eval could never pass under file:// however correct the page was. So a step whose verify never passes gets a small budget, then hands back with the evidence. An unpassable check costs one step, never the task.",
+      "frame": "plan",
+      "tech": "Go",
+      "status": "todo",
+      "position": {
+        "x": 768,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "planevt",
+      "kind": "storage",
+      "label": "plan event",
+      "sublabel": "steps + files + verify, in events.jsonl",
+      "frame": "plan",
+      "status": "wip",
+      "position": {
+        "x": 1092,
+        "y": 246
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "supervisor",
+      "kind": "service",
+      "label": "Step supervisor",
+      "sublabel": "NEW · owns the cursor: which step, which revision, what next",
+      "note": "The piece that does not exist today. It holds the step cursor, starts one run per step, reads each verdict and decides: advance, retry this step, or reopen an earlier one. It never writes code itself — it only decides what the next run is asked to do.\n\nIt is also the natural home for the turn budget: a stall or a loop ends THIS step's run, not the whole task, so the other steps still get their chance.",
+      "frame": "drive",
+      "tech": "Go",
+      "status": "todo",
+      "position": {
+        "x": 1580,
+        "y": 360
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "promptgen",
+      "kind": "module",
+      "label": "Step prompt writer",
+      "sublabel": "NEW · the model writes the prompt for the next run",
+      "note": "Given the plan, the step, and what earlier steps actually produced, the model writes the prompt for this step's run: what to build, which files, what must be true at the end. Generated, never templated — a hardcoded prompt cannot know that step 2 renamed a function step 3 depends on.\n\nCheap: one short call per step, against a plan that is already committed.",
+      "frame": "drive",
+      "tech": "Go + one model call",
+      "status": "todo",
+      "position": {
+        "x": 1904,
+        "y": 589
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "revision",
+      "kind": "module",
+      "label": "Revision decider",
+      "sublabel": "NEW · reopen an earlier step as rev_n · cap 2 · re-verify downstream",
+      "note": "When a run reports that an EARLIER step is wrong or incomplete, the supervisor opens a revision run for that step — rev_2, rev_3 — with the new context explaining what is needed and why. When it passes, the cursor returns to where it left off. The model asks for this via a `needs_step` field on the verdict; the harness does not guess.\n\nTWO RULES stop it looping, decided 2026-09-04:\n\n1. CAP. Two revisions per step. The third request hands back to the user with every verdict on record, rather than spending the task on one disputed file.\n\n2. RE-VERIFY DOWNSTREAM. A revision can invalidate a later step that was verified against the old file. After any revision, re-run the verify of every later step that shares a file with the revised one. Cheap — it is the declared check, not a new run — and it catches the silent breakage. If the same PAIR of steps fails twice, that is a genuine disagreement about the design: hand back with both verdicts instead of trying a third time.",
+      "frame": "drive",
+      "tech": "Go",
+      "status": "todo",
+      "position": {
+        "x": 1904,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "steprun",
+      "kind": "worker",
+      "label": "Step run",
+      "sublabel": "one step · its own generated prompt · its own iteration budget",
+      "note": "The existing agent loop, scoped. Same tools, same guards, but the turn is ONE step: it starts with the step's prompt, ends when the step verifies or the budget runs out. Failures stop a step, not the task.",
+      "frame": "run",
+      "tech": "Go",
+      "status": "todo",
+      "position": {
+        "x": 2392,
+        "y": 134
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "verify",
+      "kind": "module",
+      "label": "Step verify",
+      "sublabel": "run the step's own criteria · pass / fail, with evidence",
+      "note": "Runs what the step declared: the eval, the command, the file check. The verdict is an observation, not the model's opinion that it is finished.",
+      "frame": "run",
+      "tech": "Go",
+      "status": "todo",
+      "position": {
+        "x": 2716,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "tools",
+      "kind": "module",
+      "label": "Tool registry",
+      "sublabel": "write · edit · check_page · serve · bash",
+      "frame": "run",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/tools",
+      "position": {
+        "x": 2716,
+        "y": 274
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "workspace",
+      "kind": "storage",
+      "label": "Workspace",
+      "sublabel": "the files being built",
+      "frame": "run",
+      "status": "done",
+      "position": {
+        "x": 3040,
+        "y": 185
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "checkpoint",
+      "kind": "storage",
+      "label": "checkpoint event",
+      "sublabel": "step N, rev R — passed / failed, and the evidence",
+      "note": "Written by the supervisor when a run ends, per step and revision. This is the event BuildReportAt already prefers and has never once received, which is why status is currently guessed from disk.\n\nOnce these exist, \"done\" means the step's own check was observed to pass.",
+      "frame": "record",
+      "status": "todo",
+      "position": {
+        "x": 44,
+        "y": 1074
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "events",
+      "kind": "storage",
+      "label": "events.jsonl",
+      "sublabel": "one log · plan, runs, checkpoints, revisions",
+      "frame": "record",
+      "status": "done",
+      "position": {
+        "x": 368,
+        "y": 1133
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "{steps[{status, rev, evidence}]}"
+        }
+      ],
+      "tags": [],
+      "id": "report",
+      "kind": "api",
+      "label": "GET /report + /state",
+      "sublabel": "status now comes from checkpoints, not from disk",
+      "frame": "record",
+      "tech": "Go",
+      "status": "wip",
+      "position": {
+        "x": 692,
+        "y": 1120
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "strip",
+      "kind": "ui",
+      "label": "Native plan strip",
+      "sublabel": "SIMPLE surface · steps, which one is running, pass/fail · no knobs",
+      "note": "What a user gets with no RFX pack installed. Shows the plan the moment it commits, marks the running step, shows each verdict as it lands, and offers ONE action: continue after a hand-back. Everything else is automatic.\n\nIt must not be a second implementation of the loop — it renders core state and nothing more.",
+      "frame": "show",
+      "tech": "Svelte 5",
+      "status": "wip",
+      "position": {
+        "x": 1180,
+        "y": 1438
+      },
+      "path": "panel/src/lib/chat/PlanStrip.svelte"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "planner",
+      "kind": "ui",
+      "label": "RFX Planner panel",
+      "sublabel": "ADVANCED surface · per-step run, re-run, revise, select, auto-continue",
+      "note": "~/.crv/rfx/planner/ui/panel.html. Already drives steps today, but ONLY by writing English prompts through rfx.turn() (\"Continue the committed plan: do step 3 only, then stop and report\") and inferring status from which files exist. It is a smart panel compensating for a core that has no step cursor.\n\nWhen the supervisor exists, the panel stops composing prompts and starts calling it: run step N, re-run with revision, set auto-continue. Same buttons, real semantics — and its own comment already says the intelligence belongs in cerveau, not the panel.",
+      "frame": "show",
+      "tech": "HTML in a sandboxed iframe",
+      "status": "wip",
+      "position": {
+        "x": 1180,
+        "y": 1074
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "issue",
+          "title": "The panel drives steps by writing English, which is why the plan is decoration",
+          "note": "Today the planner's step buttons build a sentence and post it as a normal autopilot turn: \"Continue the committed plan: do step 3 (Cameras + UI) only, then stop and report.\" The core has no idea a step was requested. It gets a prompt like any other, so nothing binds the run to step 3, nothing verifies step 3, and no checkpoint is written. The panel then infers status from which declared files exist — the same disk guess as the report.\\n\\nThat is the whole decoration problem in one place: a surface that looks like it controls execution, sitting on a core with no concept of a step. The panel's own comment (\"deliberately dumb, the intelligence is cerveau's\") describes the intent; the code cannot honour it because there is nothing in the core to be intelligent.",
+          "fix": "Give the core the step semantics (supervisor + step control API), then change the panel's kick() from composing prose to calling run-step {step, rev}. The buttons stay; what they mean becomes real. Keep the panel's scenario rules (auto-continue, pause on failure) as UI policy — those are genuinely presentation, unlike prompt-writing.",
+          "by": "agent",
+          "at": "2026-09-04T21:34:45.447Z"
+        }
+      ]
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "POST run-step {step, rev?} · POST auto {on} · GET plan-state"
+        }
+      ],
+      "tags": [],
+      "id": "stepapi",
+      "kind": "api",
+      "label": "Step control API",
+      "sublabel": "NEW · the one way to drive a plan · both surfaces call it",
+      "note": "One contract so the two surfaces cannot drift apart. The native strip uses a slice of it (continue after hand-back); the planner uses all of it (run one step, re-run, revise, select a subset, auto-continue).\n\nThe RFX bridge gains a matching capability so a sandboxed panel can call it without composing prompts.",
+      "frame": "show",
+      "tech": "Go net/http",
+      "status": "todo",
+      "position": {
+        "x": 1504,
+        "y": 1266
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "sync",
+      "id": "userprompt-plangate",
+      "source": "userprompt",
+      "target": "plangate",
+      "label": "used ONCE — to divide the task, never re-injected per step"
+    },
+    {
+      "kind": "import",
+      "id": "plangate-criteria",
+      "source": "plangate",
+      "target": "criteria",
+      "label": "each step declares its own verify"
+    },
+    {
+      "kind": "data",
+      "id": "criteria-planevt",
+      "source": "criteria",
+      "target": "planevt",
+      "protocol": "fs",
+      "label": "commit: steps + files + verify"
+    },
+    {
+      "kind": "data",
+      "id": "planevt-supervisor",
+      "source": "planevt",
+      "target": "supervisor",
+      "protocol": "fs",
+      "label": "the plan becomes the work queue"
+    },
+    {
+      "kind": "sync",
+      "id": "supervisor-promptgen",
+      "source": "supervisor",
+      "target": "promptgen",
+      "protocol": "ipc",
+      "label": "write the prompt for step N (rev R)"
+    },
+    {
+      "kind": "sync",
+      "id": "promptgen-steprun",
+      "source": "promptgen",
+      "target": "steprun",
+      "protocol": "ipc",
+      "label": "the generated prompt — THIS is what the run receives"
+    },
+    {
+      "kind": "control",
+      "id": "supervisor-steprun",
+      "source": "supervisor",
+      "target": "steprun",
+      "label": "start one run · own budget · stop at the step boundary"
+    },
+    {
+      "kind": "sync",
+      "id": "steprun-tools",
+      "source": "steprun",
+      "target": "tools",
+      "protocol": "ipc",
+      "label": "build the step"
+    },
+    {
+      "kind": "data",
+      "id": "tools-workspace",
+      "source": "tools",
+      "target": "workspace",
+      "protocol": "fs",
+      "label": "write / edit"
+    },
+    {
+      "kind": "sync",
+      "id": "steprun-verify",
+      "source": "steprun",
+      "target": "verify",
+      "protocol": "ipc",
+      "label": "at the end of the run"
+    },
+    {
+      "kind": "data",
+      "id": "verify-workspace",
+      "source": "verify",
+      "target": "workspace",
+      "protocol": "fs",
+      "label": "observe: does the declared check pass?"
+    },
+    {
+      "kind": "sync",
+      "id": "verify-supervisor",
+      "source": "verify",
+      "target": "supervisor",
+      "protocol": "ipc",
+      "label": "VERDICT: pass → advance · fail → retry · needs_step N → revise"
+    },
+    {
+      "kind": "sync",
+      "id": "supervisor-revision",
+      "source": "supervisor",
+      "target": "revision",
+      "protocol": "ipc",
+      "label": "a later step says an earlier one is incomplete"
+    },
+    {
+      "kind": "control",
+      "id": "revision-supervisor",
+      "source": "revision",
+      "target": "supervisor",
+      "label": "reopen step N as rev_n, then resume the cursor"
+    },
+    {
+      "kind": "data",
+      "id": "supervisor-checkpoint",
+      "source": "supervisor",
+      "target": "checkpoint",
+      "protocol": "fs",
+      "label": "one per run: step, rev, verdict, evidence"
+    },
+    {
+      "kind": "data",
+      "id": "checkpoint-events",
+      "source": "checkpoint",
+      "target": "events",
+      "protocol": "fs",
+      "label": "append"
+    },
+    {
+      "kind": "data",
+      "id": "events-report",
+      "source": "events",
+      "target": "report",
+      "protocol": "fs",
+      "label": "replay → real status per step",
+      "ack": "the handler reads the log to build its response; it does not call itself over http"
+    },
+    {
+      "kind": "sync",
+      "id": "strip-report",
+      "source": "strip",
+      "target": "report",
+      "protocol": "http",
+      "label": "poll plan + step state while running",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "sync",
+      "id": "planner-report",
+      "source": "planner",
+      "target": "report",
+      "protocol": "http",
+      "label": "same state, richer rendering",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "sync",
+      "id": "strip-stepapi",
+      "source": "strip",
+      "target": "stepapi",
+      "protocol": "http",
+      "label": "continue after a hand-back — the ONE control it needs",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "sync",
+      "id": "planner-stepapi",
+      "source": "planner",
+      "target": "stepapi",
+      "protocol": "http",
+      "label": "run step N · re-run as rev · selected steps · auto-continue",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "control",
+      "id": "stepapi-supervisor",
+      "source": "stepapi",
+      "target": "supervisor",
+      "label": "the surfaces ASK; the supervisor decides and runs"
+    },
+    {
+      "kind": "control",
+      "id": "revision-verify",
+      "source": "revision",
+      "target": "verify",
+      "label": "re-verify later steps sharing a file with the revised one"
+    },
+    {
+      "kind": "data",
+      "id": "criteria-verify",
+      "source": "criteria",
+      "target": "verify",
+      "protocol": "fs",
+      "label": "the declared check — eval / exit code / symbol, never mere existence"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "plan",
+      "op": "add",
+      "label": "1 · Plan — once per task"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "drive",
+      "op": "add",
+      "label": "2 · Drive — the new part: who decides what runs next"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "run",
+      "op": "add",
+      "label": "3 · Run — one step, start to verdict"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "record",
+      "op": "add",
+      "label": "4 · Record — what makes progress real"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "show",
+      "op": "add",
+      "label": "5 · Show"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "userprompt",
+      "op": "add",
+      "kind": "external",
+      "label": "The user's prompt"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "add",
+      "kind": "module",
+      "label": "Plan gate"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "add",
+      "kind": "module",
+      "label": "Step criteria"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planevt",
+      "op": "add",
+      "kind": "storage",
+      "label": "plan event"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "add",
+      "kind": "service",
+      "label": "Step supervisor"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "add",
+      "kind": "module",
+      "label": "Step prompt writer"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "revision",
+      "op": "add",
+      "kind": "module",
+      "label": "Revision decider"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "add",
+      "kind": "worker",
+      "label": "Step run"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "add",
+      "kind": "module",
+      "label": "Step verify"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "add",
+      "kind": "module",
+      "label": "Tool registry"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "workspace",
+      "op": "add",
+      "kind": "storage",
+      "label": "Workspace"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkpoint",
+      "op": "add",
+      "kind": "storage",
+      "label": "checkpoint event"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "events",
+      "op": "add",
+      "kind": "storage",
+      "label": "events.jsonl"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "add",
+      "kind": "api",
+      "label": "GET /report + /state"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "add",
+      "kind": "ui",
+      "label": "Plan strip + Planner"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "userprompt-plangate",
+      "op": "add",
+      "kind": "sync",
+      "label": "userprompt → plangate"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "plangate-criteria",
+      "op": "add",
+      "kind": "import",
+      "label": "plangate → criteria"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "criteria-planevt",
+      "op": "add",
+      "kind": "data",
+      "label": "criteria → planevt"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "planevt-supervisor",
+      "op": "add",
+      "kind": "data",
+      "label": "planevt → supervisor"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-promptgen",
+      "op": "add",
+      "kind": "sync",
+      "label": "supervisor → promptgen"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "promptgen-steprun",
+      "op": "add",
+      "kind": "sync",
+      "label": "promptgen → steprun"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-steprun",
+      "op": "add",
+      "kind": "control",
+      "label": "supervisor → steprun"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "steprun-tools",
+      "op": "add",
+      "kind": "sync",
+      "label": "steprun → tools"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "tools-workspace",
+      "op": "add",
+      "kind": "data",
+      "label": "tools → workspace"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "steprun-verify",
+      "op": "add",
+      "kind": "sync",
+      "label": "steprun → verify"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "verify-workspace",
+      "op": "add",
+      "kind": "data",
+      "label": "verify → workspace"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "verify-supervisor",
+      "op": "add",
+      "kind": "sync",
+      "label": "verify → supervisor"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-revision",
+      "op": "add",
+      "kind": "sync",
+      "label": "supervisor → revision"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "revision-supervisor",
+      "op": "add",
+      "kind": "control",
+      "label": "revision → supervisor"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-checkpoint",
+      "op": "add",
+      "kind": "data",
+      "label": "supervisor → checkpoint"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "checkpoint-events",
+      "op": "add",
+      "kind": "data",
+      "label": "checkpoint → events"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "events-report",
+      "op": "add",
+      "kind": "data",
+      "label": "events → report"
+    },
+    {
+      "at": "2026-09-04T21:32:44.559Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "report-strip",
+      "op": "add",
+      "kind": "sync",
+      "label": "report → strip"
+    },
+    {
+      "at": "2026-09-04T21:32:51.601Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "report-strip",
+      "op": "remove",
+      "kind": "sync",
+      "label": "report → strip"
+    },
+    {
+      "at": "2026-09-04T21:32:51.601Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "strip-report",
+      "op": "add",
+      "kind": "sync",
+      "label": "strip → report"
+    },
+    {
+      "at": "2026-09-04T21:33:03.222Z",
+      "by": "agent",
+      "type": "node",
+      "id": "revision",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "What stops revisions from ping-ponging forever?"
+      }
+    },
+    {
+      "at": "2026-09-04T21:33:14.815Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "The model writes its own exam, so it can write an easy one"
+      }
+    },
+    {
+      "at": "2026-09-04T21:33:20.987Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "to": "android, cmd, docs, deploy, sidecars, internal/api, internal/codeintel, internal/config, internal/cores, internal/episodic, internal/guard, internal/idle, internal/llm, internal/memory, internal/panel, internal/rfx, internal/server, internal/session, internal/skills, internal/window, panel"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "add",
+      "kind": "ui",
+      "label": "RFX Planner panel"
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "node",
+      "id": "stepapi",
+      "op": "add",
+      "kind": "api",
+      "label": "Step control API"
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "Plan strip + Planner",
+          "to": "Native plan strip"
+        },
+        {
+          "field": "sublabel",
+          "from": "both read the same step state · live during the run",
+          "to": "SIMPLE surface · steps, which one is running, pass/fail · no knobs"
+        },
+        {
+          "field": "note",
+          "from": "With a run per step, the strip has something to show all the way through: ste…",
+          "to": "What a user gets with no RFX pack installed. Shows the plan the moment it com…"
+        },
+        {
+          "field": "tech",
+          "from": "Svelte 5 / RFX",
+          "to": "Svelte 5"
+        },
+        {
+          "field": "path",
+          "to": "panel/src/lib/chat/PlanStrip.svelte"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "planner-report",
+      "op": "add",
+      "kind": "sync",
+      "label": "planner → report"
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "strip-stepapi",
+      "op": "add",
+      "kind": "sync",
+      "label": "strip → stepapi"
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "planner-stepapi",
+      "op": "add",
+      "kind": "sync",
+      "label": "planner → stepapi"
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "stepapi-supervisor",
+      "op": "add",
+      "kind": "control",
+      "label": "stepapi → supervisor"
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "strip-report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "poll while a step is running",
+          "to": "poll plan + step state while running"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:34:32.697Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "Proposed: the plan becomes the execution unit. After it commits, each step ge…",
+          "to": "The plan becomes the execution unit: each step gets its own generated prompt …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:34:45.447Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "The panel drives steps by writing English, which is why the plan is decoration"
+      }
+    },
+    {
+      "at": "2026-09-04T21:47:53.258Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "NEW · each step declares how it will be checked",
+          "to": "NEW · each step declares a check that CAN FAIL"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:47:53.258Z",
+      "by": "agent",
+      "type": "node",
+      "id": "revision",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "NEW · \"step 3 needs something from step 1\"",
+          "to": "NEW · reopen an earlier step as rev_n · cap 2 · re-verify downstream"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T21:48:04.182Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "revision-verify",
+      "op": "add",
+      "kind": "control",
+      "label": "revision → verify"
+    },
+    {
+      "at": "2026-09-04T21:48:04.182Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "criteria-verify",
+      "op": "add",
+      "kind": "data",
+      "label": "criteria → verify"
+    },
+    {
+      "at": "2026-09-04T21:48:09.892Z",
+      "by": "agent",
+      "type": "node",
+      "id": "revision",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "What stops revisions from ping-ponging forever?"
+      }
+    },
+    {
+      "at": "2026-09-04T21:48:14.730Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "The model writes its own exam, so it can write an easy one"
+      }
+    }
+  ]
+}

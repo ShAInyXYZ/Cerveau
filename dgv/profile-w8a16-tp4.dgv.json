@@ -1,0 +1,953 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "Profile · Qwen3.8-27B W8A16 · TP=4",
+    "description": "One Brain Core profile, end to end: what wakes it, what it loads, how the four 3090s split it, and which patch gates prefix caching. Public :18040 → backend :18041. Scoped on purpose — the rest of Cerveau is in the Architecture diagram.",
+    "updated": "2026-09-04",
+    "colorBy": "kind",
+    "driftIgnore": [
+      "android",
+      "cmd",
+      "docs",
+      "internal",
+      "panel",
+      "deploy/idle",
+      "deploy/profiles/README.md",
+      "deploy/profiles/ENGINE-PATCHES.md",
+      "deploy/profiles/qwen3.8-27b-bf16-tp4"
+    ]
+  },
+  "frames": [
+    {
+      "tone": "violet",
+      "id": "install",
+      "label": "Install · what puts this profile on the machine",
+      "position": {
+        "x": 400,
+        "y": 0
+      },
+      "size": {
+        "width": 348,
+        "height": 198
+      }
+    },
+    {
+      "tone": "cyan",
+      "id": "wake",
+      "label": "Wake · public port → backend port",
+      "position": {
+        "x": 888,
+        "y": 0
+      },
+      "size": {
+        "width": 672,
+        "height": 356
+      }
+    },
+    {
+      "tone": "amber",
+      "id": "engine",
+      "label": "Engine · the vLLM process",
+      "position": {
+        "x": 1700,
+        "y": 0
+      },
+      "size": {
+        "width": 1320,
+        "height": 649
+      }
+    },
+    {
+      "tone": "green",
+      "id": "gpus",
+      "label": "Hardware · 5 GPUs, 250 W caps",
+      "position": {
+        "x": 0,
+        "y": 789
+      },
+      "size": {
+        "width": 348,
+        "height": 281
+      }
+    },
+    {
+      "tone": "neutral",
+      "id": "config",
+      "label": "Config · what decides the parameters",
+      "position": {
+        "x": 488,
+        "y": 789
+      },
+      "size": {
+        "width": 348,
+        "height": 888
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "installer",
+      "kind": "program",
+      "label": "install.sh",
+      "sublabel": "copies units · enables the socket only · merges core.json · rebuilds the watchdog unit list",
+      "frame": "install",
+      "tech": "bash · python3",
+      "status": "done",
+      "path": "deploy/profiles/install.sh",
+      "position": {
+        "x": 444,
+        "y": 60
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "OpenAI /v1/chat/completions"
+        }
+      ],
+      "tags": [],
+      "id": "socket",
+      "kind": "infra",
+      "label": "crv-core-...-proxy.socket",
+      "sublabel": "PUBLIC :18040 — the only port cores.json points at",
+      "note": "Socket activation: the first request to :18040 starts the proxy, which pulls up the engine. Nothing holds the GPUs until someone asks. The .socket and the -proxy.service must share a base name — systemd starts the unit named like the socket, and that has to be the proxy, not the engine.",
+      "frame": "wake",
+      "tech": "systemd .socket",
+      "status": "done",
+      "path": "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16-proxy.socket",
+      "position": {
+        "x": 932,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "proxy",
+      "kind": "infra",
+      "label": "crv-core-...-proxy.service",
+      "sublabel": "systemd-socket-proxyd :18040 → :18041 · --exit-idle-time=infinity",
+      "frame": "wake",
+      "tech": "systemd-socket-proxyd",
+      "status": "done",
+      "path": "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16-proxy.service",
+      "position": {
+        "x": 1256,
+        "y": 139
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "coreunit",
+      "kind": "service",
+      "label": "crv-core-vllm-27b-w8a16.service",
+      "sublabel": "Type=exec · never enabled · Restart=no · TimeoutStartSec=900",
+      "note": "Never enable this unit: a Core that loads at boot defeats idle parking. Restart=no is deliberate — the park watchdog stops it, and a restart policy would undo that.\n\nType=exec calls the unit active as soon as the process spawns, but vLLM binds its port minutes later, so ExecStartPost polls :18041 (and $MAINPID, so a crash fails fast) for up to 880 s.",
+      "frame": "engine",
+      "tech": "systemd .service",
+      "status": "done",
+      "path": "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16.service",
+      "position": {
+        "x": 1744,
+        "y": 238
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "launcher",
+      "kind": "program",
+      "label": "start_qwen_tp4.sh",
+      "sublabel": "in Gpu-Rig, NOT this repo · shared by both TP=4 profiles",
+      "note": "Lives OUTSIDE this repo, in Gpu-Rig. Translates the profile's env into vLLM flags. KV=fp8 → --kv-cache-dtype fp8 (which IS fp8_e4m3 on CUDA); KV=bf16 would switch to FLASH_ATTN + the split-KV spec-decode patch instead. Always passes --reasoning-parser qwen3, without which the whole thinking block lands in message.content.",
+      "frame": "engine",
+      "tech": "bash",
+      "status": "done",
+      "position": {
+        "x": 2068,
+        "y": 238
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "OpenAI /v1/chat/completions"
+        }
+      ],
+      "tags": [],
+      "id": "vllm",
+      "kind": "model",
+      "label": "vLLM engine",
+      "sublabel": "backend :18041 · 262,144 ctx · fp8 KV · vision · MTP drafts · prefix cache ON",
+      "note": "Measured 2026-09-04: 7.49 GiB of weights per rank, 12.72 GiB left for KV = 1,493,666 tokens, 5.70x concurrency at the full 262k window. ~164 tok/s decode. Vision tower loads with an 8192-token encoder budget.",
+      "frame": "engine",
+      "tech": "vLLM 0.27.1 (patched) · Python",
+      "status": "done",
+      "position": {
+        "x": 2392,
+        "y": 248
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "patches",
+      "kind": "storage",
+      "label": "vLLM patches",
+      "sublabel": "8 vendored patches, applied to the INSTALLED package",
+      "note": "Applied to site-packages, not a source checkout. Nothing records that they are applied — RE-APPLY AFTER ANY pip install, upgrade or venv rebuild.\n\nvllm-pr48375-mamba-prefix-eagle.patch GATES prefix caching (see the flag on this node).\nvllm-pr50021-gdn-spec-bounds.patch makes concurrent MTP requests safe, so --max-num-seqs 8 is fine.\n\nCheck: patch -p2 --dry-run --forward < the patch. \"Reversed (or previously applied)\" means applied.\nDocumented in deploy/profiles/ENGINE-PATCHES.md.",
+      "frame": "engine",
+      "status": "done",
+      "position": {
+        "x": 2716,
+        "y": 60
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "issue",
+          "title": "A vLLM reinstall silently un-gates prefix caching",
+          "note": "PREFIX_CACHE=1 in the unit is only correct while vllm-pr48375-mamba-prefix-eagle.patch is applied to the installed package. The patches live in site-packages, so any pip install, upgrade or venv rebuild removes them — and nothing in the venv, the unit, the panel or the logs records that they are gone. The engine starts happily and serves wrong output: a cached page whose recurrent-state snapshot was taken over rejected MTP draft tokens gets reused, producing wrong tool calls and degraded long-context answers with no error anywhere. The failure is invisible by construction, which is what makes it worth a flag rather than a comment.",
+          "fix": "Add a patch check to the Core unit's ExecStartPre: dry-run each patch in ~/qwen-serving/patches and fail the unit unless every one reports \"Reversed (or previously applied)\". A Core that will not start is a better outcome than one that lies. Until that exists, ENGINE-PATCHES.md carries the manual check and the rule: no 48375, no prefix caching.",
+          "by": "agent",
+          "at": "2026-09-04T19:53:33.418Z"
+        }
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "checkpoint",
+      "kind": "storage",
+      "label": "Qwen3.8-27B-W8A16-MTP",
+      "sublabel": "6 INT8 shards + model_mtp · int8 group-128 symmetric · vision / lm_head / MTP / GDN gates stay BF16",
+      "note": "lued/Qwen3.8-27B-INT8-W8A16-MTP. Hybrid backbone: 64 layers, of which 48 are Gated DeltaNet linear attention and 16 full attention. The recurrent state in those 48 layers is what makes prefix caching dangerous without vllm#48375.",
+      "frame": "engine",
+      "status": "done",
+      "position": {
+        "x": 2716,
+        "y": 409
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "gpu0123",
+      "kind": "device",
+      "label": "4× RTX 3090",
+      "sublabel": "GPU 0-3 · tensor-parallel · 250 W each · no NVLink, no P2P",
+      "note": "TP=4 divides cleanly: 4 KV heads → 1 per card, intermediate 17408 → 4352. Every pair reports NO CUDA peer access and the topology is NODE across the host bridge, so NCCL_P2P_LEVEL=NVL is correct and there is no peer-access win to unlock. All-reduce crosses PCIe.",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "gpu4",
+      "kind": "device",
+      "label": "RTX 3060",
+      "sublabel": "GPU 4 · embedder only · never in the TP group",
+      "note": "Kept out of CUDA_VISIBLE_DEVICES for the engine so the embedder, speech and displays never compete with the Core.",
+      "position": {
+        "x": 0,
+        "y": 241
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "embeddings",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "text[] → float[][]"
+        }
+      ],
+      "tags": [],
+      "id": "embedder",
+      "kind": "sidecar",
+      "label": "Embed sidecar",
+      "sublabel": "Nemotron-3-Embed-1B · :8081 · CUDA on GPU 4",
+      "note": "Restarted by the watchdog when the profile switches, so its placement follows the profile.",
+      "frame": "gpus",
+      "tech": "Python · sentence-transformers",
+      "status": "done",
+      "path": "sidecars",
+      "position": {
+        "x": 44,
+        "y": 849
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "embedenv",
+      "kind": "storage",
+      "label": "embed.env",
+      "sublabel": "where the embedder runs under THIS profile",
+      "frame": "config",
+      "status": "done",
+      "path": "deploy/profiles/qwen3.8-27b-w8a16-tp4/embed.env",
+      "position": {
+        "x": 532,
+        "y": 849
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "unitenv",
+      "kind": "storage",
+      "label": "Environment= lines",
+      "sublabel": "the profile's defaults, baked into the unit",
+      "note": "MODEL, DTYPE=auto, PORT=18041, MAX_LEN=262144, TP=4, CUDA_VISIBLE_DEVICES=0,1,2,3, KV=fp8, VISION=1, PREFIX_CACHE=1, DRAFT_TOKENS=3, GPU_UTIL=0.88, MARLIN_INT8=0.\n\nMARLIN_INT8 MUST STAY 0. It does not select the W8A16 marlin path (already the default) — it forces int8 ACTIVATIONS (W8A8), and the kernel refuses them on this checkpoint's int8-weight lm_head/mtp.",
+      "frame": "config",
+      "status": "done",
+      "position": {
+        "x": 532,
+        "y": 991
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "overrides",
+      "kind": "storage",
+      "label": "cores.d override",
+      "sublabel": "~/.config/cerveau/cores.d/vllm-27b-w8a16.env — a diff, written by the panel",
+      "note": "EnvironmentFile=-… read AFTER the unit's own Environment= lines, so it wins. Only what differs from the profile is stored; resetting to defaults deletes the file.\n\nCurrently: GPU_UTIL=\"0.92\", PREFIX_CACHE=\"1\".",
+      "frame": "config",
+      "status": "done",
+      "position": {
+        "x": 532,
+        "y": 1295
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "corejson",
+      "kind": "storage",
+      "label": "core.json entry",
+      "sublabel": "id, endpoint :18040, params shown in the panel, tooltip notes",
+      "frame": "config",
+      "status": "done",
+      "path": "deploy/profiles/qwen3.8-27b-w8a16-tp4/core.json",
+      "position": {
+        "x": 532,
+        "y": 1539
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "deploy",
+      "id": "installer-socket",
+      "source": "installer",
+      "target": "socket",
+      "protocol": "fs",
+      "label": "copies + enables ONLY the socket"
+    },
+    {
+      "kind": "deploy",
+      "id": "installer-coreunit",
+      "source": "installer",
+      "target": "coreunit",
+      "protocol": "fs",
+      "label": "copies, never enables"
+    },
+    {
+      "kind": "data",
+      "id": "installer-corejson",
+      "source": "installer",
+      "target": "corejson",
+      "protocol": "fs",
+      "label": "merges the entry + params into cores.json"
+    },
+    {
+      "kind": "control",
+      "id": "socket-proxy",
+      "source": "socket",
+      "target": "proxy",
+      "label": "first request on :18040 starts the proxy"
+    },
+    {
+      "kind": "control",
+      "id": "proxy-coreunit",
+      "source": "proxy",
+      "target": "coreunit",
+      "label": "Requires= pulls the engine up"
+    },
+    {
+      "kind": "sync",
+      "id": "proxy-vllm",
+      "source": "proxy",
+      "target": "vllm",
+      "protocol": "http",
+      "label": "forward :18040 → :18041",
+      "targetPort": "chat"
+    },
+    {
+      "kind": "control",
+      "id": "coreunit-launcher",
+      "source": "coreunit",
+      "target": "launcher",
+      "protocol": "exec",
+      "label": "ExecStart · ExecStartPost polls :18041 for up to 880 s"
+    },
+    {
+      "kind": "control",
+      "id": "launcher-vllm",
+      "source": "launcher",
+      "target": "vllm",
+      "protocol": "exec",
+      "label": "exec vllm serve with the translated flags"
+    },
+    {
+      "kind": "data",
+      "id": "unitenv-coreunit",
+      "source": "unitenv",
+      "target": "coreunit",
+      "protocol": "fs",
+      "label": "profile defaults"
+    },
+    {
+      "kind": "data",
+      "id": "overrides-coreunit",
+      "source": "overrides",
+      "target": "coreunit",
+      "protocol": "fs",
+      "label": "EnvironmentFile= read after Environment= — the override wins"
+    },
+    {
+      "kind": "data",
+      "id": "vllm-checkpoint",
+      "source": "vllm",
+      "target": "checkpoint",
+      "protocol": "fs",
+      "label": "load shards · 7.49 GiB per rank"
+    },
+    {
+      "kind": "deploy",
+      "id": "vllm-patches",
+      "source": "vllm",
+      "target": "patches",
+      "protocol": "fs",
+      "label": "runs the patched site-packages"
+    },
+    {
+      "kind": "deploy",
+      "id": "vllm-gpu0123",
+      "source": "vllm",
+      "target": "gpu0123",
+      "label": "TP=4 · all-reduce over PCIe, no P2P"
+    },
+    {
+      "kind": "deploy",
+      "id": "embedder-gpu4",
+      "source": "embedder",
+      "target": "gpu4",
+      "label": "CUDA_VISIBLE_DEVICES=4"
+    },
+    {
+      "kind": "data",
+      "id": "embedenv-embedder",
+      "source": "embedenv",
+      "target": "embedder",
+      "protocol": "fs",
+      "label": "EnvironmentFile · restarted on profile switch",
+      "ack": "config file read at unit start, not a call through the embeddings port"
+    },
+    {
+      "kind": "data",
+      "id": "corejson-socket",
+      "source": "corejson",
+      "target": "socket",
+      "protocol": "http",
+      "label": "endpoint points at the PUBLIC port, never the backend",
+      "ack": "records the address; the actual call comes from the LLM client, not from cores.json"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "install",
+      "op": "add",
+      "label": "Install · what puts this profile on the machine"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "wake",
+      "op": "add",
+      "label": "Wake · public port → backend port"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "engine",
+      "op": "add",
+      "label": "Engine · the vLLM process"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "gpus",
+      "op": "add",
+      "label": "Hardware · 5 GPUs, 250 W caps"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "config",
+      "op": "add",
+      "label": "Config · what decides the parameters"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "installer",
+      "op": "add",
+      "kind": "program",
+      "label": "install.sh"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiledir",
+      "op": "add",
+      "kind": "storage",
+      "label": "Profile directory"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "socket",
+      "op": "add",
+      "kind": "infra",
+      "label": "crv-core-...-proxy.socket"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "proxy",
+      "op": "add",
+      "kind": "infra",
+      "label": "crv-core-...-proxy.service"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coreunit",
+      "op": "add",
+      "kind": "service",
+      "label": "crv-core-vllm-27b-w8a16.service"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "launcher",
+      "op": "add",
+      "kind": "program",
+      "label": "start_qwen_tp4.sh"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "vllm",
+      "op": "add",
+      "kind": "model",
+      "label": "vLLM engine"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "patches",
+      "op": "add",
+      "kind": "storage",
+      "label": "vLLM patches"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkpoint",
+      "op": "add",
+      "kind": "storage",
+      "label": "Qwen3.8-27B-W8A16-MTP"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "gpu0123",
+      "op": "add",
+      "kind": "device",
+      "label": "4× RTX 3090"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "gpu4",
+      "op": "add",
+      "kind": "device",
+      "label": "RTX 3060"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "embedder",
+      "op": "add",
+      "kind": "sidecar",
+      "label": "Embed sidecar"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "embedenv",
+      "op": "add",
+      "kind": "storage",
+      "label": "embed.env"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "unitenv",
+      "op": "add",
+      "kind": "storage",
+      "label": "Environment= lines"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "overrides",
+      "op": "add",
+      "kind": "storage",
+      "label": "cores.d override"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "node",
+      "id": "corejson",
+      "op": "add",
+      "kind": "storage",
+      "label": "core.json entry"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "installer-profiledir",
+      "op": "add",
+      "kind": "data",
+      "label": "installer → profiledir"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "installer-socket",
+      "op": "add",
+      "kind": "deploy",
+      "label": "installer → socket"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "installer-coreunit",
+      "op": "add",
+      "kind": "deploy",
+      "label": "installer → coreunit"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "installer-corejson",
+      "op": "add",
+      "kind": "data",
+      "label": "installer → corejson"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "socket-proxy",
+      "op": "add",
+      "kind": "control",
+      "label": "socket → proxy"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "proxy-coreunit",
+      "op": "add",
+      "kind": "control",
+      "label": "proxy → coreunit"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "proxy-vllm",
+      "op": "add",
+      "kind": "sync",
+      "label": "proxy → vllm"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "coreunit-launcher",
+      "op": "add",
+      "kind": "control",
+      "label": "coreunit → launcher"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "launcher-vllm",
+      "op": "add",
+      "kind": "control",
+      "label": "launcher → vllm"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "unitenv-coreunit",
+      "op": "add",
+      "kind": "data",
+      "label": "unitenv → coreunit"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "overrides-coreunit",
+      "op": "add",
+      "kind": "data",
+      "label": "overrides → coreunit"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "vllm-checkpoint",
+      "op": "add",
+      "kind": "data",
+      "label": "vllm → checkpoint"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "vllm-patches",
+      "op": "add",
+      "kind": "deploy",
+      "label": "vllm → patches"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "vllm-gpu0123",
+      "op": "add",
+      "kind": "deploy",
+      "label": "vllm → gpu0123"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "embedder-gpu4",
+      "op": "add",
+      "kind": "deploy",
+      "label": "embedder → gpu4"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "embedenv-embedder",
+      "op": "add",
+      "kind": "data",
+      "label": "embedenv → embedder"
+    },
+    {
+      "at": "2026-09-04T19:53:13.254Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "corejson-socket",
+      "op": "add",
+      "kind": "data",
+      "label": "corejson → socket"
+    },
+    {
+      "at": "2026-09-04T19:53:19.540Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "embedenv-embedder",
+      "op": "change",
+      "fields": [
+        {
+          "field": "ack",
+          "to": "config file read at unit start, not a call through the embeddings port"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:53:19.540Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "corejson-socket",
+      "op": "change",
+      "fields": [
+        {
+          "field": "ack",
+          "to": "records the address; the actual call comes from the LLM client, not from core…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:53:33.418Z",
+      "by": "agent",
+      "type": "node",
+      "id": "patches",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "A vLLM reinstall silently un-gates prefix caching"
+      }
+    },
+    {
+      "at": "2026-09-04T19:56:04.691Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiledir",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "The four files below are this directory. Shown as one node so the profile rea…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:56:04.691Z",
+      "by": "agent",
+      "type": "node",
+      "id": "launcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Translates the profile's env into vLLM flags. KV=fp8 → --kv-cache-dtype fp8 (…",
+          "to": "Lives OUTSIDE this repo, in Gpu-Rig. Translates the profile's env into vLLM f…"
+        },
+        {
+          "field": "path",
+          "from": "/home/shiny/Documents/GitHub/Gpu-Rig/quad/start_qwen_tp4.sh",
+          "to": "../Gpu-Rig/quad/start_qwen_tp4.sh"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:56:04.691Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "to": "android, cmd, docs, internal, panel, sidecars, deploy/idle, deploy/profiles/install.sh, deploy/profiles/README.md, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-bf16-tp4"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:56:31.366Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiledir",
+      "op": "remove",
+      "kind": "storage",
+      "label": "Profile directory"
+    },
+    {
+      "at": "2026-09-04T19:56:31.366Z",
+      "by": "agent",
+      "type": "node",
+      "id": "launcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "shared by both TP=4 profiles — only Environment= lines differ",
+          "to": "in Gpu-Rig, NOT this repo · shared by both TP=4 profiles"
+        },
+        {
+          "field": "path",
+          "from": "../Gpu-Rig/quad/start_qwen_tp4.sh"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:56:31.366Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "installer-profiledir",
+      "op": "remove",
+      "kind": "data",
+      "label": "installer → profiledir"
+    },
+    {
+      "at": "2026-09-04T19:56:31.366Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "from": "android, cmd, docs, internal, panel, sidecars, deploy/idle, deploy/profiles/install.sh, deploy/profiles/README.md, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-bf16-tp4",
+          "to": "android, cmd, docs, internal, panel, deploy/idle, deploy/profiles/README.md, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-bf16-tp4"
+        }
+      ]
+    }
+  ]
+}

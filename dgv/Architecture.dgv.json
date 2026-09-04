@@ -1,0 +1,2281 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "Cerveau Architecture",
+    "description": "Mapped from code (cmd/crv, internal/*, panel, sidecars, deploy): a Svelte panel, CLI and paired phone drive the Go core (:7700), which runs the agent loop against a Brain Core (llama.cpp or socket-activated vLLM), five memory stores, a guarded tool registry with RFX reflexes, and a front door (ignite + tailscale) that wakes the stack on demand.",
+    "updated": "2026-09-04",
+    "colorBy": "kind",
+    "edgeStyle": "routed",
+    "driftIgnore": [
+      "android",
+      "dgv",
+      "docs",
+      "deploy/idle/README.md",
+      "deploy/profiles/README.md",
+      "cmd/crv",
+      "internal/config"
+    ]
+  },
+  "frames": [
+    {
+      "tone": "amber",
+      "id": "crv",
+      "label": "crv · Go core · :7700",
+      "parent": null,
+      "note": "cmd/crv → internal/*",
+      "position": {
+        "x": -4,
+        "y": 0
+      },
+      "size": {
+        "width": 1328,
+        "height": 1286
+      }
+    },
+    {
+      "tone": "violet",
+      "id": "memory",
+      "label": "Memory · 5 stores",
+      "parent": null,
+      "note": "working=window · episodic=sessions · semantic=typesense · codebase=codegraph · procedural=skills",
+      "position": {
+        "x": 1456,
+        "y": 0
+      },
+      "size": {
+        "width": 680,
+        "height": 966
+      }
+    },
+    {
+      "tone": "green",
+      "id": "serving",
+      "label": "Brain Cores · model serving",
+      "parent": null,
+      "position": {
+        "x": 2268,
+        "y": 0
+      },
+      "size": {
+        "width": 1004,
+        "height": 1577
+      }
+    },
+    {
+      "tone": "rose",
+      "id": "edge",
+      "label": "Front door · wake on demand",
+      "parent": null,
+      "position": {
+        "x": -4,
+        "y": 1713
+      },
+      "size": {
+        "width": 680,
+        "height": 270
+      }
+    },
+    {
+      "tone": "neutral",
+      "id": "outside",
+      "label": "Outside the machine",
+      "parent": null,
+      "position": {
+        "x": 808,
+        "y": 1713
+      },
+      "size": {
+        "width": 356,
+        "height": 751
+      }
+    },
+    {
+      "tone": "neutral",
+      "id": "targets",
+      "label": "What the tools act on",
+      "parent": null,
+      "position": {
+        "x": 1296,
+        "y": 1713
+      },
+      "size": {
+        "width": 356,
+        "height": 486
+      }
+    },
+    {
+      "tone": "amber",
+      "id": "lifecycle",
+      "label": "Lifecycle · start & park",
+      "parent": null,
+      "position": {
+        "x": 1784,
+        "y": 1713
+      },
+      "size": {
+        "width": 680,
+        "height": 752
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "panel",
+      "kind": "ui",
+      "label": "Panel",
+      "sublabel": "chat · sessions · memory · RFX dock",
+      "note": "panel/src — one SPA for desktop and phone; served embedded by the core.",
+      "frame": "outside",
+      "tech": "Svelte 5",
+      "status": "done",
+      "position": {
+        "x": 856,
+        "y": 1773
+      },
+      "path": [
+        "panel",
+        "internal/panel"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "crvcli",
+      "kind": "program",
+      "label": "crvcli",
+      "sublabel": "ask · new · sessions · pair · rfx",
+      "note": "cmd/crvcli — no models, no state; talks to the running core.",
+      "frame": "outside",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 856,
+        "y": 1957
+      },
+      "path": [
+        "cmd/crvcli"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "phone",
+      "kind": "device",
+      "label": "Phone",
+      "sublabel": "Android app · WebView + QR pairing",
+      "note": "android/ — PanelActivity wraps the panel; ScanActivity pairs; TEE-signed device key.",
+      "frame": "outside",
+      "tech": "Android",
+      "status": "done",
+      "position": {
+        "x": 856,
+        "y": 2141
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "JSON: sessions, chat, memory, rfx, cores, cores/apply, cores/{id}/params, idle, devices, system/stats (every GPU)"
+        },
+        {
+          "id": "stream",
+          "protocol": "sse",
+          "dir": "out",
+          "shape": "turn events: tokens, tool calls, questions, errors"
+        },
+        {
+          "id": "panel",
+          "protocol": "http",
+          "dir": "out",
+          "shape": "static dist at /"
+        }
+      ],
+      "tags": [],
+      "id": "api",
+      "kind": "api",
+      "label": "HTTP API",
+      "sublabel": "/api/* · auth gate · pairing",
+      "note": "internal/api + internal/server. Bearer token + device signature on every remote request. Probes to the Core (health, /v1/models, modalities, window) carry CRV_MODEL_KEY — without it a vLLM Core behind VLLM_API_KEY read as nameless and the window stayed at the config fallback. Modalities: llama.cpp /props, else the Core's registry entry (VISION=1). Health syncs the window budget once the Core answered, so the panel shows the Core's real window before the first turn.",
+      "frame": "crv",
+      "tech": "Go net/http",
+      "status": "done",
+      "position": {
+        "x": 44,
+        "y": 60
+      },
+      "path": [
+        "internal/api",
+        "internal/server"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "loop",
+      "kind": "service",
+      "label": "Agent Loop",
+      "sublabel": "observe → think → act · 3 modes",
+      "note": "internal/loop — discussion / brainstorming / autopilot; breaker, retry, resume, progress, turn-boundary hooks (distill + semantic promotion).",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 368,
+        "y": 657
+      },
+      "path": [
+        "internal/loop"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "window",
+      "kind": "module",
+      "label": "Context Window",
+      "sublabel": "working memory · token budget",
+      "note": "internal/window",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 692,
+        "y": 1117
+      },
+      "path": [
+        "internal/window"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "guard",
+      "kind": "module",
+      "label": "Guard",
+      "sublabel": "hard rules on tool calls",
+      "note": "internal/guard",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 692,
+        "y": 948
+      },
+      "path": [
+        "internal/guard"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "llmclient",
+      "kind": "module",
+      "label": "LLM Client",
+      "sublabel": "OpenAI-compatible · sampling presets · tool canary",
+      "note": "internal/llm",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 692,
+        "y": 779
+      },
+      "path": [
+        "internal/llm"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "session",
+      "kind": "module",
+      "label": "Session Store",
+      "sublabel": "FS store · workspace binding",
+      "note": "internal/session",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 692,
+        "y": 182
+      },
+      "path": [
+        "internal/session"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "memclient",
+      "kind": "module",
+      "label": "Memory Client",
+      "sublabel": "indexer · recall · curator",
+      "note": "internal/memory — ensures managed Typesense, indexes events.jsonl, drains pending-semantic.jsonl.",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 692,
+        "y": 351
+      },
+      "path": [
+        "internal/memory",
+        "internal/episodic"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "idle",
+      "kind": "module",
+      "label": "Idle",
+      "sublabel": "decides when to park the Core",
+      "note": "internal/idle — only writes a request file; never parks anything itself.",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "wip",
+      "position": {
+        "x": 368,
+        "y": 62
+      },
+      "path": [
+        "internal/idle"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "tools",
+      "kind": "module",
+      "label": "Tool Registry",
+      "sublabel": "risk tiers · modes · GBNF grammars",
+      "note": "internal/tools — read/grep/glob/edit/write/apply_patch/bash/serve/check_page/commit_plan/ask_user/web_fetch/file_map/find_symbol/find_references/remember/skill/reflex",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 692,
+        "y": 550
+      },
+      "path": [
+        "internal/tools"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rfx",
+      "kind": "module",
+      "label": "RFX Runtime",
+      "sublabel": "reflex manifests · custom panels",
+      "note": "internal/rfx — declarative capabilities composed from guarded tools; exec reflexes run external programs.",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "wip",
+      "position": {
+        "x": 1016,
+        "y": 381
+      },
+      "path": [
+        "internal/rfx"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "skills",
+      "kind": "module",
+      "label": "Skills",
+      "sublabel": "procedural memory loader",
+      "note": "internal/skills",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 1016,
+        "y": 580
+      },
+      "path": [
+        "internal/skills"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "codeintel",
+      "kind": "module",
+      "label": "Code Intel",
+      "sublabel": "symbol graph indexer",
+      "note": "internal/codeintel — Go extractor + regex extractors, incremental index.",
+      "frame": "crv",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 1016,
+        "y": 749
+      },
+      "path": [
+        "internal/codeintel"
+      ]
+    },
+    {
+      "ports": [
+        {
+          "id": "search",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "collections: content + embedding (hybrid)"
+        }
+      ],
+      "tags": [],
+      "id": "typesense",
+      "kind": "db",
+      "label": "Typesense",
+      "sublabel": "semantic memory · managed sidecar :8108",
+      "note": "Binary downloaded + spawned by the core; data in ~/.crv/typesense-data.",
+      "frame": "memory",
+      "tech": "Typesense 27",
+      "status": "done",
+      "position": {
+        "x": 1504,
+        "y": 135
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "embeddings",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "/v1/embeddings: text[] → float[][]"
+        }
+      ],
+      "tags": [],
+      "id": "embed",
+      "kind": "sidecar",
+      "label": "Embed Sidecar",
+      "sublabel": "Nemotron-3-Embed-1B · :8081 · on the 3060 under both TP=4 profiles, CPU otherwise",
+      "note": "cerveau-embed.service reads ~/.config/cerveau/embed.env (EnvironmentFile=). Restart in the panel writes that file from the active Core's `embed` settings (profile embed.env → cores.json, user overrides in cores.d/<id>.embed.env) and the watchdog restarts the unit. BF16 profile: EMBED_DEVICE=cuda, CUDA_VISIBLE_DEVICES=4 (the 3060, 3.7 GB), so recall runs at GPU speed and the four 3090s stay with the Core. Profiles without embed.env = CPU, the one-GPU default.",
+      "frame": "memory",
+      "tech": "Python · sentence-transformers · CUDA on GPU 4",
+      "status": "done",
+      "position": {
+        "x": 1828,
+        "y": 60
+      },
+      "path": [
+        "sidecars",
+        "deploy/idle/cerveau-embed.service"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "sessions",
+      "kind": "storage",
+      "label": "Session Files",
+      "sublabel": "episodic memory · events.jsonl",
+      "note": "cfg.SessionsDir/<id>/events.jsonl",
+      "frame": "memory",
+      "status": "done",
+      "position": {
+        "x": 1504,
+        "y": 345
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "sql",
+          "protocol": "sql",
+          "dir": "in",
+          "shape": "symbols, references, files"
+        }
+      ],
+      "tags": [],
+      "id": "codegraph",
+      "kind": "db",
+      "label": "Code Graph",
+      "sublabel": "codebase memory",
+      "frame": "memory",
+      "tech": "SQLite",
+      "status": "done",
+      "position": {
+        "x": 1504,
+        "y": 514
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "skillsdir",
+      "kind": "storage",
+      "label": "Skills Dir",
+      "sublabel": "procedural memory · SKILL.md",
+      "frame": "memory",
+      "status": "done",
+      "position": {
+        "x": 1504,
+        "y": 682
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rfxdir",
+      "kind": "storage",
+      "label": "RFX Manifests",
+      "sublabel": "~/.crv/rfx/*.rfx.yaml",
+      "frame": "memory",
+      "status": "done",
+      "position": {
+        "x": 1504,
+        "y": 824
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "/v1/chat/completions + GBNF grammar"
+        }
+      ],
+      "tags": [],
+      "id": "llama",
+      "kind": "model",
+      "label": "llama-server",
+      "sublabel": "llama.cpp core · :8080",
+      "note": "systemd unit cerveau-llama.service; ~/.crv/bin/serve-model.sh",
+      "frame": "serving",
+      "tech": "C++",
+      "status": "done",
+      "position": {
+        "x": 2640,
+        "y": 60
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "held while the Core loads"
+        }
+      ],
+      "tags": [],
+      "id": "coreproxy",
+      "kind": "infra",
+      "label": "Wake-on-request socket",
+      "sublabel": "systemd socket proxy :18020 → :18021",
+      "note": "deploy/idle — crv-core-vllm-proxy.socket is installed and listening; cores.json points here, so whether vLLM is loaded is systemd's problem.",
+      "frame": "serving",
+      "tech": "systemd-socket-proxyd",
+      "status": "done",
+      "position": {
+        "x": 2316,
+        "y": 308
+      },
+      "path": [
+        "deploy/idle/crv-core-vllm-proxy.socket",
+        "deploy/idle/crv-core-vllm-proxy.service"
+      ]
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "/v1/chat/completions"
+        }
+      ],
+      "tags": [],
+      "id": "vllm",
+      "kind": "model",
+      "label": "vLLM core",
+      "sublabel": "W4A16 core · :18021 · 98K ctx · fp8 KV · single 3090",
+      "frame": "serving",
+      "tech": "vLLM · Qwen3.8-27B W4A16",
+      "status": "done",
+      "position": {
+        "x": 2640,
+        "y": 270
+      },
+      "note": "Profile-less original Core (unit crv-core-vllm.service, given a `unit` in cores.json by hand). ~/qwen-serving/single-user/start_qwen.sh with MAX_LEN=98304, GPU_UTIL=0.90, DRAFT_TOKENS=0. 179,443 KV tokens at the 96K window. Parked with its socket down while the BF16 Core is active; the watchdog switch handles the GPU 0 overlap.",
+      "path": [
+        "deploy/idle/crv-core-vllm.service"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "weights",
+      "kind": "storage",
+      "label": "Model Weights",
+      "sublabel": "GGUF / safetensors on disk",
+      "frame": "serving",
+      "status": "done",
+      "position": {
+        "x": 2964,
+        "y": 612
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "coresjson",
+      "kind": "storage",
+      "label": "cores.json",
+      "sublabel": "Brain Core registry · active · params",
+      "note": "~/.config/cerveau/cores.json — a Core is a whole runtime behind one OpenAI-compatible URL. Since 2026-09-04 each profile entry also carries `params`: the unit's Environment= lines, the defaults the panel shows and the user can override (cores.d).",
+      "frame": "serving",
+      "status": "done",
+      "position": {
+        "x": 2316,
+        "y": 548
+      },
+      "path": [
+        "internal/cores"
+      ]
+    },
+    {
+      "ports": [
+        {
+          "id": "front",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "any request → wake stack → proxy to :7700"
+        }
+      ],
+      "tags": [],
+      "id": "ignite",
+      "kind": "program",
+      "label": "ignite",
+      "sublabel": "doorbell + front door · :7701",
+      "note": "sidecars/ignite — serves a 'waking' page while the core boots.",
+      "frame": "edge",
+      "tech": "Go",
+      "status": "done",
+      "position": {
+        "x": 368,
+        "y": 1773
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "tailscale",
+      "kind": "infra",
+      "label": "Tailscale serve",
+      "sublabel": "HTTPS on ts.net · tailnet-only",
+      "frame": "edge",
+      "status": "done",
+      "position": {
+        "x": 44,
+        "y": 1807
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "systemd",
+      "kind": "infra",
+      "label": "systemd --user",
+      "sublabel": "cerveau · cerveau-embed · cerveau-llama · crv-core-vllm · crv-core-vllm-27b-bf16 · crv-core-vllm-27b-w8a16",
+      "frame": "lifecycle",
+      "status": "done",
+      "position": {
+        "x": 2156,
+        "y": 1847
+      },
+      "path": [
+        "deploy/idle/crv-park-watchdog.service"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "watchdog",
+      "kind": "program",
+      "label": "Park watchdog",
+      "sublabel": "parks Cores on request · switches Cores on request",
+      "note": "deploy/idle/crv-park-watchdog.sh — outside the core process so a crash can never strand the machine. Park: stop every crv-core-*.service (CRV_CORE_UNITS from the profiles.conf drop-in), never a socket. Switch: stop every OTHER Core's unit, proxy AND socket, start the chosen socket, `systemctl restart` the chosen unit (restart, not start: on the already-active Core that is how new parameters are applied), restart the embedder if embed.env changed, restart cerveau.service. Progress to switch-status.json.",
+      "frame": "lifecycle",
+      "tech": "bash · systemd",
+      "status": "done",
+      "position": {
+        "x": 1832,
+        "y": 2116
+      },
+      "path": [
+        "deploy/idle/crv-park-watchdog.sh"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "idlereq",
+      "kind": "storage",
+      "label": "Park request file",
+      "sublabel": "idle decision, on disk",
+      "frame": "lifecycle",
+      "status": "wip",
+      "position": {
+        "x": 2156,
+        "y": 2293
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "workspace",
+      "kind": "storage",
+      "label": "Project Workspace",
+      "sublabel": "the code being worked on",
+      "frame": "targets",
+      "status": "done",
+      "position": {
+        "x": 1344,
+        "y": 1773
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "chromium",
+      "kind": "program",
+      "label": "Headless Chromium",
+      "sublabel": "check_page: console errors + rendered DOM",
+      "frame": "targets",
+      "status": "done",
+      "position": {
+        "x": 1344,
+        "y": 1915
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "reflexprog",
+      "kind": "program",
+      "label": "Exec reflex",
+      "sublabel": "any language · JSON stdin → stdout",
+      "frame": "targets",
+      "status": "wip",
+      "position": {
+        "x": 1344,
+        "y": 2057
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "web",
+      "kind": "external",
+      "label": "Web",
+      "sublabel": "web_fetch (brainstorming mode)",
+      "position": {
+        "x": 856,
+        "y": 2340
+      },
+      "frame": "outside",
+      "ack": "The frame is literally named Outside the machine — it groups what is beyond the boundary rather than claiming ownership, and leaving the node unframed made it float with no explanation of why it was apart"
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "/v1/chat/completions — text + image_url"
+        }
+      ],
+      "tags": [],
+      "id": "vllmbf16",
+      "kind": "model",
+      "label": "vLLM BF16 Core",
+      "sublabel": "Qwen3.8-27B BF16 · TP=4 · 262K · bf16 KV · vision · prefix cache · :18031",
+      "note": "Profile qwen3.8-27b-bf16-tp4 (core id vllm-27b-bf16). Launcher ~/Documents/GitHub/Gpu-Rig/quad/start_qwen_bf16_tp4.sh. Nothing approximated: bf16 weights, bf16 KV, vision tower loaded, MTP 3 (lossless), PREFIX_CACHE=1 (vLLM's default for this hybrid is off; 14k-token prefix TTFT 5.9 s → 0.39 s). Measured 2026-09-04: 13.07 GiB weights/GPU, KV pool ~371k tokens (1.41× a 262K request), 92 tok/s decode, 1280×800 image = 1034 tokens in 1.2 s, GPU_UTIL 0.88 (0.92 OOMed on rank 0). Cold start ~2 min, warm ~40 s. Needs all four 3090s.",
+      "frame": "serving",
+      "tech": "vLLM 0.27.1 · 4×RTX 3090",
+      "status": "done",
+      "path": [
+        "deploy/profiles/qwen3.8-27b-bf16-tp4/crv-core-vllm-27b-bf16.service"
+      ],
+      "position": {
+        "x": 2640,
+        "y": 724
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "held while the Core loads"
+        }
+      ],
+      "tags": [],
+      "id": "coreproxybf16",
+      "kind": "infra",
+      "label": "Wake-on-request socket",
+      "sublabel": "systemd socket proxy :18030 → :18031",
+      "note": "Same pattern as :18020, one pair of ports per profile. cores.json entry vllm-27b-bf16 points here.",
+      "frame": "serving",
+      "tech": "systemd-socket-proxyd",
+      "status": "done",
+      "path": [
+        "deploy/profiles/qwen3.8-27b-bf16-tp4/crv-core-vllm-27b-bf16-proxy.socket",
+        "deploy/profiles/qwen3.8-27b-bf16-tp4/crv-core-vllm-27b-bf16-proxy.service"
+      ],
+      "position": {
+        "x": 2316,
+        "y": 807
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "coresd",
+      "kind": "storage",
+      "label": "cores.d overrides",
+      "sublabel": "~/.config/cerveau/cores.d/<id>.env",
+      "note": "Per-Core runtime parameters the user changed in Settings → Engine → Profile (KV, VISION, MAX_LEN, GPU_UTIL…). Only the diff from the profile; reset removes the file. The Core unit reads it through EnvironmentFile= at its next start, so a change applies on park/wake or restart and never reaches a running engine. PORT refused.",
+      "frame": "serving",
+      "status": "done",
+      "position": {
+        "x": 2316,
+        "y": 1032
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "profiles",
+      "kind": "program",
+      "label": "Profile installer",
+      "sublabel": "deploy/profiles/ — install.sh, one dir per Core, ENGINE-PATCHES.md",
+      "note": "Each profile is one Brain Core made installable: core.json + the three units + embed.env. install.sh copies them, enables only the socket, merges the core.json entry and rebuilds the watchdog's unit list.\n\nThe two TP=4 profiles have their own standalone diagrams — profile-w8a16-tp4 and profile-bf16-tp4 — so this node stays a single box here.\n\nENGINE-PATCHES.md records the eight vLLM patches and which one gates PREFIX_CACHE=1.",
+      "frame": "lifecycle",
+      "tech": "bash · python3",
+      "status": "done",
+      "path": [
+        "deploy/profiles/install.sh",
+        "deploy/profiles/ENGINE-PATCHES.md",
+        "deploy/profiles/qwen3.8-27b-w8a16-tp4/core.json",
+        "deploy/profiles/qwen3.8-27b-w8a16-tp4/embed.env",
+        "deploy/profiles/qwen3.8-27b-bf16-tp4/core.json",
+        "deploy/profiles/qwen3.8-27b-bf16-tp4/embed.env"
+      ],
+      "position": {
+        "x": 1832,
+        "y": 1773
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "switchreq",
+      "kind": "storage",
+      "label": "Switch request + status",
+      "sublabel": "$XDG_RUNTIME_DIR/cerveau/switch-*.json",
+      "note": "The panel's Restart button. POST /api/cores/apply writes switch-request.json {core, unit, stop[], restart_cerveau, restart_embed} and ~/.config/cerveau/embed.env; the park watchdog consumes it and writes switch-status.json (queued → stopping → starting → restarting → done | failed), which /api/cores exposes as `switch` for the panel to poll. tmpfs: a stale request cannot survive a reboot.",
+      "frame": "lifecycle",
+      "status": "done",
+      "position": {
+        "x": 2156,
+        "y": 1989
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "OpenAI /v1/chat/completions"
+        }
+      ],
+      "tags": [],
+      "id": "vllmw8a16",
+      "kind": "model",
+      "label": "vLLM W8A16 Core",
+      "sublabel": "Qwen3.8-27B W8A16 + MTP · TP=4 · 262K · fp8 KV · vision · prefix cache · :18041",
+      "note": "The active Core as of 2026-09-04. int8 weights (compressed-tensors, group-128, symmetric) with the vision tower, lm_head, MTP head and GDN gates left in BF16, so the marlin int8 kernels engage. 7.49 GiB of weights per rank leaves 12.7 GiB of KV: 1,493,666 tokens, 5.70x concurrency at the full 262k window.\n\nPrefix caching is ON and only safe because vllm#48375 is applied — see the enginepatches node. Without that patch it must be 0.",
+      "frame": "serving",
+      "tech": "vLLM 0.27.1 (patched) · 4×RTX 3090",
+      "status": "done",
+      "position": {
+        "x": 2640,
+        "y": 1232
+      },
+      "path": "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16.service"
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "OpenAI /v1/chat/completions"
+        }
+      ],
+      "tags": [],
+      "id": "coreproxyw8a16",
+      "kind": "infra",
+      "label": "Wake-on-request socket",
+      "sublabel": "systemd socket proxy :18040 → :18041",
+      "frame": "serving",
+      "tech": "systemd-socket-proxyd",
+      "status": "done",
+      "position": {
+        "x": 2316,
+        "y": 1321
+      },
+      "path": [
+        "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16-proxy.socket",
+        "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16-proxy.service"
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "enginepatches",
+      "kind": "storage",
+      "label": "vLLM patches",
+      "sublabel": "~/qwen-serving/patches/*.patch — 8 vendored, applied to the installed package",
+      "note": "Applied to site-packages, not a source checkout: nothing in the venv records that they are applied, so they must be re-applied after any pip install, upgrade or venv rebuild.\n\nvllm-pr48375-mamba-prefix-eagle.patch GATES a setting: PREFIX_CACHE=1 is only safe with it. MambaManager.find_longest_cache_hit ignored drop_eagle_block, so a cached page whose recurrent-state snapshot was taken over REJECTED MTP draft tokens could be reused — silently wrong tool calls and long-context output, never an error.\n\nvllm-pr50021-gdn-spec-bounds.patch bounds accepted-token lookups in the GDN spec-decode kernels; without it several concurrent MTP requests raise cudaErrorIllegalAddress.\n\nDocumented in deploy/profiles/ENGINE-PATCHES.md.",
+      "frame": "serving",
+      "status": "done",
+      "position": {
+        "x": 2964,
+        "y": 855
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "sync",
+      "id": "panel-api",
+      "source": "panel",
+      "target": "api",
+      "protocol": "http",
+      "label": "chat, steer, sessions, memory, rfx, cores",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "async",
+      "id": "api-panel-stream",
+      "source": "api",
+      "target": "panel",
+      "protocol": "sse",
+      "label": "stream turn events",
+      "sourcePort": "stream"
+    },
+    {
+      "kind": "deploy",
+      "id": "api-panel-static",
+      "source": "api",
+      "target": "panel",
+      "protocol": "http",
+      "label": "serves embedded dist (go:embed)",
+      "sourcePort": "panel"
+    },
+    {
+      "kind": "sync",
+      "id": "crvcli-api",
+      "source": "crvcli",
+      "target": "api",
+      "protocol": "http",
+      "label": "ask / new / pair / rfx",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "sync",
+      "id": "phone-tailscale",
+      "source": "phone",
+      "target": "tailscale",
+      "protocol": "https",
+      "label": "open PWA · bearer + device sig"
+    },
+    {
+      "kind": "sync",
+      "id": "tailscale-ignite",
+      "source": "tailscale",
+      "target": "ignite",
+      "protocol": "http",
+      "label": "terminate TLS, forward",
+      "targetPort": "front"
+    },
+    {
+      "kind": "sync",
+      "id": "ignite-api",
+      "source": "ignite",
+      "target": "api",
+      "protocol": "http",
+      "label": "reverse proxy once core is up",
+      "targetPort": "rest"
+    },
+    {
+      "kind": "control",
+      "id": "ignite-systemd",
+      "source": "ignite",
+      "target": "systemd",
+      "protocol": "exec",
+      "label": "systemctl --user start (core, llama, embed)"
+    },
+    {
+      "kind": "control",
+      "id": "systemd-llama",
+      "source": "systemd",
+      "target": "llama",
+      "label": "runs cerveau-llama.service"
+    },
+    {
+      "kind": "control",
+      "id": "systemd-embed",
+      "source": "systemd",
+      "target": "embed",
+      "label": "runs cerveau-embed.service · EnvironmentFile embed.env from the active profile"
+    },
+    {
+      "kind": "control",
+      "id": "systemd-vllm",
+      "source": "systemd",
+      "target": "vllm",
+      "label": "socket activation → crv-core-vllm.service"
+    },
+    {
+      "kind": "sync",
+      "id": "api-loop",
+      "source": "api",
+      "target": "loop",
+      "protocol": "ipc",
+      "label": "start turn · steer · pause · kill · rewind"
+    },
+    {
+      "kind": "import",
+      "id": "api-session",
+      "source": "api",
+      "target": "session"
+    },
+    {
+      "kind": "import",
+      "id": "api-idle",
+      "source": "api",
+      "target": "idle",
+      "label": "activity ticks, /api/idle"
+    },
+    {
+      "kind": "data",
+      "id": "api-coresjson",
+      "source": "api",
+      "target": "coresjson",
+      "protocol": "fs",
+      "label": "list / select active core · read params"
+    },
+    {
+      "kind": "import",
+      "id": "loop-window",
+      "source": "loop",
+      "target": "window"
+    },
+    {
+      "kind": "import",
+      "id": "loop-guard",
+      "source": "loop",
+      "target": "guard"
+    },
+    {
+      "kind": "import",
+      "id": "loop-llmclient",
+      "source": "loop",
+      "target": "llmclient"
+    },
+    {
+      "kind": "import",
+      "id": "loop-tools",
+      "source": "loop",
+      "target": "tools",
+      "label": "dispatch tool calls"
+    },
+    {
+      "kind": "import",
+      "id": "loop-memclient",
+      "source": "loop",
+      "target": "memclient",
+      "label": "recall before, curate after"
+    },
+    {
+      "kind": "import",
+      "id": "loop-session",
+      "source": "loop",
+      "target": "session"
+    },
+    {
+      "kind": "import",
+      "id": "tools-rfx",
+      "source": "tools",
+      "target": "rfx",
+      "label": "reflexes become tools"
+    },
+    {
+      "kind": "import",
+      "id": "tools-skills",
+      "source": "tools",
+      "target": "skills"
+    },
+    {
+      "kind": "import",
+      "id": "tools-codeintel",
+      "source": "tools",
+      "target": "codeintel",
+      "label": "file_map, find_symbol, find_references"
+    },
+    {
+      "kind": "sync",
+      "id": "llmclient-llama",
+      "source": "llmclient",
+      "target": "llama",
+      "protocol": "http",
+      "label": "chat completion",
+      "targetPort": "chat",
+      "payload": "messages[], tools[], grammar, sampling"
+    },
+    {
+      "kind": "sync",
+      "id": "llmclient-coreproxy",
+      "source": "llmclient",
+      "target": "coreproxy",
+      "protocol": "http",
+      "label": "chat completion (vLLM core)",
+      "targetPort": "chat",
+      "payload": "messages[], tools[], sampling"
+    },
+    {
+      "kind": "sync",
+      "id": "coreproxy-vllm",
+      "source": "coreproxy",
+      "target": "vllm",
+      "protocol": "http",
+      "label": "proxy once listening",
+      "targetPort": "chat"
+    },
+    {
+      "kind": "data",
+      "id": "llama-weights",
+      "source": "llama",
+      "target": "weights",
+      "protocol": "fs",
+      "label": "mmap GGUF"
+    },
+    {
+      "kind": "data",
+      "id": "vllm-weights",
+      "source": "vllm",
+      "target": "weights",
+      "protocol": "fs",
+      "label": "load"
+    },
+    {
+      "kind": "data",
+      "id": "memclient-typesense",
+      "source": "memclient",
+      "target": "typesense",
+      "protocol": "http",
+      "label": "recall · index · promote",
+      "targetPort": "search"
+    },
+    {
+      "kind": "data",
+      "id": "memclient-sessions",
+      "source": "memclient",
+      "target": "sessions",
+      "protocol": "fs",
+      "label": "index events.jsonl"
+    },
+    {
+      "kind": "data",
+      "id": "session-sessions",
+      "source": "session",
+      "target": "sessions",
+      "protocol": "fs",
+      "label": "append turns"
+    },
+    {
+      "kind": "sync",
+      "id": "typesense-embed",
+      "source": "typesense",
+      "target": "embed",
+      "protocol": "http",
+      "label": "auto-embed on write",
+      "targetPort": "embeddings",
+      "note": "Typesense is configured with the embedder URL and calls it itself — a store that initiates, deliberately.",
+      "ack": "Typesense auto-embed: the collection is configured with the sidecar URL (internal/memory/client.go EnsureSchema) and Typesense calls /v1/embeddings itself on write"
+    },
+    {
+      "kind": "data",
+      "id": "codeintel-codegraph",
+      "source": "codeintel",
+      "target": "codegraph",
+      "protocol": "sql",
+      "label": "symbols + references",
+      "targetPort": "sql"
+    },
+    {
+      "kind": "data",
+      "id": "codeintel-workspace",
+      "source": "codeintel",
+      "target": "workspace",
+      "protocol": "fs",
+      "label": "parse sources"
+    },
+    {
+      "kind": "data",
+      "id": "tools-workspace",
+      "source": "tools",
+      "target": "workspace",
+      "protocol": "fs",
+      "label": "read / edit / write / bash"
+    },
+    {
+      "kind": "control",
+      "id": "tools-chromium",
+      "source": "tools",
+      "target": "chromium",
+      "protocol": "exec",
+      "label": "check_page"
+    },
+    {
+      "kind": "sync",
+      "id": "tools-web",
+      "source": "tools",
+      "target": "web",
+      "protocol": "https",
+      "label": "web_fetch"
+    },
+    {
+      "kind": "control",
+      "id": "tools-reflexprog",
+      "source": "tools",
+      "target": "reflexprog",
+      "protocol": "stdio",
+      "label": "exec reflex: JSON args in, JSON result out"
+    },
+    {
+      "kind": "data",
+      "id": "skills-skillsdir",
+      "source": "skills",
+      "target": "skillsdir",
+      "protocol": "fs",
+      "label": "load SKILL.md"
+    },
+    {
+      "kind": "data",
+      "id": "rfx-rfxdir",
+      "source": "rfx",
+      "target": "rfxdir",
+      "protocol": "fs",
+      "label": "discover + validate manifests"
+    },
+    {
+      "kind": "data",
+      "id": "idle-idlereq",
+      "source": "idle",
+      "target": "idlereq",
+      "protocol": "fs",
+      "label": "write park request"
+    },
+    {
+      "kind": "data",
+      "id": "watchdog-idlereq",
+      "source": "watchdog",
+      "target": "idlereq",
+      "protocol": "fs",
+      "label": "poll"
+    },
+    {
+      "kind": "control",
+      "id": "watchdog-systemd",
+      "source": "watchdog",
+      "target": "systemd",
+      "protocol": "exec",
+      "label": "park: stop Core units · switch: stop others (+sockets), start chosen, restart embedder + cerveau"
+    },
+    {
+      "kind": "sync",
+      "source": "llmclient",
+      "target": "coreproxybf16",
+      "protocol": "http",
+      "label": "chat completion (BF16 core, when active)",
+      "targetPort": "chat",
+      "id": "llmclient-coreproxybf16"
+    },
+    {
+      "kind": "sync",
+      "source": "coreproxybf16",
+      "target": "vllmbf16",
+      "protocol": "http",
+      "label": "proxy once listening",
+      "targetPort": "chat",
+      "id": "coreproxybf16-vllmbf16"
+    },
+    {
+      "kind": "control",
+      "source": "systemd",
+      "target": "vllmbf16",
+      "label": "socket activation → crv-core-vllm-27b-bf16.service",
+      "id": "systemd-vllmbf16"
+    },
+    {
+      "kind": "data",
+      "source": "vllmbf16",
+      "target": "weights",
+      "protocol": "fs",
+      "label": "load 18 BF16 safetensors shards (Gpu-Rig/models)",
+      "id": "vllmbf16-weights"
+    },
+    {
+      "kind": "data",
+      "source": "api",
+      "target": "coresd",
+      "protocol": "fs",
+      "label": "GET/PUT /api/cores/{id}/params → write the diff",
+      "payload": "KEY=\"VALUE\" lines",
+      "id": "api-coresd"
+    },
+    {
+      "kind": "data",
+      "source": "systemd",
+      "target": "coresd",
+      "protocol": "fs",
+      "label": "EnvironmentFile= read at Core start · overrides Environment=",
+      "id": "systemd-coresd"
+    },
+    {
+      "kind": "control",
+      "source": "profiles",
+      "target": "systemd",
+      "protocol": "exec",
+      "label": "install crv-core-<id> units · enable socket · watchdog drop-in · daemon-reload",
+      "id": "profiles-systemd"
+    },
+    {
+      "kind": "data",
+      "source": "profiles",
+      "target": "coresjson",
+      "protocol": "fs",
+      "label": "merge core.json entry + params",
+      "id": "profiles-coresjson"
+    },
+    {
+      "kind": "data",
+      "source": "api",
+      "target": "switchreq",
+      "protocol": "fs",
+      "label": "POST /api/cores/apply → write request · read status",
+      "id": "api-switchreq"
+    },
+    {
+      "kind": "data",
+      "source": "watchdog",
+      "target": "switchreq",
+      "protocol": "fs",
+      "label": "poll request · write status",
+      "id": "watchdog-switchreq"
+    },
+    {
+      "kind": "sync",
+      "id": "llmclient-coreproxyw8a16",
+      "source": "llmclient",
+      "target": "coreproxyw8a16",
+      "protocol": "http",
+      "label": "chat completion (W8A16 core, when active)",
+      "targetPort": "chat",
+      "payload": "messages[], tools[], sampling"
+    },
+    {
+      "kind": "sync",
+      "id": "coreproxyw8a16-vllmw8a16",
+      "source": "coreproxyw8a16",
+      "target": "vllmw8a16",
+      "protocol": "http",
+      "label": "proxy once listening",
+      "targetPort": "chat"
+    },
+    {
+      "kind": "control",
+      "id": "systemd-vllmw8a16",
+      "source": "systemd",
+      "target": "vllmw8a16",
+      "label": "socket activation → crv-core-vllm-27b-w8a16.service"
+    },
+    {
+      "kind": "data",
+      "id": "vllmw8a16-weights",
+      "source": "vllmw8a16",
+      "target": "weights",
+      "protocol": "fs",
+      "label": "load 6 INT8 safetensors shards + model_mtp (Gpu-Rig/models)"
+    },
+    {
+      "kind": "deploy",
+      "id": "vllmw8a16-enginepatches",
+      "source": "vllmw8a16",
+      "target": "enginepatches",
+      "protocol": "fs",
+      "label": "runs a patched vLLM — 48375 gates PREFIX_CACHE=1"
+    },
+    {
+      "kind": "deploy",
+      "id": "vllmbf16-enginepatches",
+      "source": "vllmbf16",
+      "target": "enginepatches",
+      "protocol": "fs",
+      "label": "same patched venv"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "vllmbf16",
+      "op": "add",
+      "kind": "model",
+      "label": "vLLM BF16 Core"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coreproxybf16",
+      "op": "add",
+      "kind": "infra",
+      "label": "Wake-on-request socket"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coresd",
+      "op": "add",
+      "kind": "storage",
+      "label": "cores.d overrides"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiles",
+      "op": "add",
+      "kind": "program",
+      "label": "Profile installer"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coreproxy",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "deploy/idle/crv-core-vllm-proxy.socket, deploy/idle/crv-core-vllm-proxy.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "vllm",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "dense core · 98K ctx · fp8 KV",
+          "to": "W4A16 core · :18021 · 98K ctx · fp8 KV · single 3090"
+        },
+        {
+          "field": "note",
+          "from": "The active core in cores.json. ~/qwen-serving/single-user/start_qwen.sh with …",
+          "to": "Profile-less original Core, still the `active` one in cores.json. ~/qwen-serv…"
+        },
+        {
+          "field": "path",
+          "to": "deploy/idle/crv-core-vllm.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coresjson",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "Brain Core registry · active core",
+          "to": "Brain Core registry · active · params"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "systemd",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "cerveau · cerveau-llama · cerveau-embed · crv-core-vllm",
+          "to": "cerveau · cerveau-llama · cerveau-embed · crv-core-vllm · crv-core-vllm-27b-bf16"
+        },
+        {
+          "field": "path",
+          "to": "deploy/idle/crv-park-watchdog.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "node",
+      "id": "watchdog",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "stops the Core when asked",
+          "to": "stops every crv-core-*.service when asked"
+        },
+        {
+          "field": "path",
+          "to": "deploy/idle/crv-park-watchdog.sh"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "llmclient-coreproxybf16",
+      "op": "add",
+      "kind": "sync",
+      "label": "llmclient → coreproxybf16"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "coreproxybf16-vllmbf16",
+      "op": "add",
+      "kind": "sync",
+      "label": "coreproxybf16 → vllmbf16"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "systemd-vllmbf16",
+      "op": "add",
+      "kind": "control",
+      "label": "systemd → vllmbf16"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "vllmbf16-weights",
+      "op": "add",
+      "kind": "data",
+      "label": "vllmbf16 → weights"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-coresd",
+      "op": "add",
+      "kind": "data",
+      "label": "api → coresd"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "systemd-coresd",
+      "op": "add",
+      "kind": "data",
+      "label": "systemd → coresd"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "profiles-systemd",
+      "op": "add",
+      "kind": "control",
+      "label": "profiles → systemd"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "profiles-coresjson",
+      "op": "add",
+      "kind": "data",
+      "label": "profiles → coresjson"
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-coresjson",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "list / select active core",
+          "to": "list / select active core · read params"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:06.327Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "watchdog-systemd",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "stop the Core unit",
+          "to": "stop every crv-core-*.service (CRV_CORE_UNITS)"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:19.661Z",
+      "by": "agent",
+      "type": "node",
+      "id": "systemd",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Two vLLM Cores share GPU 0 and nothing stops both from waking"
+      }
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "panel",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "panel, internal/panel"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "crvcli",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "cmd/crvcli"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/api, internal/server"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "loop",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/loop"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "window",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/window"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "guard",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/guard"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "llmclient",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/llm"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "session",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/session"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "memclient",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/memory, internal/episodic"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "idle",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/idle"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/tools"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rfx",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/rfx"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "skills",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/skills"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "codeintel",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/codeintel"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "embed",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "sidecars"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coresjson",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "internal/cores"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiles",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "from": "deploy/profiles",
+          "to": "deploy/profiles/install.sh, deploy/profiles/qwen3.8-27b-bf16-tp4/core.json"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:06:46.874Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "to": "android, dgv, docs, deploy/idle/README.md, deploy/profiles/README.md, cmd/crv, internal/config"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:41:32.469Z",
+      "by": "agent",
+      "type": "node",
+      "id": "switchreq",
+      "op": "add",
+      "kind": "storage",
+      "label": "Switch request + status"
+    },
+    {
+      "at": "2026-09-04T05:41:32.469Z",
+      "by": "agent",
+      "type": "node",
+      "id": "vllm",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Profile-less original Core, still the `active` one in cores.json. ~/qwen-serv…",
+          "to": "Profile-less original Core (unit crv-core-vllm.service, given a `unit` in cor…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:41:32.469Z",
+      "by": "agent",
+      "type": "node",
+      "id": "watchdog",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "stops every crv-core-*.service when asked",
+          "to": "parks Cores on request · switches Cores on request"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:41:32.469Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-switchreq",
+      "op": "add",
+      "kind": "data",
+      "label": "api → switchreq"
+    },
+    {
+      "at": "2026-09-04T05:41:32.469Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "watchdog-switchreq",
+      "op": "add",
+      "kind": "data",
+      "label": "watchdog → switchreq"
+    },
+    {
+      "at": "2026-09-04T05:41:32.469Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "watchdog-systemd",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "stop every crv-core-*.service (CRV_CORE_UNITS)",
+          "to": "park: stop Core units · switch: stop others (+sockets), start chosen, restart…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:41:34.939Z",
+      "by": "agent",
+      "type": "node",
+      "id": "systemd",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Two vLLM Cores share GPU 0 and nothing stops both from waking"
+      }
+    },
+    {
+      "at": "2026-09-04T05:52:27.759Z",
+      "by": "agent",
+      "type": "node",
+      "id": "embed",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "nemotron-embed :8081",
+          "to": "Nemotron-3-Embed-1B · :8081 · placement follows the active profile"
+        },
+        {
+          "field": "note",
+          "from": "sidecars/nemotron_embed.py — optional; without it recall is text-only.",
+          "to": "cerveau-embed.service reads ~/.config/cerveau/embed.env (EnvironmentFile=). R…"
+        },
+        {
+          "field": "tech",
+          "from": "Python · FastAPI",
+          "to": "Python · sentence-transformers · 3060 under the BF16 profile, CPU otherwise"
+        },
+        {
+          "field": "path",
+          "from": "sidecars",
+          "to": "sidecars, deploy/idle/cerveau-embed.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:52:27.759Z",
+      "by": "agent",
+      "type": "node",
+      "id": "systemd",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "cerveau · cerveau-llama · cerveau-embed · crv-core-vllm · crv-core-vllm-27b-bf16",
+          "to": "cerveau · cerveau-embed · cerveau-llama · crv-core-vllm · crv-core-vllm-27b-bf16"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T05:52:27.759Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "systemd-embed",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "runs cerveau-embed.service",
+          "to": "runs cerveau-embed.service · EnvironmentFile embed.env from the active profile"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T06:53:56.893Z",
+      "by": "agent",
+      "type": "node",
+      "id": "vllmbf16",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "Qwen3.8-27B BF16 · TP=4 · 262K · bf16 KV · vision · :18031",
+          "to": "Qwen3.8-27B BF16 · TP=4 · 262K · bf16 KV · vision · prefix cache · :18031"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "node",
+      "id": "vllmw8a16",
+      "op": "add",
+      "kind": "model",
+      "label": "vLLM W8A16 Core"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coreproxyw8a16",
+      "op": "add",
+      "kind": "infra",
+      "label": "Wake-on-request socket"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "node",
+      "id": "enginepatches",
+      "op": "add",
+      "kind": "storage",
+      "label": "vLLM patches"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "llmclient-coreproxyw8a16",
+      "op": "add",
+      "kind": "sync",
+      "label": "llmclient → coreproxyw8a16"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "coreproxyw8a16-vllmw8a16",
+      "op": "add",
+      "kind": "sync",
+      "label": "coreproxyw8a16 → vllmw8a16"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "systemd-vllmw8a16",
+      "op": "add",
+      "kind": "control",
+      "label": "systemd → vllmw8a16"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "vllmw8a16-weights",
+      "op": "add",
+      "kind": "data",
+      "label": "vllmw8a16 → weights"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "vllmw8a16-enginepatches",
+      "op": "add",
+      "kind": "deploy",
+      "label": "vllmw8a16 → enginepatches"
+    },
+    {
+      "at": "2026-09-04T19:52:10.361Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "vllmbf16-enginepatches",
+      "op": "add",
+      "kind": "deploy",
+      "label": "vllmbf16 → enginepatches"
+    },
+    {
+      "at": "2026-09-04T19:52:17.362Z",
+      "by": "agent",
+      "type": "node",
+      "id": "embed",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "Nemotron-3-Embed-1B · :8081 · placement follows the active profile",
+          "to": "Nemotron-3-Embed-1B · :8081 · on the 3060 under both TP=4 profiles, CPU other…"
+        },
+        {
+          "field": "tech",
+          "from": "Python · sentence-transformers · 3060 under the BF16 profile, CPU otherwise",
+          "to": "Python · sentence-transformers · CUDA on GPU 4"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:52:17.362Z",
+      "by": "agent",
+      "type": "node",
+      "id": "systemd",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "cerveau · cerveau-embed · cerveau-llama · crv-core-vllm · crv-core-vllm-27b-bf16",
+          "to": "cerveau · cerveau-embed · cerveau-llama · crv-core-vllm · crv-core-vllm-27b-b…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:55:04.504Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiles",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "deploy/profiles/install.sh",
+          "to": "deploy/profiles/ — install.sh, one dir per Core, ENGINE-PATCHES.md"
+        },
+        {
+          "field": "note",
+          "from": "A profile = one Core made installable: core.json + crv-core-<id>.service + -p…",
+          "to": "Each profile is one Brain Core made installable: core.json + the three units …"
+        },
+        {
+          "field": "path",
+          "from": "deploy/profiles/install.sh, deploy/profiles/qwen3.8-27b-bf16-tp4/core.json",
+          "to": "deploy/profiles"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:55:15.345Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiles",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "from": "deploy/profiles",
+          "to": "deploy/profiles/install.sh, deploy/profiles/README.md, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-w8a16-tp4, deploy/profiles/qwen3.8-27b-bf16-tp4/core.json, deploy/profiles/qwen3.8-27b-bf16-tp4/embed.env, deploy/profiles/qwen3.8-27b-bf16-tp4/crv-core-vllm-27b-bf16-proxy.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:55:26.222Z",
+      "by": "agent",
+      "type": "node",
+      "id": "vllmw8a16",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:55:26.222Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coreproxyw8a16",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "to": "deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16-proxy.socket, deploy/profiles/qwen3.8-27b-w8a16-tp4/crv-core-vllm-27b-w8a16-proxy.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:55:31.600Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiles",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "from": "deploy/profiles/install.sh, deploy/profiles/README.md, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-w8a16-tp4, deploy/profiles/qwen3.8-27b-bf16-tp4/core.json, deploy/profiles/qwen3.8-27b-bf16-tp4/embed.env, deploy/profiles/qwen3.8-27b-bf16-tp4/crv-core-vllm-27b-bf16-proxy.service",
+          "to": "deploy/profiles/install.sh, deploy/profiles/README.md, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-w8a16-tp4/core.json, deploy/profiles/qwen3.8-27b-w8a16-tp4/embed.env, deploy/profiles/qwen3.8-27b-bf16-tp4/core.json, deploy/profiles/qwen3.8-27b-bf16-tp4/embed.env, deploy/profiles/qwen3.8-27b-bf16-tp4/crv-core-vllm-27b-bf16-proxy.service"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T19:55:45.160Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profiles",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "from": "deploy/profiles/install.sh, deploy/profiles/README.md, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-w8a16-tp4/core.json, deploy/profiles/qwen3.8-27b-w8a16-tp4/embed.env, deploy/profiles/qwen3.8-27b-bf16-tp4/core.json, deploy/profiles/qwen3.8-27b-bf16-tp4/embed.env, deploy/profiles/qwen3.8-27b-bf16-tp4/crv-core-vllm-27b-bf16-proxy.service",
+          "to": "deploy/profiles/install.sh, deploy/profiles/ENGINE-PATCHES.md, deploy/profiles/qwen3.8-27b-w8a16-tp4/core.json, deploy/profiles/qwen3.8-27b-w8a16-tp4/embed.env, deploy/profiles/qwen3.8-27b-bf16-tp4/core.json, deploy/profiles/qwen3.8-27b-bf16-tp4/embed.env"
+        }
+      ]
+    }
+  ]
+}
