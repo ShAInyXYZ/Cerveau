@@ -35,6 +35,12 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("GET /api/sessions/{id}/state", a.SessionState)
 	mux.HandleFunc("GET /api/sessions/{id}/errors", a.SessionErrors)
 	mux.HandleFunc("GET /api/sessions/{id}/report", a.SessionReport)
+	// Step control: the one way to drive a committed plan. Both surfaces call
+	// it — the native strip for "continue", the planner for per-step buttons —
+	// so they cannot drift apart the way they did when the panel drove steps
+	// by composing English prompts.
+	mux.HandleFunc("GET /api/sessions/{id}/plan", a.PlanStateHandler)
+	mux.HandleFunc("POST /api/sessions/{id}/plan/step", a.RunPlanStep)
 	mux.HandleFunc("GET /api/sessions/{id}/usage", a.SessionUsage)
 	mux.HandleFunc("POST /api/sessions/{id}/rewind", a.Rewind)
 	mux.HandleFunc("POST /api/sessions/{id}/chat", a.Chat)

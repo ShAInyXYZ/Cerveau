@@ -838,3 +838,54 @@ func (a *API) contextWindow() int {
 	}
 	return a.cfg.ModelCtx
 }
+
+// RunPlanStep runs ONE step of the committed plan and verifies it.
+//
+// POST /api/sessions/{id}/plan/step  {"step": 2, "revision": false}
+//
+// step is 0-based; -1 (or absent) means "whichever is next", which is what a
+// Continue button wants. This exists so a surface can drive a plan without
+// composing an English prompt and hoping the model scopes itself: the planner
+// panel used to post "do step 3 only, then stop and report" as an ordinary
+// turn, so nothing bound the run to step 3 and nothing verified it.
+func (a *API) RunPlanStep(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		Step     *int `json:"step"`
+		Revision bool `json:"revision"`
+	}
+	// An empty body is legitimate: "run the next step".
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	req := loop.StepRunRequest{Step: -1, Revision: body.Revision}
+	if body.Step != nil {
+		req.Step = *body.Step
+	}
+	if a.idle != nil {
+		defer a.idle.Hold()()
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
+	defer cancel()
+	res, err := a.chat.RunStep(ctx, id, req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// PlanStateHandler reports the plan and what is known about each step, without
+// running anything.
+//
+// GET /api/sessions/{id}/plan
+//
+// Unlike /report this carries the cursor — which step is next, which is
+// blocked, which revision each is on — so a surface can render controls, not
+// just progress.
+func (a *API) PlanStateHandler(w http.ResponseWriter, r *http.Request) {
+	st, err := a.chat.PlanStateOf(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}

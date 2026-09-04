@@ -89,6 +89,27 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 	}
 	wr.Append(episodic.Note, map[string]string{"text": fmt.Sprintf("autopilot started on %s (%d steps)", planEvt, len(plan.Steps))})
 
+	// The supervisor owns the cursor. Steps are no longer a for-range over the
+	// plan: a step that fails is retried, a step that needs earlier work
+	// reopens it as a revision, and only a PASSED check advances. Which step
+	// runs next is its decision, not the loop counter's.
+	sup, err := l.restoreSupervisor(sessionID, plan)
+	if err != nil {
+		return nil, err
+	}
+	return l.runPlanFrom(ctx, sessionID, plan, sup, sup.Next(), false)
+}
+
+// runPlanFrom is the one execution path. Autopilot walks the whole plan;
+// RunStep sets single to true and stops after one step. Sharing the body is
+// deliberate: a step run by a button must obey exactly the same rules — its own
+// prompt, its own check, a checkpoint carrying the verdict — as a step run by
+// autopilot, or the two surfaces drift apart again.
+func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, sup *Supervisor, start int, single bool) (*Result, error) {
+	wr, err := l.open(sessionID)
+	if err != nil {
+		return nil, err
+	}
 	runCtx, rootCancel := context.WithCancel(ctx)
 	h := &runHandle{rootCancel: rootCancel}
 	defer l.runs.register(sessionID, h)()
@@ -101,23 +122,31 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 	if l.recall != nil {
 		pulls = l.recall.TurnStart(runCtx, sessionID, plan.Title, nil)
 	}
-	// The supervisor owns the cursor. Steps are no longer a for-range over the
-	// plan: a step that fails is retried, a step that needs earlier work
-	// reopens it as a revision, and only a PASSED check advances. Which step
-	// runs next is its decision, not the loop counter's.
-	sup := NewSupervisor(plan)
+
 	results := make([]StepResult, len(plan.Steps))
 	for i, st := range plan.Steps {
-		results[i] = StepResult{Step: st.Title, Status: "pending"}
+		results[i] = StepResult{Step: st.Title, Status: sup.Steps[i].Status}
+		if results[i].Status == "passed" {
+			results[i].Status = "done"
+			if v := sup.Steps[i].Verdict; v != nil {
+				results[i].Summary = v.Evidence
+			}
+		}
+		_ = st
 	}
 	handback := false
+	first := start
 
 	// A hard ceiling on runs, not on steps: retries and revisions are extra
 	// runs by design, and without a cap a plan could ask for them forever.
 	maxRuns := 3*len(plan.Steps) + 4
 
 	for runs := 0; runs < maxRuns; runs++ {
-		idx := sup.Next()
+		idx := first
+		first = -1
+		if idx < 0 {
+			idx = sup.Next()
+		}
 		if idx < 0 {
 			break // done, or blocked
 		}
@@ -199,6 +228,11 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 		if dec.HandBack {
 			handback = true
 			wr.Append(episodic.Note, map[string]string{"kind": "step_handback", "text": dec.Reasoning})
+			break
+		}
+		// One step, by request: a button that says "run step 3" runs step 3
+		// and stops, so the user sees the verdict before anything else moves.
+		if single {
 			break
 		}
 	}
