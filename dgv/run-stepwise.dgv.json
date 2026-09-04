@@ -35,12 +35,12 @@
       "id": "plan",
       "label": "1 · Plan — once per task",
       "position": {
-        "x": 400,
+        "x": 396,
         "y": 0
       },
       "size": {
-        "width": 996,
-        "height": 570
+        "width": 1004,
+        "height": 865
       }
     },
     {
@@ -48,12 +48,12 @@
       "id": "drive",
       "label": "2 · Drive — the new part: who decides what runs next",
       "position": {
-        "x": 1536,
+        "x": 1532,
         "y": 0
       },
       "size": {
-        "width": 672,
-        "height": 904
+        "width": 680,
+        "height": 908
       }
     },
     {
@@ -61,12 +61,12 @@
       "id": "run",
       "label": "3 · Run — one step, start to verdict",
       "position": {
-        "x": 2348,
+        "x": 2344,
         "y": 0
       },
       "size": {
-        "width": 996,
-        "height": 517
+        "width": 1004,
+        "height": 712
       }
     },
     {
@@ -74,12 +74,12 @@
       "id": "record",
       "label": "4 · Record — what makes progress real",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 1044
       },
       "size": {
-        "width": 996,
-        "height": 345
+        "width": 1004,
+        "height": 349
       }
     },
     {
@@ -87,12 +87,12 @@
       "id": "show",
       "label": "5 · Show",
       "position": {
-        "x": 1136,
+        "x": 1132,
         "y": 1044
       },
       "size": {
-        "width": 672,
-        "height": 694
+        "width": 680,
+        "height": 698
       }
     }
   ],
@@ -104,7 +104,7 @@
       "kind": "external",
       "label": "The user's prompt",
       "sublabel": "written once, at the start",
-      "note": "TODAY this same text is injected into every iteration of one long run, so the model must hold the whole task in mind at once and is trusted to touch each point on its own. In the new design it is used ONCE, to plan.",
+      "note": "Used ONCE, to plan — and, after 2026-09-04, only after the model has read the code the task is about. Never re-injected per step: re-injecting it into every iteration is what let one run wander across the whole task.",
       "position": {
         "x": 0,
         "y": 0
@@ -116,15 +116,16 @@
       "id": "plangate",
       "kind": "module",
       "label": "Plan gate",
-      "sublabel": "divide the task · commit_plan",
+      "sublabel": "read first (bounded), then a FORCED commit_plan · hands off to the supervisor",
       "frame": "plan",
       "tech": "Go",
       "status": "done",
-      "path": "internal/loop/autopilot.go",
+      "path": "internal/loop/loop.go",
       "position": {
         "x": 444,
         "y": 246
-      }
+      },
+      "note": "Rewritten 2026-09-04 after four live failures, each a different bug:\n\n1. commit_plan was registered for discussion only, so every autopilot planning call offered an EMPTY tool list. The model never wrote plans as prose out of habit — it had no tool to call. Fixed in cmd/crv/main.go; the gate now refuses to force an empty offer and says so.\n\n2. \"Improve our car game\" cannot be planned without reading it. The gate offered only commit_plan, and the model reasoned itself into a corner and emitted nothing. It may now read — file_map and glob free, four reads — then the call is FORCED via tool_choice, which vLLM honours with guided decoding. Narrowing the offer alone was toothless: the model called read and glob from memory anyway.\n\n3. The shared SessionContext was overwritten by every chat request. A turn typed in ccar while another session was planning made that session's commit_plan write into ccar. The session id now rides the run's context.\n\n4. A landed plan was pasted into the system prompt as guidance and the SAME turn carried on. It now hands off to runPlanFrom.\n\nLive (improve-ctx): orientation → 3 reads → forced commit in 31 s → 10 steps, each its own file, each with a real check, in the right session."
     },
     {
       "ports": [],
@@ -132,8 +133,8 @@
       "id": "criteria",
       "kind": "module",
       "label": "Step criteria",
-      "sublabel": "each step declares a check that CAN FAIL · enforced at commit",
-      "note": "commit_plan gains a `verify` field per step: the concrete observation that proves the step done. Without it there is nothing to verify against and \"done\" falls back to guessing from disk — the bug in run-dataflow.\n\nThe model writes its own exam, so the SHAPE is constrained rather than the wording trusted (decided 2026-09-04). A verify must be one of three runnable forms:\n  • a check_page eval that returns a boolean\n  • a command whose exit code decides it\n  • a file that must contain a named symbol\n\nExistence-only checks are REJECTED at commit time, the way the plan gate already rejects a prose plan — \"index.html exists\" is the disk guess wearing a costume.\n\nAnd a criterion can be impossible as easily as it can be lazy: the car run's own eval could never pass under file:// however correct the page was. So a step whose verify never passes gets a small budget, then hands back with the evidence. An unpassable check costs one step, never the task.",
+      "sublabel": "each step declares a check that CAN FAIL · constants and script paths rejected",
+      "note": "commit_plan gains a `verify` field per step, validated at commit time. Three runnable forms: a check_page eval returning a boolean, a command judged by exit code, a file that must contain a named symbol. Existence-only checks are rejected.\n\nThe first live attempt (improve-forced) wrote expr \"true\" on every step, pointed at .js files — a constant cannot fail and check_page cannot render a script. Both are now rejected with an error that names the fix, and the forced retry carries it.\n\nAnswered live on the next run: `contains js/config.js \"MAX_SPEED\"`, `contains js/physics.js \"class CarPhysics\"`, and for the final step an eval on the served URL checking the canvas and both HUD elements. The model writes usable checks when the shape is constrained and the call is forced.",
       "frame": "plan",
       "tech": "Go",
       "status": "done",
@@ -141,18 +142,7 @@
         "x": 768,
         "y": 60
       },
-      "path": "internal/plan/verify.go",
-      "flags": [
-        {
-          "id": "f1",
-          "kind": "question",
-          "title": "Nothing has yet confirmed the model can write a usable verify",
-          "note": "The whole design rests on the model declaring a check that is neither trivial nor impossible. commit_plan rejects the trivial ones, and a step whose check never passes hands back after two attempts rather than eating the task. Both are tested.\\n\\nBut every test so far uses a stub model. The real Qwen3.8-27B has never been asked for a verify, and it does not reliably call commit_plan as a tool at all — every run on record wrote its plan as prose, which the salvage path translates. Prose plans carry no verify, so they take the \"no check declared\" fallback and the run is unverified exactly as before.\\n\\nSo the machinery is proven and the input is not.",
-          "fix": "Run the fan or car prompt against the real Core and read the committed plan: does it carry verifies, are they runnable, do they pass when the step is genuinely done? If prose plans stay the norm, the salvage path needs to ask for checks too — or the plan gate needs to insist harder on the tool call.",
-          "by": "agent",
-          "at": "2026-09-04T22:40:13.012Z"
-        }
-      ]
+      "path": "internal/plan/verify.go"
     },
     {
       "ports": [],
@@ -224,8 +214,8 @@
       "id": "steprun",
       "kind": "worker",
       "label": "Step run",
-      "sublabel": "one step · its own prompt · its own budget · runPlanFrom",
-      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose: a step run by a button must obey exactly the same rules as a step run by autopilot, or the surfaces drift apart again.",
+      "sublabel": "one step · its own prompt · the SESSION's registry · judged by its check even if it overruns",
+      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose: a step run by a button must obey exactly the same rules as a step run by autopilot, or the surfaces drift apart again.\n\nTwo rules learned live on 2026-09-04:\n\n• It runs in the SESSION's registry, jailed to the session's workspace. It used the global one, which is whatever the panel last pointed the core at: the first hand-off run wrote js/config.js twice, successfully, into another tree, and its own check — which reads the session workspace — found no such file.\n\n• Its CHECK decides, not its exit. The model wrote js/input.js, then kept reading instead of stopping, hit the iteration cap, and the step was marked failed with the check never run. Now an overrun still runs the check; a satisfied check is done however the run ended. Only a user kill skips it — nothing was allowed to finish.",
       "frame": "run",
       "tech": "Go",
       "status": "done",
@@ -241,7 +231,7 @@
       "id": "verify",
       "kind": "module",
       "label": "Step verify",
-      "sublabel": "run the step's own check · pass / fail, with evidence · fails CLOSED",
+      "sublabel": "run the step's own check · pass / fail, with evidence · fails CLOSED · session registry",
       "note": "Runs what the step declared: the eval, the command, the file check. The verdict is an observation, not the model's opinion that it is finished.\n\nEvery kind fails CLOSED. A check that cannot run is exactly as unproven as one that failed, and treating \"could not check\" as success is how a plan goes green while nothing works — the car run's check_page returned \"eval produced no result\" and that now reads as a failure.",
       "frame": "run",
       "tech": "Go",
@@ -1431,6 +1421,102 @@
         "kind": "question",
         "title": "Nothing has yet confirmed the model can write a usable verify"
       }
+    },
+    {
+      "at": "2026-09-04T23:41:36.900Z",
+      "by": "agent",
+      "type": "node",
+      "id": "userprompt",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "TODAY this same text is injected into every iteration of one long run, so the…",
+          "to": "Used ONCE, to plan — and, after 2026-09-04, only after the model has read the…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T23:41:36.900Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "divide the task · commit_plan",
+          "to": "read first (bounded), then a FORCED commit_plan · hands off to the supervisor"
+        },
+        {
+          "field": "note",
+          "to": "Rewritten 2026-09-04 after four live failures, each a different bug:\n\n1. comm…"
+        },
+        {
+          "field": "path",
+          "from": "internal/loop/autopilot.go",
+          "to": "internal/loop/loop.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T23:41:36.900Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "each step declares a check that CAN FAIL · enforced at commit",
+          "to": "each step declares a check that CAN FAIL · constants and script paths rejected"
+        },
+        {
+          "field": "note",
+          "from": "commit_plan gains a `verify` field per step: the concrete observation that pr…",
+          "to": "commit_plan gains a `verify` field per step, validated at commit time. Three …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T23:41:51.924Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "Nothing has yet confirmed the model can write a usable verify"
+      }
+    },
+    {
+      "at": "2026-09-04T23:51:42.866Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "one step · its own prompt · its own budget · runPlanFrom",
+          "to": "one step · its own prompt · the SESSION's registry · judged by its check even…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T23:51:42.866Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "run the step's own check · pass / fail, with evidence · fails CLOSED",
+          "to": "run the step's own check · pass / fail, with evidence · fails CLOSED · sessio…"
+        }
+      ]
     }
   ]
 }

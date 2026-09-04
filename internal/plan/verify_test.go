@@ -54,3 +54,36 @@ func TestVerifyDescribe(t *testing.T) {
 		t.Fatal("command should describe itself")
 	}
 }
+
+// The first plan the model ever wrote checks for used expr "true" on every
+// step, pointed at .js files. A constant cannot fail, and check_page cannot
+// render a script; both are the disk guess in a costume.
+func TestEvalRejectsChecksThatCannotFail(t *testing.T) {
+	bad := []Verify{
+		{Kind: "eval", Expr: "true", Path: "index.html"},
+		{Kind: "eval", Expr: "!!true", Path: "index.html"},
+		{Kind: "eval", Expr: "(true)", Path: "index.html"},
+		{Kind: "eval", Expr: "1", Path: "index.html"},
+		{Kind: "eval", Expr: "'ok'", Path: "index.html"},
+		{Kind: "eval", Expr: "true;", Path: "index.html"},
+		// a real expression on a file the browser cannot render
+		{Kind: "eval", Expr: "!!document.querySelector('canvas')", Path: "src/core/constants.js"},
+	}
+	for _, v := range bad {
+		if err := v.Validate(); err == nil {
+			t.Errorf("should be rejected: %+v", v)
+		}
+	}
+	good := []Verify{
+		{Kind: "eval", Expr: "!!document.querySelector('canvas')", Path: "index.html"},
+		{Kind: "eval", Expr: "window.__state.speed > 0", URL: "http://127.0.0.1:8000/index.html"},
+		{Kind: "eval", Expr: "typeof buildFan === 'function'", Path: "game.htm"},
+		// a literal INSIDE a real expression is fine
+		{Kind: "eval", Expr: "document.title === 'Car'", Path: "index.html"},
+	}
+	for _, v := range good {
+		if err := v.Validate(); err != nil {
+			t.Errorf("should be accepted: %+v: %v", v, err)
+		}
+	}
+}

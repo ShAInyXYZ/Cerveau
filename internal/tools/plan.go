@@ -125,10 +125,11 @@ func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string,
 	if plan.AutonomyBudget == "" {
 		plan.AutonomyBudget = "low"
 	}
-	if t.sctx == nil || t.sctx.SessionID == "" {
+	sid := SessionOf(ctx, t.sctx)
+	if sid == "" {
 		return "", fmt.Errorf("no active session")
 	}
-	wr, err := t.open(t.sctx.SessionID)
+	wr, err := t.open(sid)
 	if err != nil {
 		return "", err
 	}

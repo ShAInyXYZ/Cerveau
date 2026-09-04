@@ -47,10 +47,11 @@ func (t *AskUser) Execute(ctx context.Context, args json.RawMessage) (string, er
 	if err := json.Unmarshal(args, &a); err != nil || strings.TrimSpace(a.Question) == "" {
 		return "", fmt.Errorf("question required")
 	}
-	if t.broker == nil || t.sctx == nil || t.sctx.SessionID == "" {
+	sid := SessionOf(ctx, t.sctx)
+	if t.broker == nil || sid == "" {
 		return "", fmt.Errorf("no question broker available — decide yourself and note the assumption")
 	}
-	answer, err := t.broker(ctx, t.sctx.SessionID, a.Question, a.Options)
+	answer, err := t.broker(ctx, sid, a.Question, a.Options)
 	if err != nil {
 		return "", err
 	}

@@ -95,3 +95,23 @@ func ThinkingOf(ctx context.Context) string {
 	v, _ := ctx.Value(thinkingKey{}).(string)
 	return v
 }
+
+type forcedToolKey struct{}
+
+// WithForcedTool makes the calls under ctx REQUIRE a call to the named tool.
+//
+// Sent as OpenAI tool_choice {"type":"function","function":{"name":…}}, which
+// vLLM honours with guided decoding: the reply IS a well-formed call to that
+// tool, arguments constrained to its schema. Two failures vanish at once. The
+// model cannot wander off to a tool it remembers but was not offered — with
+// commit_plan as its only option it still called glob and read, every time —
+// and the qwen3_xml parser cannot swallow a hand-rolled call it could not
+// parse, because the arguments are generated inside the schema.
+func WithForcedTool(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, forcedToolKey{}, name)
+}
+
+func ForcedToolOf(ctx context.Context) string {
+	v, _ := ctx.Value(forcedToolKey{}).(string)
+	return v
+}

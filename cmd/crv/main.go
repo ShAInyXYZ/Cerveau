@@ -172,7 +172,11 @@ func main() {
 			// checks. Without it, "the page doesn't render" is undebuggable from
 			// static reads alone.
 			{Tool: tools.NewCheckPage(ws), RiskTier: tools.RiskSafe, IngressCap: 3000, RetryClass: "args"},
-			{Tool: tools.NewCommitPlan(a.Writer, sctx), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeDiscussion}, IngressCap: 2000, RetryClass: "args"},
+			// Autopilot too: the plan gate runs there and asks for this tool on its
+			// first call. Fenced to discussion, Specs("autopilot") never listed it, so
+			// every planning call since the gate was written offered an EMPTY tool
+			// list — the model wrote plans as prose because it had no tool to call.
+			{Tool: tools.NewCommitPlan(a.Writer, sctx), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeDiscussion, tools.ModeAutopilot}, IngressCap: 2000, RetryClass: "args"},
 			{Tool: tools.NewAskUser(a.QuestionBroker(), sctx), RiskTier: tools.RiskSafe, IngressCap: 1000, RetryClass: "args"},
 			{Tool: tools.NewWebFetch(), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeBrainstorming}, IngressCap: 8000, RetryClass: "transient"},
 		}

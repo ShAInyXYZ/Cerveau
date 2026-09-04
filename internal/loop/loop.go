@@ -212,6 +212,9 @@ type Result struct {
 }
 
 func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*Result, error) {
+	// Every tool call under this turn belongs to THIS session, whatever the
+	// shared SessionContext says by the time it runs.
+	ctx = tools.WithSession(ctx, sessionID)
 	mode := ModeByName(modeName)
 	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + mode.Module
 	// In autopilot, a plan committed earlier (in Discussion) is injected as GUIDANCE
@@ -328,6 +331,8 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	// reasoning about the whole game before its first action and never got
 	// to act; a plan of small steps is how a 27B model builds a big thing.
 	planFirst := mode.Name == "autopilot" && activePlan == nil
+	planReads := 0        // read-only calls spent looking before committing a plan
+	planRejects := 0      // commit_plan calls Validate refused (a check that cannot fail)
 	planAsked := false    // the instruction was appended once
 	planInsisted := false // prose instead of a plan: insisted once (the gate and its budget stay on for that retry)
 	for i := 1; ; i++ {
@@ -406,8 +411,39 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		callCtx := iterCtx
 		specs := sessionReg.Specs(mode.Name)
 		callLevel := thinkLevel
+		if planFirst && len(onlyTool(specs, "commit_plan")) == 0 {
+			// The tool the gate exists to ask for is not offered in this
+			// mode. That is a registration bug (see cmd/crv/main.go), and
+			// it must be loud: fenced to discussion only, every autopilot
+			// planning call offered an empty tool list and the model's
+			// prose plans were blamed on the model. Forcing tool_choice on
+			// an empty list is a 400 from vLLM, so do neither — say so and
+			// run unplanned.
+			planFirst = false
+			wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+				"text": "commit_plan is not available in " + mode.Name + " mode — check its Modes in the tool registry; proceeding without a plan"})
+		}
 		if planFirst {
-			specs = onlyTool(specs, "commit_plan")
+			// "Improve our car game" cannot be planned without reading the
+			// car game. The gate used to offer commit_plan and nothing else,
+			// so the model either planned blind or — as on the car
+			// restructure — reasoned itself into a corner ("I need to see
+			// the files first… but the instruction says plan now"), emitted
+			// nothing, and the gate gave up. Reading is not doing the work;
+			// it is what a plan is made from. A few read-only calls are
+			// allowed, then it is commit_plan only so planning cannot become
+			// an unbounded tour of the tree.
+			// Once reading is spent, or the model has already failed to
+			// commit once, the call is FORCED to commit_plan. Narrowing the
+			// offered specs alone was toothless: the model calls tools it
+			// remembers from the instruction text, and the registry runs
+			// them. Guided decoding is the only thing that binds it.
+			if planReads < maxPlanReads && !planInsisted {
+				specs = onlyTools(specs, planningTools...)
+			} else {
+				specs = onlyTool(specs, "commit_plan")
+				callCtx = llm.WithForcedTool(callCtx, "commit_plan")
+			}
 			if !planInsisted {
 				callLevel = l.planThinkingFor(mode.Name)
 			}
@@ -415,14 +451,14 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				planAsked = true
 				messages = append(messages, llm.Message{Role: "user", Content: planInstruction})
 				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
-					"text": "no plan yet — first call divides the task into steps (commit_plan only)"})
+					"text": "no plan yet — first call divides the task into steps (read-only tools + commit_plan)"})
 			}
 			if callLevel != llm.ThinkingOff {
 				callCtx = llm.WithThinkingBudget(callCtx, planThinkingBudget)
 			}
 		}
 		if bumpSampling {
-			callCtx = WithSampling(iterCtx, "creative")
+			callCtx = WithSampling(callCtx, "creative")
 			bumpSampling = false
 			wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
 				"text": "sampling raised to creative for one call — a repeat at strict temperature reproduces itself"})
@@ -511,14 +547,10 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			// missed: translate it, commit it, and move on to step 1.
 			if p, note := planFromText(wr, reply.Content); p != nil {
 				wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
-				activePlan = p
-				systemPrompt += "\n\n" + p.AsGuidance()
-				planFirst = false
-				correction = note
 				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
-					"text": fmt.Sprintf("plan written as text — translated and committed (%d steps), executing in order", len(p.Steps))})
+					"text": fmt.Sprintf("plan written as text — translated and committed (%d steps): %s", len(p.Steps), note)})
 				iterCancel()
-				continue
+				return l.handOffToPlan(runCtx, sessionID, p, wr)
 			}
 			// Not every autopilot turn is a build. "Who was president in 1950"
 			// is answered, not planned, and the gate used to throw that answer
@@ -795,14 +827,54 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			continue
 		}
 		if planFirst {
-			// The planning call is over either way. If a plan landed, it
-			// becomes the turn's guide from the next call on.
-			planFirst = false
+			// A plan landed: it becomes the turn's guide from the next call
+			// on. Otherwise the calls were reads, and the gate stays open —
+			// the model looked, and its next call is still the planning
+			// call. Bounded by maxPlanReads above.
 			if plan, _, perr := LatestPlan(l.path(sessionID)); perr == nil && plan != nil {
-				activePlan = plan
-				systemPrompt += "\n\n" + plan.AsGuidance()
-				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
-					"text": fmt.Sprintf("plan committed: %d steps — executing in order", len(plan.Steps))})
+				// A plan landed. Do NOT carry on as one long turn with the
+				// plan pasted in as guidance — that is the decoration the
+				// whole design replaces. Hand the plan to the supervisor:
+				// one run per step, each verified by its own check, each
+				// recorded as a checkpoint. The chat turn ends with that
+				// report.
+				iterCancel()
+				return l.handOffToPlan(runCtx, sessionID, plan, wr)
+			} else {
+				// No plan landed. Either the calls were reads (count them,
+				// minus orientation), or commit_plan ran and Validate refused
+				// the plan — the tool result carries the reason, and the next
+				// call is forced to try again. Twice refused is the model
+				// unable to write a check that can fail; go on without a plan
+				// rather than loop on it.
+				committed, counted := false, false
+				for _, tc := range reply.ToolCalls {
+					switch {
+					case tc.Function.Name == "commit_plan":
+						committed = true
+					case !planOrientation[tc.Function.Name]:
+						counted = true
+					}
+				}
+				switch {
+				case committed:
+					planRejects++
+					planInsisted = true // the next call is forced
+					if planRejects >= maxPlanRejects {
+						planFirst = false
+						wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+							"text": fmt.Sprintf("commit_plan refused %d times (see the tool results) — proceeding without a plan", planRejects)})
+					} else {
+						wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+							"text": fmt.Sprintf("commit_plan refused (%d/%d) — the tool result says why; asking again, forced", planRejects, maxPlanRejects)})
+					}
+				default:
+					if counted {
+						planReads++
+					}
+					wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+						"text": fmt.Sprintf("read before planning (%d/%d reads used) — still expecting commit_plan", planReads, maxPlanReads)})
+				}
 			}
 		}
 	}
@@ -812,10 +884,67 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 // once and is where deep thinking pays; steps get the level's normal budget.
 const planThinkingBudget = 24576
 
-const planInstruction = "Before doing anything else, divide this task into steps and commit them with the commit_plan TOOL (a real tool call, not text). Keep your reasoning brief — the steps are the output. " +
+const planInstruction = "Divide this task into steps and commit them with the commit_plan TOOL (a real tool call, not text). " +
+	"If the task is about EXISTING code, read it first — glob, read, grep, file_map are available now — a plan for code you have not seen is a guess. " +
+	"Then commit. Keep your reasoning brief — the steps are the output. " +
 	"Size each step to what a few tool calls can finish: ONE file or one concern per step, at most ~200 lines " +
 	"written per step, verification (check_page / a test run) as its own step near the end. Name each step's " +
 	"files. Do not write code in this call — commit the plan, then the next call starts step 1."
+
+// handOffToPlan runs a plan that just landed, step by step, and ends the chat
+// turn with the supervisor's report.
+//
+// Before this, a committed plan was appended to the system prompt as guidance
+// and the SAME turn carried on: one long loop, the model trusted to touch
+// every step, nothing verified, no checkpoint written. The improve-ctx run
+// committed a ten-step plan with real checks and then wrote five modules in
+// one unbroken turn with zero checkpoints. The supervisor exists for exactly
+// this moment.
+func (l *Loop) handOffToPlan(ctx context.Context, sessionID string, plan *Plan, wr *episodic.Writer) (*Result, error) {
+	wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+		"text": fmt.Sprintf("plan committed: %d steps — handing off to step-by-step execution", len(plan.Steps))})
+	return l.runPlanFrom(ctx, sessionID, plan, NewSupervisor(plan), 0, false)
+}
+
+// planningTools are what a plan may be made FROM: the code-reading set plus
+// commit_plan itself. Deliberately not RiskSafe, which also holds serve,
+// web_fetch, ask_user and remember — all side effects, none of them reading.
+var planningTools = []string{
+	"commit_plan", "read", "glob", "grep", "file_map", "find_symbol", "find_references", "outline_file",
+}
+
+// maxPlanReads bounds how many READS planning may spend. Orientation calls —
+// file_map and glob — are one-shot and do not count: on the car restructure
+// they ate two of three slots, the one read that followed returned 208 of 435
+// lines, and the model was refused the second read it asked for ("Let me read
+// the rest of the file") and stopped with no plan. Four reads covers a large
+// file in chunks plus a grep; a fifth means touring, and it gets commit_plan
+// alone.
+const maxPlanReads = 4
+
+// maxPlanRejects is how many refused commit_plan calls planning tolerates.
+// The tool result names the offending check each time; a model that cannot
+// fix it in two tries is not going to, and the turn runs unplanned instead.
+const maxPlanRejects = 2
+
+// planOrientation are the planning calls that map the tree rather than read a
+// file. Each is naturally one-shot, so they are free.
+var planOrientation = map[string]bool{"file_map": true, "glob": true}
+
+// onlyTools keeps the named tools' specs, in registry order.
+func onlyTools(specs []llm.ToolSpec, names ...string) []llm.ToolSpec {
+	keep := make(map[string]bool, len(names))
+	for _, n := range names {
+		keep[n] = true
+	}
+	out := specs[:0:0]
+	for _, sp := range specs {
+		if keep[sp.Function.Name] {
+			out = append(out, sp)
+		}
+	}
+	return out
+}
 
 // onlyTool keeps the named tool's spec, so a call can be constrained to it.
 func onlyTool(specs []llm.ToolSpec, name string) []llm.ToolSpec {

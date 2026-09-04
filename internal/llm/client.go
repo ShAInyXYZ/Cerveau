@@ -64,6 +64,7 @@ type chatRequest struct {
 	TopP        float64        `json:"top_p,omitempty"`
 	MaxTokens   int            `json:"max_tokens,omitempty"`
 	TemplateKW  map[string]any `json:"chat_template_kwargs,omitempty"`
+	ToolChoice  any            `json:"tool_choice,omitempty"`
 }
 
 // Usage is what one model call cost.
@@ -224,6 +225,9 @@ func (c *Client) CompleteWith(ctx context.Context, messages []Message, tools []T
 		Grammar:    grammar,
 		MaxTokens:  maxTokens,
 		TemplateKW: kw,
+	}
+	if ft := ForcedToolOf(ctx); ft != "" {
+		body.ToolChoice = map[string]any{"type": "function", "function": map[string]string{"name": ft}}
 	}
 	// Unset leaves the field out of the request entirely, so the Core falls
 	// back to the model's generation_config rather than to an OpenAI default.

@@ -188,6 +188,32 @@ func WithRegistry(ctx context.Context, r *Registry) context.Context {
 	return context.WithValue(ctx, registryKey{}, r)
 }
 
+// sessionKey carries the session a tool call belongs to.
+//
+// It used to live only in one process-wide SessionContext that the chat
+// handler overwrote at the start of every request. Two overlapping turns
+// therefore shared it: a "restart that server" typed in one session while
+// another was planning made that other session's commit_plan write its plan
+// into the wrong log (2026-09-04). The loop now stamps each run's context
+// with its own id, and the tools read that first.
+type sessionKey struct{}
+
+func WithSession(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, sessionKey{}, id)
+}
+
+// SessionOf is the session a tool call belongs to: the one on the context,
+// else the shared SessionContext's, else "".
+func SessionOf(ctx context.Context, sctx *SessionContext) string {
+	if v, _ := ctx.Value(sessionKey{}).(string); v != "" {
+		return v
+	}
+	if sctx != nil {
+		return sctx.SessionID
+	}
+	return ""
+}
+
 // RegistryFrom is the registry executing the current tool call, if any.
 func RegistryFrom(ctx context.Context) *Registry {
 	r, _ := ctx.Value(registryKey{}).(*Registry)

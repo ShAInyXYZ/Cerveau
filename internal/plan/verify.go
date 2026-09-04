@@ -53,6 +53,16 @@ var VerifyKinds = []string{"eval", "command", "contains"}
 // error points at, so this rejects the costume and not the intent.
 var reExistenceOnly = regexp.MustCompile(`^\s*(\[\s*-[efsr]\s|test\s+-[efsr]\s|ls\s|stat\s|cat\s+[^|;&]*$|test\s+-[efsr])`)
 
+// reConstantExpr matches an expression with no page in it: a literal, possibly
+// negated, possibly wrapped in parens or a trailing semicolon.
+var reConstantExpr = regexp.MustCompile(`(?i)^[\s(!]*(?:true|false|null|undefined|\d+(?:\.\d+)?|'[^']*'|"[^"]*")[\s);]*$`)
+
+// isPage reports whether a workspace path is something a browser can render.
+func isPage(p string) bool {
+	l := strings.ToLower(strings.TrimSpace(p))
+	return strings.HasSuffix(l, ".html") || strings.HasSuffix(l, ".htm")
+}
+
 // Validate reports why a verify is not a real check, or nil when it is one.
 //
 // Called at commit time, so a bad criterion is rejected the way the plan gate
@@ -63,11 +73,27 @@ func (v *Verify) Validate() error {
 	}
 	switch strings.ToLower(strings.TrimSpace(v.Kind)) {
 	case "eval":
-		if strings.TrimSpace(v.Expr) == "" {
+		expr := strings.TrimSpace(v.Expr)
+		if expr == "" {
 			return fmt.Errorf("verify kind %q needs expr: the expression that must evaluate truthy", v.Kind)
 		}
-		if strings.TrimSpace(v.Path) == "" && strings.TrimSpace(v.URL) == "" {
+		// The first plan the model ever wrote checks for (2026-09-04) used
+		// expr "true" on every step. A constant cannot fail, so it proves
+		// nothing — it is the disk guess again, dressed as an eval.
+		if reConstantExpr.MatchString(expr) {
+			return fmt.Errorf("verify expr %q is a constant — it can never fail, so it proves nothing. "+
+				"Read real page state: !!document.querySelector('canvas'), window.__state.speed > 0, typeof buildFan === 'function'", expr)
+		}
+		path, url := strings.TrimSpace(v.Path), strings.TrimSpace(v.URL)
+		if path == "" && url == "" {
 			return fmt.Errorf("verify kind %q needs path or url: which page to evaluate it in", v.Kind)
+		}
+		// check_page loads a PAGE. Pointed at a .js file it renders nothing
+		// and every expression is false — the same first plan put eval on
+		// src/core/constants.js.
+		if path != "" && !isPage(path) {
+			return fmt.Errorf("verify kind eval needs an HTML page, got %q — check_page loads a page, not a script. "+
+				"For a .js file use kind \"contains\" (a symbol it must define) or \"command\" (node --check %s)", path, path)
 		}
 		return nil
 	case "command":

@@ -50,17 +50,18 @@ func (t *Remember) Execute(ctx context.Context, args json.RawMessage) (string, e
 	if err := json.Unmarshal(args, &a); err != nil || a.Content == "" {
 		return "", fmt.Errorf("content required")
 	}
+	// The session is the RUN's, from its context. LastEvtID lives only on the
+	// shared context and belongs to whichever session last started a chat —
+	// use it only when that is this session, or the reference points into
+	// another session's log.
+	sid := SessionOf(ctx, t.sctx)
 	src := []string{}
-	if t.sctx != nil && t.sctx.SessionID != "" {
-		ref := t.sctx.SessionID
-		if t.sctx.LastEvtID != "" {
+	if sid != "" {
+		ref := sid
+		if t.sctx != nil && t.sctx.SessionID == sid && t.sctx.LastEvtID != "" {
 			ref += ":" + t.sctx.LastEvtID
 		}
 		src = append(src, ref)
-	}
-	sid := ""
-	if t.sctx != nil {
-		sid = t.sctx.SessionID
 	}
 	res, err := t.curator.Write(ctx, memory.Candidate{
 		Content:      a.Content,

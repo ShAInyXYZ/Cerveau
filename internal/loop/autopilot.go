@@ -106,6 +106,7 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 // prompt, its own check, a checkpoint carrying the verdict — as a step run by
 // autopilot, or the two surfaces drift apart again.
 func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, sup *Supervisor, start int, single bool) (*Result, error) {
+	ctx = tools.WithSession(ctx, sessionID) // see Run
 	wr, err := l.open(sessionID)
 	if err != nil {
 		return nil, err
@@ -169,31 +170,33 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 				Context: stepRunContext(sup, idx),
 			})
 
-		// A run that died on a guard has no verdict worth trusting: the model
-		// never got to finish, so its check is not evidence either way.
-		if stepErr != nil {
-			results[idx].Status = "failed"
-			results[idx].Summary = stepErr.Error()
-			wr.Append(episodic.Checkpoint, map[string]any{
-				"step": plan.Steps[idx].Title, "index": idx, "rev": state.Rev,
-				"status": "failed", "detail": stepErr.Error()})
-			if plan.AutonomyBudget != "high" {
-				handback = true
-				break
-			}
-			sup.Record(idx, Verdict{Pass: false, Check: "run did not finish", Evidence: stepErr.Error()}, -1)
-			continue
+		// The step's own check decides — even when the run did not end
+		// cleanly. The final car run wrote js/input.js, then kept reading
+		// instead of stopping, hit the iteration cap, and was marked failed
+		// with its check never run. The file satisfied the check; the exit
+		// code decided instead of the observation. A user kill is the one
+		// thing that skips the check: nothing was allowed to finish.
+		runFailed := stepErr != nil
+		if runFailed && h.killed.Load() {
+			results[idx].Status = "skipped"
+			results[idx].Summary = "killed by user"
+			handback = true
+			break
+		}
+		if runFailed {
+			summary = "run did not finish (" + stepErr.Error() + ")"
 		}
 
-		// The step's own check decides, not the model's report that it is done.
-		//
 		// A plan committed through the markdown path (or before verifies
-		// existed) declares none. Fall back to the model's summary rather than
-		// blocking every such plan — but say "unverified" plainly, so nobody
-		// reads it as proof.
-		verdict := Verdict{Pass: true, Check: "no check declared", Evidence: "unverified: " + summary}
+		// existed) declares none. Then the model's summary is all there is:
+		// accept it from a run that finished, say "unverified" plainly, and
+		// never accept it from one that did not.
+		verdict := Verdict{Pass: !runFailed, Check: "no check declared", Evidence: "unverified: " + summary}
 		if v := plan.Steps[idx].Verify; v != nil {
-			verdict = RunVerify(runCtx, l.registry(), l.workspace(sessionID), v)
+			verdict = RunVerify(runCtx, l.registryFor(sessionID), l.workspace(sessionID), v)
+			if runFailed {
+				verdict.Evidence = summary + " — " + verdict.Evidence
+			}
 		}
 
 		needs := needsStepFrom(summary, idx)
@@ -214,7 +217,7 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 			if plan.Steps[d].Verify == nil {
 				continue
 			}
-			rv := RunVerify(runCtx, l.registry(), l.workspace(sessionID), plan.Steps[d].Verify)
+			rv := RunVerify(runCtx, l.registryFor(sessionID), l.workspace(sessionID), plan.Steps[d].Verify)
 			if !rv.Pass {
 				sup.ReverifyFailed(d, rv)
 				results[d].Status = "pending"
@@ -265,6 +268,15 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 	// the plan decoration.
 	stepGoal := sp.Text()
 
+	// The SESSION's registry, jailed to the session's workspace — not the
+	// global one. Every tool captures its jail root at construction, so the
+	// global registry writes into the global workspace whatever the session
+	// says. The first hand-off run wrote js/config.js twice, successfully,
+	// somewhere else, and its own check — which reads the session workspace
+	// — found no such file (2026-09-04). The chat path had this fix already;
+	// the step runner did not.
+	stepReg := l.registryFor(sessionID)
+
 	items := []window.Item{{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"}}
 	// see loop.go: the template allows exactly one system message, at index 0
 	if text := wrapReminder(memory.FormatPulls(pulls)); text != "" {
@@ -298,7 +310,7 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 			wr.Append(episodic.Note, map[string]string{"kind": "window",
 				"text": fmt.Sprintf("step window compressed: %d demoted, %d trimmed (%d tok)", rep.Demoted, rep.Trimmed, rep.Tokens)})
 		}
-		reply, usage, err := l.completeWithRetry(ctx, wr, msgs, l.registry().Specs(mode.Name), "", mode.ProseCap)
+		reply, usage, err := l.completeWithRetry(ctx, wr, msgs, stepReg.Specs(mode.Name), "", mode.ProseCap)
 		g.addTokens(usage.AnswerTokens())
 		if err != nil {
 			return "", err
@@ -314,7 +326,7 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 				args = json.RawMessage(`{}`)
 			}
 			wr.Append(episodic.ToolCall, map[string]any{"id": tc.ID, "name": tc.Function.Name, "args": json.RawMessage(tc.Function.Arguments)})
-			out, execErr := l.registry().ExecuteMode(ctx, tc.Function.Name, args, mode.Name)
+			out, execErr := stepReg.ExecuteMode(ctx, tc.Function.Name, args, mode.Name)
 			if execErr != nil {
 				// keep the command's own output — it explains the failure
 				if out != "" {
