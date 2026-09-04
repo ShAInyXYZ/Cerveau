@@ -83,8 +83,11 @@ type Loop struct {
 	skillFactory func([]skills.SkillTool) []tools.Tool
 	rfx          *rfx.Loader
 	workspace    func(sessionID string) string // the SESSION's workspace path (per-session, e.g. instant scratch)
-	stackInfo    func() string                 // the harness's own running services + reserved ports
-	isInstant    func(id string) bool          // is this session an ephemeral instant session?
+	thinkMu      sync.RWMutex
+	thinkMode    string               // off | autopilot | always
+	thinkEffort  string               // low | medium | xhigh
+	stackInfo    func() string        // the harness's own running services + reserved ports
+	isInstant    func(id string) bool // is this session an ephemeral instant session?
 	bg           sync.WaitGroup
 	regFor       func(ws string) *tools.Registry
 }
@@ -293,6 +296,9 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		}
 	}
 	runCtx, rootCancel := context.WithCancel(ctx)
+	// Thinking follows the MODE: a build in autopilot may reason before each
+	// call; a chat turn answers directly. The level travels with the context,
+	// so every model call under this turn — retries included — sees it.
 	h := &runHandle{rootCancel: rootCancel}
 	defer l.runs.register(sessionID, h)()
 	defer rootCancel()
@@ -306,6 +312,23 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	}
 	var correction string // one-shot corrective message injected after a truncated tool call
 	truncated := 0        // how many times we've fed that correction back this turn
+	// bumpSampling breaks the determinism that keeps a repeat repeating: at the
+	// session default of 0.2 the same history yields the same 1400-token tool
+	// call, hint or no hint (three byte-identical evals in 34 s, 2026-09-04).
+	// One call at the creative preset after a repeat is detected gives the
+	// coaching an actual chance to change the output.
+	bumpSampling := false
+	thinkLevel := l.thinkingFor(mode.Name) // steps DOWN when reasoning overflows: xhigh → medium → low → off
+	emptyRetried := false                  // one empty reply gets one request for an answer
+	// PLAN FIRST. An autopilot turn with no committed plan spends its first
+	// call dividing the task: only commit_plan is offered, thinking gets the
+	// planning budget, and the instruction is to size steps to what a few
+	// tool calls can do. The Crane run (2026-09-04) spent 16k tokens
+	// reasoning about the whole game before its first action and never got
+	// to act; a plan of small steps is how a 27B model builds a big thing.
+	planFirst := mode.Name == "autopilot" && activePlan == nil
+	planAsked := false    // the instruction was appended once
+	planInsisted := false // prose instead of a plan: insisted once (the gate and its budget stay on for that retry)
 	for i := 1; ; i++ {
 		if h.killed.Load() {
 			wr.Append(episodic.Aborted, map[string]string{"phase": "turn", "reason": "killed by user"})
@@ -362,7 +385,16 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		// looks like, and killing a model that is about to report success would
 		// be worse than the churn. Say it, and let the model decide.
 		if work != nil {
-			if detail, stuck := work.check(); stuck {
+			detail, stuck := work.check()
+			if work.changed {
+				g.progress() // the artifact moved: the only progress that cannot be faked
+			}
+			if stuck && work.stopping {
+				iterCancel()
+				wr.Append(episodic.Note, map[string]string{"kind": "no_progress", "text": detail})
+				return stop(&Result{Iterations: i - 1}, StopStalled, detail), nil
+			}
+			if stuck {
 				correction = detail + " Stop repeating the current approach: either " +
 					"change tactics, or if the work is actually complete, say so and finish."
 				wr.Append(episodic.Note, map[string]string{"kind": "no_progress",
@@ -370,8 +402,32 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			}
 		}
 		winRep = rep
-		reply, usage, err := l.completeWithRetry(iterCtx, wr, messages, sessionReg.Specs(mode.Name), "", mode.ProseCap)
-		g.addTokens(usage.CompletionTokens)
+		callCtx := iterCtx
+		specs := sessionReg.Specs(mode.Name)
+		callLevel := thinkLevel
+		if planFirst {
+			specs = onlyTool(specs, "commit_plan")
+			if !planInsisted {
+				callLevel = l.planThinkingFor(mode.Name)
+			}
+			if !planAsked {
+				planAsked = true
+				messages = append(messages, llm.Message{Role: "user", Content: planInstruction})
+				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+					"text": "no plan yet — first call divides the task into steps (commit_plan only)"})
+			}
+			if callLevel != llm.ThinkingOff {
+				callCtx = llm.WithThinkingBudget(callCtx, planThinkingBudget)
+			}
+		}
+		if bumpSampling {
+			callCtx = WithSampling(iterCtx, "creative")
+			bumpSampling = false
+			wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+				"text": "sampling raised to creative for one call — a repeat at strict temperature reproduces itself"})
+		}
+		reply, usage, err := l.completeWithRetry(llm.WithThinking(callCtx, callLevel), wr, messages, specs, "", mode.ProseCap)
+		g.addTokens(usage.AnswerTokens()) // reasoning is not re-sent: it costs time, not window
 		if err != nil {
 			canceled := iterCtx.Err() == context.Canceled
 			iterCancel()
@@ -408,6 +464,82 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			wr.Append(episodic.Err, errorCard(class, "model call failed after retries", err.Error(), "3 attempts", llmFix(class)))
 			return &Result{Iterations: i, StopReason: StopLLMError, Window: &winRep}, err
 		}
+		// A reply with nothing in it is not a final answer. Two shapes:
+		// (1) finish_reason=length with empty text — the model was still
+		// thinking when the cap hit; the reasoning is kept for the record and
+		// the same call is made again WITHOUT thinking, once. (2) empty text
+		// with no cut-off — ask once for the answer, then give up honestly.
+		if len(reply.ToolCalls) == 0 && strings.TrimSpace(reply.Content) == "" && !planFirst {
+			wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
+			if reply.Raw != "" {
+				wr.Append(episodic.Note, map[string]string{"kind": "empty_reply_raw", "text": reply.Raw})
+			}
+			if reply.Truncated() && thinkLevel != llm.ThinkingOff {
+				next := llm.StepDown(thinkLevel)
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+					"text": fmt.Sprintf("thinking at %s ran past its budget (%d reasoning tokens, no answer) — retrying this step at %s", thinkLevel, usage.ReasoningTokens, next)})
+				thinkLevel = next
+				iterCancel()
+				continue
+			}
+			if !emptyRetried {
+				emptyRetried = true
+				correction = "Your last reply was empty — no text and no tool call. Either call a tool to continue the work, or write the answer."
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct", "text": "empty reply — asking for the answer or a tool call"})
+				iterCancel()
+				continue
+			}
+			iterCancel()
+			return stop(&Result{Iterations: i}, StopLLMError, "the model returned two empty replies in a row"), nil
+		}
+		if len(reply.ToolCalls) > 0 || strings.TrimSpace(reply.Content) != "" {
+			emptyRetried = false // a real reply closes an empty streak
+		}
+		if len(reply.ToolCalls) == 0 && planFirst {
+			if reply.Truncated() && thinkLevel != llm.ThinkingOff {
+				// still thinking at the cap: same graded fallback as any step
+				wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
+				next := llm.StepDown(thinkLevel)
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+					"text": fmt.Sprintf("planning at %s ran past its budget (%d reasoning tokens) — retrying the plan at %s", thinkLevel, usage.ReasoningTokens, next)})
+				thinkLevel = next
+				iterCancel()
+				continue
+			}
+			// A plan written as XML-style text is a tool call the parser
+			// missed: translate it, commit it, and move on to step 1.
+			if p, note := planFromText(wr, reply.Content); p != nil {
+				wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
+				activePlan = p
+				systemPrompt += "\n\n" + p.AsGuidance()
+				planFirst = false
+				correction = note
+				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+					"text": fmt.Sprintf("plan written as text — translated and committed (%d steps), executing in order", len(p.Steps))})
+				iterCancel()
+				continue
+			}
+			// Prose, or an empty reply (a tool call the server's parser
+			// swallowed — every planning call WITH thinking did one or the
+			// other today, every build step WITHOUT thinking called tools
+			// fine). Once: insist, and retry the plan without thinking.
+			// Twice: run without a plan rather than argue.
+			wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
+			if reply.Raw != "" {
+				wr.Append(episodic.Note, map[string]string{"kind": "empty_reply_raw", "text": reply.Raw})
+			}
+			if planInsisted {
+				planFirst = false
+				wr.Append(episodic.Note, map[string]string{"kind": "plan_first", "text": "no plan committed after two asks — proceeding without one"})
+			} else {
+				planInsisted = true
+				thinkLevel = llm.ThinkingOff
+				correction = "That was not a tool call. Call the commit_plan tool now with the steps (title, files) — a plan in prose cannot be tracked. No preamble: the tool call is the whole reply."
+				wr.Append(episodic.Note, map[string]string{"kind": "plan_first", "text": "no tool call for the plan — asking once more, without thinking"})
+			}
+			iterCancel()
+			continue
+		}
 		if len(reply.ToolCalls) == 0 {
 			iterCancel()
 			if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage)); err != nil {
@@ -421,11 +553,22 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			iterCancel()
 			return nil, err
 		}
-		// The model produced a reply with tool calls: that is progress too. On a
-		// local model a single generation can take ~35s, so counting only tool
-		// RESULTS would still let a slow-but-working turn drift toward the idle
-		// deadline.
-		g.progress()
+		// The model's words, before its calls. Saying the identical thing
+		// three times is a loop whatever the calls around it look like.
+		if hint, kill := g.sawText(reply.Content); kill {
+			iterCancel()
+			return stop(&Result{Iterations: i}, StopLoop, hint), nil
+		} else if hint != "" {
+			correction = hint
+			wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+				"text": "identical reply twice — coaching the model to change approach"})
+		}
+		// A reply with tool calls is NOT progress by itself: a model calling
+		// tools that keep failing was "progressing" all the way to a 20-minute
+		// loop. The idle clock now restarts only on a successful result the
+		// turn has not seen before (below), or on a workspace change (above).
+		// The budget is idle time, not total time, so a slow generation that
+		// then succeeds still resets it.
 		steered := false
 		for _, tc := range reply.ToolCalls {
 			args := json.RawMessage(tc.Function.Arguments)
@@ -442,7 +585,9 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				if looksTruncated(tc.Function.Arguments) {
 					what = "tool call arguments were cut off (output limit)"
 				}
-				wr.Append(episodic.Err, errorCard(ErrClassMalformed, what, tc.Function.Arguments, "0 retries", hint))
+				// Same reasoning as a failed tool: the model is corrected in-band,
+				// the turn continues, so this is a note in the log, not a card.
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct", "text": what + " — " + hint})
 				// Truncated args arrive here (valid transport, cut-off JSON).
 				// Feed the SAME self-correction the server-side path uses —
 				// a tool result alone doesn't reliably change the model's
@@ -471,13 +616,36 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 							"text": "same bash failure 3× — asking the model to reconsider the approach"})
 					}
 				}
-				if detail, tripped := g.toolError(tc.Function.Name); tripped {
+				if detail, tripped := g.toolError(tc.Function.Name, out); tripped {
 					iterCancel()
 					return stop(&Result{Iterations: i}, StopErrors, detail), nil
 				}
 				continue
 			}
-			out, execErr := sessionReg.ExecuteMode(iterCtx, tc.Function.Name, args, mode.Name)
+			// An identical check_page / read of a workspace nothing has touched
+			// since cannot answer differently. Hand back the previous result
+			// with the hint instead of spending six seconds of Chromium to
+			// learn it again. Bash is never short-circuited: `date`, polls and
+			// servers are allowed to change.
+			var out string
+			var execErr error
+			// Set when the result came from the cache. The hint appended below
+			// makes `out` a string the turn has never seen, so seenBefore()
+			// says "new" for what is definitionally a repeat — and anything
+			// keyed on novelty (the idle clock, the stall credit) would treat
+			// a model re-asking the same question as progress, forever.
+			cached := false
+			if prev, ok := g.cachedPureResult(tc.Function.Name, args, workFP(work)); ok {
+				cached = true
+				out = prev + "\n\n[harness] not re-run: identical call, workspace unchanged since — this is the same result you already have."
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+					"text": tc.Function.Name + " not re-run — identical call on an unchanged workspace"})
+			} else {
+				out, execErr = sessionReg.ExecuteMode(iterCtx, tc.Function.Name, args, mode.Name)
+				if execErr == nil {
+					g.rememberPureResult(tc.Function.Name, args, workFP(work), out)
+				}
+			}
 			if execErr != nil && iterCtx.Err() == context.Canceled && !h.killed.Load() && h.steered.CompareAndSwap(true, false) {
 				wr.Append(episodic.Aborted, map[string]string{"phase": "act", "tool": tc.Function.Name, "reason": "steered"})
 				steered = true
@@ -493,11 +661,16 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				} else {
 					out = execErr.Error()
 				}
-				wr.Append(episodic.Err, errorCard(ErrClassArgs, tc.Function.Name+" failed", out, "", "adjust per the hint and continue"))
+				// No error CARD for a failure the model is about to correct: the
+				// failed tool row in the working log already shows what happened,
+				// the model gets the full output as its result, and the turn goes
+				// on. A card with RETRY / DISMISS under a run that keeps working
+				// asked the user to act on something nobody needed them for. The
+				// card is for when the turn actually ENDS on errors (stop() below).
 				if l.recall != nil && pendingPulls == nil {
 					pendingPulls = l.recall.OnError(iterCtx, sessionID, out, l.tailEvtIDs(sessionID, 20))
 				}
-				if detail, tripped := g.toolError(tc.Function.Name); tripped {
+				if detail, tripped := g.toolError(tc.Function.Name, out); tripped {
 					wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": false, "output": out})
 					iterCancel()
 					return stop(&Result{Iterations: i}, StopErrors, detail), nil
@@ -511,7 +684,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 						breaker.ok(ba.Command)
 					}
 				}
-				g.toolOK()
+				g.toolOK(tc.Function.Name)
 			}
 			// Coach BEFORE persisting: the loop rebuilds its window from the
 			// episodic log each iteration, so a hint appended here is what the
@@ -520,14 +693,30 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			if g.repeatingResult(tc.Function.Name, args, out) {
 				hint := repeatHint(tc.Function.Name, out)
 				correction = hint
+				bumpSampling = true
 				out += "\n\n[harness] " + hint
 				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
 					"text": "identical tool result — coaching the model to change approach"})
 			}
-			// Real work happened: restart the IDLE clock. A turn is stopped for
-			// standing still, never for taking a while — the repeat detector
-			// below is what catches genuine spinning.
-			g.progress()
+			// Real work happened: restart the IDLE clock — but only for a
+			// SUCCESSFUL result this turn has not seen before. A failure, or
+			// the same output again, is standing still, and standing still is
+			// exactly what the idle guard exists to catch.
+			if ok && !cached && !g.seenBefore(tc.Function.Name, args, out) {
+				g.progress()
+				// Verification is work, and it does not touch the workspace.
+				// The stall counter measures file changes only, so a build
+				// that finished writing and moved on to checking its own
+				// output looked identical to a model circling: the fan run
+				// wrote three files, then was killed 45 seconds later for
+				// "8 iterations with no change" while running the checks the
+				// prompt had explicitly asked for (2026-09-04). A NEW,
+				// SUCCESSFUL result is progress wherever it came from; a
+				// repeat or a failure still is not, and still counts.
+				if work != nil {
+					work.credit()
+				}
+			}
 			// The model's stubbornest habit: writing its plan to a .md file
 			// instead of calling commit_plan. Translate, don't plead — a
 			// plan-shaped write is ALSO committed as a structured plan event,
@@ -545,6 +734,19 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				out += "\n\n[harness] " + note
 			}
 			wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": ok, "output": out})
+			// The same result for DIFFERENT inputs: the input is not the problem.
+			// Only results that carry an error count — a successful edit answers
+			// every call with the same confirmation, and six of those in a row
+			// ended a run that was debugging its physics (Crane5, 2026-09-04).
+			if hint, kill := g.sameResultAgain(tc.Function.Name, out, ok); kill {
+				iterCancel()
+				return stop(&Result{Iterations: i}, StopLoop, hint), nil
+			} else if hint != "" {
+				correction = hint
+				bumpSampling = true
+				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+					"text": "same result for different inputs — telling the model the input is not the problem"})
+			}
 			// Loop detection on the RESULT: only a call that yields the SAME output
 			// repeatedly is a stuck loop. Re-running e.g. `npm run build` with a
 			// changing error each time is progress and must be allowed to continue.
@@ -558,6 +760,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 			if g.repeatingResult(tc.Function.Name, args, out) {
 				hint := repeatHint(tc.Function.Name, out)
 				correction = hint
+				bumpSampling = true
 				// Also append it to THIS result: a model that emits several
 				// calls per iteration would otherwise queue a third identical
 				// one before ever seeing the next-turn correction.
@@ -569,7 +772,38 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		if steered {
 			continue
 		}
+		if planFirst {
+			// The planning call is over either way. If a plan landed, it
+			// becomes the turn's guide from the next call on.
+			planFirst = false
+			if plan, _, perr := LatestPlan(l.path(sessionID)); perr == nil && plan != nil {
+				activePlan = plan
+				systemPrompt += "\n\n" + plan.AsGuidance()
+				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+					"text": fmt.Sprintf("plan committed: %d steps — executing in order", len(plan.Steps))})
+			}
+		}
 	}
+}
+
+// planThinkingBudget is the reasoning room for the planning call: it happens
+// once and is where deep thinking pays; steps get the level's normal budget.
+const planThinkingBudget = 24576
+
+const planInstruction = "Before doing anything else, divide this task into steps and commit them with the commit_plan TOOL (a real tool call, not text). Keep your reasoning brief — the steps are the output. " +
+	"Size each step to what a few tool calls can finish: ONE file or one concern per step, at most ~200 lines " +
+	"written per step, verification (check_page / a test run) as its own step near the end. Name each step's " +
+	"files. Do not write code in this call — commit the plan, then the next call starts step 1."
+
+// onlyTool keeps the named tool's spec, so a call can be constrained to it.
+func onlyTool(specs []llm.ToolSpec, name string) []llm.ToolSpec {
+	out := specs[:0:0]
+	for _, sp := range specs {
+		if sp.Function.Name == name {
+			out = append(out, sp)
+		}
+	}
+	return out
 }
 
 // assistantPayload records what the model said AND what the call cost.
@@ -584,6 +818,9 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 // and one number describes both.
 func assistantPayload(m llm.Message, u llm.Usage) map[string]any {
 	p := map[string]any{"text": m.Content}
+	if m.Reasoning != "" {
+		p["reasoning"] = m.Reasoning
+	}
 	if len(m.ToolCalls) > 0 {
 		p["tool_calls"] = m.ToolCalls
 	}
@@ -593,6 +830,9 @@ func assistantPayload(m llm.Message, u llm.Usage) map[string]any {
 		usage := map[string]any{
 			"prompt_tokens":     u.PromptTokens,
 			"completion_tokens": u.CompletionTokens,
+		}
+		if u.ReasoningTokens > 0 {
+			usage["reasoning_tokens"] = u.ReasoningTokens
 		}
 		if u.CachedTokens > 0 {
 			usage["cached_tokens"] = u.CachedTokens
@@ -799,6 +1039,61 @@ func (l *Loop) resumeFacts(sessionID string, events []episodic.Event, compacted 
 	return f
 }
 
+// SetThinking sets which modes think and how hard. Live: it is a per-request
+// template argument, so the next call under an autopilot turn already gets it.
+func (l *Loop) SetThinking(mode, effort string) {
+	l.thinkMu.Lock()
+	defer l.thinkMu.Unlock()
+	switch mode {
+	case "off", "plan", "autopilot", "always":
+	default:
+		mode = "plan" // the default: think while dividing the task, not while writing the steps
+	}
+	if !llm.ValidThinking(effort) || effort == llm.ThinkingOff {
+		effort = llm.ThinkingLow
+	}
+	l.thinkMode, l.thinkEffort = mode, effort
+}
+
+// Thinking reports the setting: mode and effort.
+func (l *Loop) Thinking() (mode, effort string) {
+	l.thinkMu.RLock()
+	defer l.thinkMu.RUnlock()
+	mode, effort = l.thinkMode, l.thinkEffort
+	if mode == "" {
+		mode = "plan"
+	}
+	if effort == "" {
+		effort = llm.ThinkingLow
+	}
+	return mode, effort
+}
+
+// thinkingFor resolves the level for a turn's EXECUTION calls from its mode.
+// "plan" thinks only in the planning call (see planThinkingFor): measured
+// three times on 2026-09-04, the planning call reasons ~500 tokens and
+// yields a good plan, while every code-writing call reasons ~10k at "low"
+// and overflows — thinking helps divide the work, not write it.
+func (l *Loop) thinkingFor(modeName string) string {
+	mode, effort := l.Thinking()
+	switch {
+	case mode == "always":
+		return effort
+	case mode == "autopilot" && modeName == "autopilot":
+		return effort
+	}
+	return llm.ThinkingOff
+}
+
+// planThinkingFor is the level for the planning call of an autopilot turn.
+func (l *Loop) planThinkingFor(modeName string) string {
+	mode, effort := l.Thinking()
+	if modeName == "autopilot" && (mode == "plan" || mode == "autopilot" || mode == "always") {
+		return effort
+	}
+	return l.thinkingFor(modeName)
+}
+
 // SetSampling changes the session's default sampling preset, live. Temperature
 // is a per-request field; it never required a restart, only a way to say so.
 func (l *Loop) SetSampling(name string) {
@@ -812,4 +1107,13 @@ func (l *Loop) SamplingName() string {
 		return "strict"
 	}
 	return l.llm.SamplingName()
+}
+
+// workFP is the workspace fingerprint the tracker computed at the top of this
+// iteration, or 0 when no workspace is tracked (then nothing is ever cached).
+func workFP(w *workTracker) uint64 {
+	if w == nil {
+		return 0
+	}
+	return w.last
 }

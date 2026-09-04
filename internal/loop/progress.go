@@ -26,11 +26,17 @@ import (
 // progressStallLimit is how many consecutive iterations may leave the workspace
 // byte-identical before the turn is stopped.
 //
-// 8 is deliberately loose. Reading, grepping and planning are legitimate
-// non-writing work, and a build can reasonably spend several turns
-// investigating before it edits. v6 and v10 both blew past 20 such iterations,
-// so this catches them with a wide margin rather than clipping careful work.
-const progressStallLimit = 8
+// 4. It was 8, and 8 iterations of node probes that all fail on the model's
+// own test lines is two minutes of watching nothing get built (2026-09-04).
+// Reading and grepping before an edit rarely needs more than three calls;
+// a fourth without touching a file is when the model should hear about it.
+const progressStallLimit = 4
+
+// progressStallStop is where a nudge becomes a stop. A nudge that resets the
+// counter can be repeated forever — 8, 16, 24 iterations of nothing, each one
+// "the first". Four more iterations after the nudge is enough to change
+// approach or to say the work is done; after that the user decides.
+const progressStallStop = progressStallLimit + 4
 
 // workTracker fingerprints the workspace so the loop can tell progress from
 // churn. Names, sizes and mtimes only — hashing file CONTENT every iteration
@@ -40,10 +46,32 @@ type workTracker struct {
 	root  string
 	last  uint64
 	stall int
+	// changed is set by check() when the fingerprint moved: the artifact is
+	// different, which is the one kind of progress that cannot be faked.
+	changed bool
+	// stopping is set when the stall has outlived its nudge.
+	stopping bool
 }
 
 func newWorkTracker(root string) *workTracker {
 	return &workTracker{root: root}
+}
+
+// credit forgives the stall for work that is real but leaves no trace on disk.
+//
+// The fingerprint answers "did the artifact change", which is the right
+// question for a model that is churning. It is the WRONG question for the
+// last phase of a build: verifying a page, reading back a result, proving a
+// control works. That is what the prompt asks for, it produces no file, and
+// it used to be indistinguishable from circling.
+//
+// The caller passes only a SUCCESSFUL tool result the turn has not seen
+// before, so a probe that fails the same way eight times still stalls out and
+// a repeated identical call earns nothing. One credit clears the counter, and
+// the nudge is allowed to fire again from zero.
+func (w *workTracker) credit() {
+	w.stall = 0
+	w.stopping = false
 }
 
 // check fingerprints the workspace and reports whether it has been unchanged
@@ -53,20 +81,29 @@ func (w *workTracker) check() (string, bool) {
 		return "", false // no workspace: nothing to measure, never block
 	}
 	fp, files := w.fingerprint()
+	w.stopping = false
 	if fp != w.last {
 		w.last = fp
 		w.stall = 0
+		w.changed = true
 		return "", false
 	}
+	w.changed = false
 	w.stall++
-	if w.stall < progressStallLimit {
-		return "", false
+	switch {
+	case w.stall == progressStallLimit:
+		return fmt.Sprintf("%d iterations with no change to any file in the workspace (%s) — "+
+			"tool calls are being made but nothing is being built. Either the current approach "+
+			"is not working, or the task is already done and needs to be reported.",
+			progressStallLimit, strings.Join(files, ", ")), true
+	case w.stall >= progressStallStop:
+		w.stall = 0
+		w.stopping = true
+		return fmt.Sprintf("%d iterations with no change to any file in the workspace, "+
+			"including %d after being told so — stopping so the user can redirect",
+			progressStallStop, progressStallStop-progressStallLimit), true
 	}
-	w.stall = 0 // one stop per stall, not one per iteration after
-	return fmt.Sprintf("%d iterations with no change to any file in the workspace (%s) — "+
-		"tool calls are being made but nothing is being built. Either the current approach "+
-		"is not working, or the task is already done and needs to be reported.",
-		progressStallLimit, strings.Join(files, ", ")), true
+	return "", false
 }
 
 // fingerprint hashes the visible file tree: name, size, mtime.

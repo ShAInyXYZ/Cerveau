@@ -4,6 +4,8 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -15,6 +17,7 @@ const (
 	StopLoop        = "guard_loop_detected"
 	StopErrors      = "guard_error_threshold"
 	StopLLMError    = "llm_error"
+	StopStalled     = "guard_no_progress"
 )
 
 type turnGuard struct {
@@ -31,6 +34,42 @@ type turnGuard struct {
 	budget      time.Duration
 	started     time.Time
 	seen        map[[20]byte]int // count of (name+args+result) triples seen
+
+	lastText    [20]byte                // the previous reply's normalised text
+	textRepeats int                     // consecutive identical replies
+	sameOut     map[[20]byte]int        // count of (tool, normalised result) regardless of args
+	pure        map[[20]byte]pureResult // last result of a pure read, keyed by call
+}
+
+// pureResult remembers what a deterministic read of the workspace returned,
+// and which workspace it read.
+type pureResult struct {
+	fp  uint64
+	out string
+}
+
+// pureTools answer as a function of the workspace alone. Re-running one of
+// them on an unchanged workspace is a wasted call with a known answer.
+var pureTools = map[string]bool{"check_page": true, "read": true, "grep": true, "find_symbol": true}
+
+func (g *turnGuard) rememberPureResult(name string, args json.RawMessage, fp uint64, out string) {
+	if !pureTools[name] || fp == 0 {
+		return
+	}
+	g.pure[sha1.Sum(append([]byte(name+"\x00"), args...))] = pureResult{fp: fp, out: out}
+}
+
+// cachedPureResult returns the previous result when the SAME call (exact
+// args) was already made against the SAME workspace fingerprint.
+func (g *turnGuard) cachedPureResult(name string, args json.RawMessage, fp uint64) (string, bool) {
+	if !pureTools[name] || fp == 0 {
+		return "", false
+	}
+	r, ok := g.pure[sha1.Sum(append([]byte(name+"\x00"), args...))]
+	if !ok || r.fp != fp {
+		return "", false
+	}
+	return r.out, true
 }
 
 func newTurnGuard(maxIter int) *turnGuard { return newTurnGuardBudget(maxIter, maxTurnTime) }
@@ -56,6 +95,8 @@ func newTurnGuardBudget(maxIter int, budget time.Duration) *turnGuard {
 		repeatLimit: loopDetectRepeat,
 		perToolErrs: map[string]int{},
 		seen:        map[[20]byte]int{},
+		sameOut:     map[[20]byte]int{},
+		pure:        map[[20]byte]pureResult{},
 	}
 }
 
@@ -109,19 +150,141 @@ func (g *turnGuard) extendTokens() bool {
 	return true
 }
 
-func (g *turnGuard) toolError(name string) (string, bool) {
+// toolError decides whether a failure ends the turn. Three failures of the
+// same TOOL used to be enough — which killed a chess build in the middle of
+// debugging its own test script, where every failure was a different error
+// and each one was progress (2026-09-04). A test loop fails many times on
+// the way to passing; what ends a turn is the SAME failure coming back after
+// the model has been told about it. So: the same tool failing with the same
+// error line four times (the breaker coaches at three), or an implausible
+// number of distinct failures, is a stop. Different errors are debugging.
+func (g *turnGuard) toolError(name, out string) (string, bool) {
 	g.totalErrs++
 	g.perToolErrs[name]++
-	if g.perToolErrs[name] >= 3 {
+	wall := name + "\x00" + errorLine(out)
+	g.perToolErrs[wall]++
+	if g.perToolErrs[wall] >= sameWallLimit {
+		return fmt.Sprintf("tool %q failed %d times with the same error: %s", name, g.perToolErrs[wall], errorLine(out)), true
+	}
+	if g.perToolErrs[name] >= distinctFailLimit {
 		return fmt.Sprintf("tool %q failed %d times", name, g.perToolErrs[name]), true
 	}
-	if g.totalErrs >= 5 {
+	if g.totalErrs >= totalFailLimit {
 		return fmt.Sprintf("%d total tool failures this turn", g.totalErrs), true
 	}
 	return "", false
 }
 
-func (g *turnGuard) toolOK() {}
+const (
+	sameWallLimit     = 4  // identical error line, same tool — coached at 3, stopped at 4
+	distinctFailLimit = 10 // one tool, different errors, with NO success in between
+	totalFailLimit    = 30 // all tools, whole turn — the runaway backstop, not a judgement
+)
+
+// toolOK: a success closes the streak. Distinct failures are only a signal
+// while nothing succeeds in between — 8 bash failures interleaved with 9
+// successes and 4 edits is a probe-fix-test cycle, and the cap ended it on
+// the call right after the model found its bug (2026-09-04). A successful
+// write or edit means a new attempt: every tool's distinct count restarts.
+// Same-wall counts (name+error line) are NOT reset here: fixing something
+// else and hitting the identical error again is still the same wall.
+func (g *turnGuard) toolOK(name string) {
+	delete(g.perToolErrs, name)
+	if name == "write" || name == "edit" {
+		for k := range g.perToolErrs {
+			if !strings.Contains(k, "\x00") {
+				delete(g.perToolErrs, k)
+			}
+		}
+	}
+}
+
+// digits is what varies between "the same" call: temp-file suffixes, ports,
+// timestamps, byte counts. The four bash calls of the 2026-09-04 loop differed
+// ONLY in `.crv-eval-3314114930.html` vs `.crv-eval-2207781145.html`, so an
+// exact hash saw four different calls and never tripped.
+var digits = regexp.MustCompile(`\d+`)
+
+func normalize(s string) string {
+	return digits.ReplaceAllString(strings.Join(strings.Fields(s), " "), "#")
+}
+
+func (g *turnGuard) sig(name string, args json.RawMessage, result string) [20]byte {
+	buf := append([]byte(name), []byte(normalize(string(args)))...)
+	buf = append(buf, 0)
+	buf = append(buf, []byte(normalize(result))...)
+	return sha1.Sum(buf)
+}
+
+// seenBefore reports whether this (call, result) pair has already happened,
+// without counting it. The loop uses it to decide whether a tool result is
+// PROGRESS: only a successful call with an output the turn has not seen
+// restarts the idle clock. A failure, or the same output again, is standing
+// still — and standing still is what the idle guard is for.
+func (g *turnGuard) seenBefore(name string, args json.RawMessage, result string) bool {
+	return g.seen[g.sig(name, args, result)] > 0
+}
+
+// sawText watches the model's own words. A reply repeated verbatim is the
+// clearest loop signal there is — four times "The IIFE return is the problem"
+// in one turn — and it is invisible to every tool-based detector, because the
+// tool calls around it can differ in details that do not matter. Two in a row:
+// a hint. Three: the turn stops.
+func (g *turnGuard) sawText(content string) (hint string, stop bool) {
+	n := normalize(content)
+	if len(n) < 20 { // "Done." and empty preambles are not a loop
+		g.textRepeats = 0
+		return "", false
+	}
+	h := sha1.Sum([]byte(n))
+	if h == g.lastText {
+		g.textRepeats++
+	} else {
+		g.lastText = h
+		g.textRepeats = 1
+	}
+	switch {
+	case g.textRepeats >= g.repeatLimit:
+		return fmt.Sprintf("the model repeated the same message %d times in a row — no progress", g.textRepeats), true
+	case g.textRepeats == 2:
+		return "You have now said exactly this twice, and the same actions followed both times. " +
+			"Repeating it will produce the same failure. Either take a genuinely different action, " +
+			"read the error again and address what it actually says, or stop and report what is blocking you.", false
+	}
+	return "", false
+}
+
+// sameResultAgain watches the RESULT alone. The 2026-09-04 chess run rewrote
+// its check_page eval script six times — a different script each time, so the
+// (call, result) detector never matched — and got "no legal move d1-h5" back
+// from every one of them. When the input keeps changing and the output does
+// not, the input is not the problem; something the model is not looking at
+// is. Four: a pointed hint. Six: the turn stops.
+func (g *turnGuard) sameResultAgain(name, result string, ok bool) (hint string, stop bool) {
+	n := normalize(result)
+	if len(n) < 20 {
+		return "", false // "ok", "", "[]" — not a signal
+	}
+	if ok && !errorish.MatchString(result) {
+		return "", false // a plain success repeated is fine: edits, writes, reads that agree
+	}
+	h := sha1.Sum([]byte(name + "\x00" + n))
+	g.sameOut[h]++
+	switch c := g.sameOut[h]; {
+	case c >= sameResultStop:
+		return fmt.Sprintf("%s returned the same result %d times for different inputs — no progress", name, c), true
+	case c == sameResultHint:
+		return fmt.Sprintf("You have now called %s with %d DIFFERENT inputs and received the SAME result every time. "+
+			"The input is not what is wrong. Stop rewriting it. Read the code that produces this result, "+
+			"or check the assumption behind the test itself — then change THAT.", name, c), false
+	}
+	return "", false
+}
+
+const (
+	sameResultHint = 4
+	sameResultStop = 6
+)
 
 // repeatedResult trips the loop detector only when the SAME call produced the
 // SAME result repeatedly — i.e. the model is genuinely stuck, nothing changing.
@@ -130,10 +293,7 @@ func (g *turnGuard) toolOK() {}
 // legitimate progress, not a loop, and must not be killed. Called AFTER exec,
 // once the result is known.
 func (g *turnGuard) repeatedResult(name string, args json.RawMessage, result string) (string, bool) {
-	buf := append([]byte(name), args...)
-	buf = append(buf, 0)
-	buf = append(buf, []byte(result)...)
-	sig := sha1.Sum(buf)
+	sig := g.sig(name, args, result)
 	g.seen[sig]++
 	if g.seen[sig] >= g.repeatLimit {
 		return fmt.Sprintf("same tool call with identical result repeated %d times (%s) — no progress", g.seen[sig], name), true
@@ -145,9 +305,6 @@ func (g *turnGuard) repeatedResult(name string, args json.RawMessage, result str
 // identical result — one short of the kill threshold. The loop uses it to
 // coach the model out of the loop instead of only killing it afterwards.
 func (g *turnGuard) repeatingResult(name string, args json.RawMessage, result string) bool {
-	buf := append([]byte(name), args...)
-	buf = append(buf, 0)
-	buf = append(buf, []byte(result)...)
-	sig := sha1.Sum(buf)
+	sig := g.sig(name, args, result)
 	return g.seen[sig] >= 2 && g.seen[sig] < g.repeatLimit
 }

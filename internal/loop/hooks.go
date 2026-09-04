@@ -126,7 +126,9 @@ func (l *Loop) distill(ctx context.Context, sessionID string) (*turnMeta, error)
 		{Role: "system", Content: "You distill a finished turn into structured metadata. Output only the JSON object. summary: one line. decisions: choices made this turn (may be empty). promotion_candidates: durable facts/preferences/decisions worth long-term memory (may be empty, be conservative). open_loops: unresolved threads (may be empty)."},
 		{Role: "user", Content: "Turn transcript (newest last, truncated):\n" + sb.String()},
 	}
-	reply, _, err := l.llm.Complete(ctx, messages, nil, grammar, 1024)
+	// A distiller must not think: it emits a small JSON object under a
+	// grammar, and a reasoning block would blow its 1024-token cap.
+	reply, _, err := l.llm.Complete(llm.WithThinking(ctx, llm.ThinkingOff), messages, nil, grammar, 1024)
 	if err != nil {
 		return nil, err
 	}

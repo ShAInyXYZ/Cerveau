@@ -46,6 +46,13 @@ func (b *bashBreaker) shape(cmd, out string) string {
 	if noSuchFile.MatchString(out) {
 		return "missing-path"
 	}
+	// The same error text under different commands is the same wall. "temp
+	// file gone / exit status 2" four times from four differently-phrased
+	// commands matched none of the patterns above and the first word varied,
+	// so nothing counted. Key on the last meaningful line of the failure.
+	if fp := errorLine(out); fp != "" {
+		return "err:" + fp
+	}
 	// fall back to the first word of the command: repeated `npm ...` failures
 	// with varied errors still count as circling npm
 	fields := strings.Fields(strings.TrimPrefix(cmd, "cd "))
@@ -60,6 +67,51 @@ func (b *bashBreaker) shape(cmd, out string) string {
 	return "cmd:" + fields[0]
 }
 
+// errorLine is the line that says WHAT failed, with digits flattened so
+// counters and temp names do not make every occurrence unique. Empty when
+// the output says nothing usable.
+//
+// Not simply the last line: node ends every uncaught exception with
+// "Node.js v22.23.2", and under that rule four different bugs read as one
+// wall and ended a turn (2026-09-04). Trailers — runtime banners, exit
+// status, stack frames, caret markers — are skipped, and a line that names
+// an error is preferred over whatever happens to be last.
+func errorLine(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	last := ""
+	for i := len(lines) - 1; i >= 0 && i >= len(lines)-40; i-- {
+		l := strings.TrimSpace(lines[i])
+		if l == "" || isTrailer(l) {
+			continue
+		}
+		if last == "" {
+			last = l
+		}
+		if errorish.MatchString(l) {
+			return flatten(l)
+		}
+	}
+	return flatten(last)
+}
+
+var (
+	errorish = regexp.MustCompile(`(?i)\b(error|exception|fatal|failed|fail:|panic|traceback|not found|not defined|cannot|illegal|invalid|denied|refused|unexpected)\b`)
+	trailer  = regexp.MustCompile(`(?i)^(exit:|exit status|node\.js v|npm err!? *$|at [\w.<>\[\] ]*\(?[^)]*\)?$|at [^ ]+:\d+:\d+$|\^+$|[-=_*~]{3,}$)`)
+)
+
+func isTrailer(l string) bool { return trailer.MatchString(l) }
+
+func flatten(l string) string {
+	if l == "" {
+		return ""
+	}
+	l = strings.Join(strings.Fields(digits.ReplaceAllString(l, "#")), " ")
+	if len(l) > 80 {
+		l = l[:80]
+	}
+	return l
+}
+
 // record notes a failure. Returns a hint and true once this shape has failed
 // enough times that retrying is no longer a plan.
 func (b *bashBreaker) record(cmd, out string) (string, bool) {
@@ -72,9 +124,18 @@ func (b *bashBreaker) record(cmd, out string) (string, bool) {
 	return breakerHint(s), true
 }
 
-// ok clears a shape: the model got past it, so the streak is over.
+// ok clears a shape: the model got past it, so the streak is over. Error
+// fingerprints are cleared too — a success after "temp file gone" means the
+// model is no longer walking into that wall, whatever it ran. Named walls
+// (a module or command that is not installed) survive a success, because
+// running `ls` in between does not make playwright appear.
 func (b *bashBreaker) ok(cmd string) {
 	delete(b.fails, b.shape(cmd, ""))
+	for k := range b.fails {
+		if strings.HasPrefix(k, "err:") {
+			delete(b.fails, k)
+		}
+	}
 }
 
 func breakerHint(shape string) string {
@@ -86,6 +147,8 @@ func breakerHint(shape string) string {
 		what = "the command `" + strings.TrimPrefix(shape, "missing-command:") + "`"
 	case shape == "missing-path":
 		what = "that path"
+	case strings.HasPrefix(shape, "err:"):
+		what = "whatever produces `" + strings.TrimPrefix(shape, "err:") + "`"
 	}
 	return fmt.Sprintf("STOP — this has now failed three times for the same reason: %s is not "+
 		"available here. Do NOT try another variation of it. Answer these before your next "+

@@ -160,6 +160,17 @@ func repeatHint(tool, lastOutput string) string {
 			"call read again with the OFFSET given in the notice to get the next slice, " +
 			"or use grep/find_symbol to jump straight to what you need."
 	}
+	if tool == "check_page" && strings.Contains(lastOutput, "EVAL ERROR") {
+		return "That exact check_page eval failed the same way twice — it will fail a third time. " +
+			"The error hides WHICH step broke: rewrite the test to push 'FAIL: <step>' entries into an array " +
+			"and RETURN it instead of throwing, or print the board/state just before the failing step, " +
+			"or run the same sequence with `node` through bash to get a stack trace. Do not resend this script."
+	}
+	if tool == "bash" {
+		return "That exact bash command failed the same way twice — a third run gives the same output. " +
+			"Read the last error line and change the thing it names (the file, the argument, the code), " +
+			"not the command. If the failure is in a test you wrote, doubt the test before the code it tests."
+	}
 	return "That exact " + tool + " call returned the same result twice — repeating it will not help. " +
 		"Change the arguments, use a different tool, or act on what you already have."
 }

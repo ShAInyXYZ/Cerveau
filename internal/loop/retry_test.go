@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -156,12 +157,15 @@ func TestMalformedArgsNotExecuted(t *testing.T) {
 	}
 }
 
+// The same tool failing the same WAY, after the breaker has coached it at
+// three, ends the turn at four. (Different failures are debugging — see
+// TestDifferentFailuresAreDebuggingNotALoop.)
 func TestSameToolThresholdTrips(t *testing.T) {
 	g := newTurnGuard(0)
 	var tripped string
 	var hit bool
-	for i := 0; i < 3; i++ {
-		tripped, hit = g.toolError("read")
+	for i := 0; i < sameWallLimit; i++ {
+		tripped, hit = g.toolError("read", "file not found: notes.md")
 	}
 	if !hit || !strings.Contains(tripped, "read") {
 		t.Fatalf("same-tool threshold not tripped: %v %q", hit, tripped)
@@ -170,11 +174,11 @@ func TestSameToolThresholdTrips(t *testing.T) {
 
 func TestTotalThresholdTrips(t *testing.T) {
 	g := newTurnGuard(0)
-	names := []string{"read", "grep", "bash", "edit", "write"}
+	names := []string{"read", "grep", "bash", "edit", "write", "find_symbol"}
 	var hit bool
 	var tripped string
-	for _, n := range names {
-		tripped, hit = g.toolError(n)
+	for i := 0; i < totalFailLimit; i++ {
+		tripped, hit = g.toolError(names[i%len(names)], fmt.Sprintf("distinct error %d-%c", i, 'a'+i))
 	}
 	if !hit || !strings.Contains(tripped, "total") {
 		t.Fatalf("total threshold not tripped: %v %q", hit, tripped)
@@ -226,5 +230,16 @@ func TestSplitCorrectionMentionsAppend(t *testing.T) {
 		if !strings.Contains(strings.ToLower(c), want) {
 			t.Fatalf("correction missing %q: %s", want, c)
 		}
+	}
+}
+
+// The hint after a repeated eval failure names a way out, not a platitude.
+func TestRepeatHintIsConcreteForEvalAndBash(t *testing.T) {
+	h := repeatHint("check_page", `eval result: EVAL ERROR: no mv", source: index.html (184)`)
+	if !strings.Contains(h, "RETURN") || !strings.Contains(h, "node") {
+		t.Fatalf("check_page hint should say return-an-array or use node, got %q", h)
+	}
+	if h := repeatHint("bash", "exit status 1"); !strings.Contains(h, "doubt the test") {
+		t.Fatalf("bash hint should say to doubt the test, got %q", h)
 	}
 }
