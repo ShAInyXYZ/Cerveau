@@ -8,6 +8,7 @@ import (
 	nurl "net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -37,7 +38,10 @@ func (t *CheckPage) Description() string {
 	return "Load an HTML page in a headless browser and report console errors, uncaught exceptions, " +
 		"and whether an expected element rendered. USE THIS to verify web pages/apps actually work — " +
 		"reading the source cannot reveal runtime errors. path: workspace-relative file, or url for a " +
-		"served page. expect: optional element tag/id to confirm rendered (e.g. \"canvas\" or \"#board\")."
+		"served page. IF THE PAGE USES ES MODULES (<script type=\"module\">, import), path: WILL NOT WORK — " +
+		"the browser blocks module loading over file://, so the page renders nothing. Start the serve tool " +
+		"and pass its url instead; eval works there too. expect: optional element tag/id to confirm " +
+		"rendered (e.g. \"canvas\" or \"#board\")."
 }
 
 func (t *CheckPage) Schema() map[string]any {
@@ -47,7 +51,7 @@ func (t *CheckPage) Schema() map[string]any {
 			"path":   map[string]any{"type": "string", "description": "workspace-relative HTML file to load"},
 			"url":    map[string]any{"type": "string", "description": "full URL to load instead of a file (e.g. a serve tool URL)"},
 			"expect": map[string]any{"type": "string", "description": "element that must exist in the rendered DOM: a tag (canvas), #id, .class, or tag.class"},
-			"eval":   map[string]any{"type": "string", "description": "JS expression evaluated in the page after it loads; its value is returned to you. Use it to READ RUNTIME STATE, e.g. \"JSON.stringify({omega: window.__state.omega})\". Objects are JSON-stringified automatically."},
+			"eval":   map[string]any{"type": "string", "description": "JS expression evaluated in the page after it loads (works with BOTH path: and url: — for an ES-module page use url:, since file:// cannot load modules); its value is returned to you. Use it to READ RUNTIME STATE, e.g. \"JSON.stringify({omega: window.__state.omega})\". Objects are JSON-stringified automatically. For multi-step tests: RETURN an array of results and push 'FAIL: <step> <state>' entries instead of throwing — one throw loses everything collected before it and tells you nothing. If you must throw, throw new Error('step X: from-to') so the report has a line number. EVERY CALL IS A FRESH PAGE LOAD: nothing set in one call exists in the next, so never schedule work and read it later. Put the whole sequence in ONE eval; if it needs frames or timers, use top-level await (allowed) and end with `return <results>`, or return a Promise — either is awaited up to 4 s. Variables declared inside a <script type=module> are NOT reachable from eval: read state through window.* / the DOM, or expose it (window.__state = …) in the page."},
 		},
 	}
 }
@@ -151,12 +155,23 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 	// no --evaluate flag, and a wrapper is why this needs no browser driver:
 	// the model asked for playwright 26 times in one run because it could not
 	// read runtime state any other way.
+	// The eval harness runs a COPY of the page (.crv-eval-*.html, deleted on
+	// return). Every path in the report must name the real file: a model that
+	// is told "index.html:901" fixes index.html; one told ".crv-eval-331.html:901"
+	// spends the next ten iterations editing a file that no longer exists
+	// (2026-09-04, four identical turns of "temp file gone").
+	unleak := func(s string) string { return s }
 	if a.Eval != "" {
 		wrapped, cleanup, werr := t.writeEvalHarness(target, a.Eval)
 		if werr != nil {
 			return "", werr
 		}
 		defer cleanup()
+		// Both forms end in a file name; take it off the URL path or the
+		// file path so the report names the page the model can actually edit.
+		tmpBase := pageBase(wrapped)
+		origBase := pageBase(target)
+		unleak = func(s string) string { return strings.ReplaceAll(s, tmpBase, origBase) }
 		target = wrapped
 	}
 
@@ -168,7 +183,7 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 		// report "WebGL context could not be created" — a false failure.
 		"--use-angle=swiftshader", "--enable-unsafe-swiftshader",
 		"--enable-logging=stderr", "--v=0",
-		"--virtual-time-budget=6000", // let scripts, timers and module loads run
+		"--virtual-time-budget=12000", // load + the 2.5 s settle + up to 4 s of awaited eval
 		"--dump-dom", target,
 	)
 	var out, errb strings.Builder
@@ -183,7 +198,7 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 	seen := map[string]bool{}
 	errCount := 0
 	for _, m := range consoleLine.FindAllStringSubmatch(errb.String(), -1) {
-		msg, src, line := m[1], m[2], m[3]
+		msg, src, line := unleak(m[1]), unleak(m[2]), m[3]
 		// trim the workspace prefix off file:// sources for readability
 		src = strings.TrimPrefix(src, "file://"+t.j.root+"/")
 		key := msg + src + line
@@ -201,7 +216,7 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 	evalResult := ""
 	for _, ln := range strings.Split(errb.String(), "\n") {
 		if i := strings.Index(ln, evalMarker); i >= 0 {
-			evalResult = strings.TrimSpace(ln[i+len(evalMarker):])
+			evalResult = unleak(strings.TrimSpace(ln[i+len(evalMarker):]))
 		}
 	}
 
@@ -280,12 +295,71 @@ const evalMarker = "__CRV_EVAL__"
 // copy keeps everything same-document, and the copy sits in the workspace so
 // relative paths (modules, textures, importmaps) still resolve.
 func (t *CheckPage) writeEvalHarness(target, expr string) (string, func(), error) {
+	// A served URL is the ONLY way to check a page that uses ES modules:
+	// over file:// the browser treats every module as cross-origin and
+	// refuses to load it, so the page renders nothing and every probe
+	// reports "no canvas". Refusing eval here used to leave the model with
+	// two half-tools — url: could see the page but not probe it, path: could
+	// probe but never loaded the modules — and it burned eight iterations
+	// discovering that before the guard killed the turn (2026-09-04, fan).
+	//
+	// The copy therefore goes next to the real file and is requested through
+	// the SAME server, so it shares the page's origin and its relative
+	// imports resolve exactly as they do for the real page.
 	if !strings.HasPrefix(target, "file://") {
-		// served URL: fetch is not available to us here, so evaluate against
-		// the live page by loading it in a document that shares its origin.
-		return "", func() {}, fmt.Errorf("eval is only supported for workspace files (path:), not url:")
+		orig, rewrite, err := t.servedFile(target)
+		if err != nil {
+			return "", func() {}, err
+		}
+		tmp, cleanup, err := t.harnessBeside(orig, expr)
+		if err != nil {
+			return "", cleanup, err
+		}
+		return rewrite(filepath.Base(tmp)), cleanup, nil
 	}
-	orig := strings.TrimPrefix(target, "file://")
+	name, cleanup, err := t.harnessBeside(strings.TrimPrefix(target, "file://"), expr)
+	if err != nil {
+		return "", cleanup, err
+	}
+	return "file://" + name, cleanup, nil
+}
+
+// servedFile maps a loopback URL from the `serve` tool back to the file it
+// serves, and returns a rewrite that turns a sibling file name into the URL
+// that reaches it. The harness copy must be fetched over HTTP, not read off
+// disk: same origin is the whole point.
+func (t *CheckPage) servedFile(rawURL string) (string, func(string) string, error) {
+	u, err := nurl.Parse(rawURL)
+	if err != nil {
+		return "", nil, fmt.Errorf("eval harness: %w", err)
+	}
+	// "/" and "/sub/" serve an index; name it so the copy lands beside it.
+	upath := u.Path
+	if upath == "" || strings.HasSuffix(upath, "/") {
+		upath += "index.html"
+	}
+	full, err := t.j.resolve(strings.TrimPrefix(upath, "/"))
+	if err != nil {
+		return "", nil, fmt.Errorf("eval over url: %s is not inside the workspace, so there is nothing to instrument — serve the workspace and pass that URL", upath)
+	}
+	if _, err := os.Stat(full); err != nil {
+		// The server may be rooted at a subdirectory (serve dir=...), so the
+		// URL path alone does not locate the file. Say so plainly instead of
+		// failing with a bare stat error.
+		return "", nil, fmt.Errorf("eval over url: cannot find the file behind %s in the workspace (if the server was started with dir=, pass a url whose path is workspace-relative, or use path: for a page without ES modules)", rawURL)
+	}
+	rewrite := func(base string) string {
+		c := *u
+		c.Path = path.Join(path.Dir(upath), base)
+		return c.String()
+	}
+	return full, rewrite, nil
+}
+
+// harnessBeside writes the instrumented copy in the page's own directory, so
+// relative imports, import maps and assets resolve the way they do for the
+// real page.
+func (t *CheckPage) harnessBeside(orig, expr string) (string, func(), error) {
 	body, err := os.ReadFile(orig)
 	if err != nil {
 		return "", func() {}, fmt.Errorf("eval harness: %w", err)
@@ -301,12 +375,41 @@ func (t *CheckPage) writeEvalHarness(target, expr string) (string, func(), error
 	probe := `
 <script>
 setTimeout(function () {
+  // The expression may return a Promise (a test that dispatches events and
+  // waits for frames). It is awaited, up to 4 s, so an async test reports
+  // its real outcome instead of "scheduled" — a crane build spent eight
+  // calls reading results that a fresh page load had never produced.
+  function report(v) {
+    if (v && typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = String(v); } }
+    console.log(` + jsString(evalMarker) + ` + ' ' + v);
+  }
   var v;
   try {
-    v = eval(` + jsString(expr) + `);
-    if (v && typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = String(v); } }
-  } catch (e) { v = 'EVAL ERROR: ' + (e && e.message ? e.message : String(e)); }
-  console.log(` + jsString(evalMarker) + ` + ' ' + v);
+    try {
+      v = eval(` + jsString(expr) + `);
+    } catch (se) {
+      // Top-level await: plain eval rejects it, and the model reaches for it
+      // as soon as it tests anything that takes frames. Re-run the same text
+      // as the body of an async function; its return value is awaited below.
+      if (se instanceof SyntaxError && /await|return/i.test(String(se.message))) {
+        v = eval('(async function () {' + ` + jsString(expr) + ` + '\n})()');
+      } else { throw se; }
+    }
+    if (v && typeof v.then === 'function') {
+      var timer = new Promise(function (res) { setTimeout(function () { res('EVAL ERROR: promise did not settle within 4 s'); }, 4000); });
+      Promise.race([v, timer]).then(report, function (e) { report('EVAL ERROR: ' + (e && e.message ? e.message : String(e))); });
+      return;
+    }
+  } catch (e) {
+    // Say WHERE it threw, not just what: a thrown Error carries a stack with
+    // the line inside the eval; a thrown string carries nothing, so say so.
+    var where = '';
+    if (e && e.stack) { var m = String(e.stack).match(/<anonymous>:(\d+):(\d+)/); if (m) where = ' (eval line ' + m[1] + ':' + m[2] + ')'; }
+    var msg = e && e.message ? e.message : String(e);
+    if (!(e instanceof Error)) msg += ' [a bare value was thrown — throw new Error(\'what failed and where\') to get a line number, or return partial results instead of throwing]';
+    v = 'EVAL ERROR: ' + msg + where;
+  }
+  report(v);
 }, 2500);
 </script>`
 	if _, err := f.Write(append(body, []byte(probe)...)); err != nil {
@@ -315,7 +418,19 @@ setTimeout(function () {
 		return "", func() {}, fmt.Errorf("eval harness: %w", err)
 	}
 	f.Close()
-	return "file://" + name, cleanup, nil
+	return name, cleanup, nil
+}
+
+// pageBase is the file name a target ends in, for either an http(s) URL or a
+// file path. Used only to rewrite the temp harness name back to the real page
+// in the report, so a query string or fragment must not become part of it.
+func pageBase(target string) string {
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		if u, err := nurl.Parse(target); err == nil {
+			return path.Base(u.Path)
+		}
+	}
+	return filepath.Base(strings.TrimPrefix(target, "file://"))
 }
 
 func jsString(s string) string {
