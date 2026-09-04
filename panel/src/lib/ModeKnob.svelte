@@ -4,7 +4,7 @@
   import { MODES, modeMeta } from './modes.js';
   import { tooltip } from '../kit/tooltip.js';
 
-  let { mode = $bindable('discussion') } = $props();
+  let { mode = $bindable('autopilot') } = $props();
 
   const idx = $derived(Math.max(0, MODES.findIndex((m) => m.value === mode)));
   const current = $derived(modeMeta(mode));

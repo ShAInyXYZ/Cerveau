@@ -14,7 +14,17 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  const gpu = $derived(stats?.gpu);
+  // The chip is one number for the whole rig: the busiest GPU's load and the
+  // hottest GPU's temperature — five cards, one glance.
+  const gpu = $derived.by(() => {
+    const list = stats?.gpus ?? (stats?.gpu ? [stats.gpu] : []);
+    if (!list.length) return null;
+    return list.reduce((acc, g) => ({
+      ...acc,
+      util: Math.max(acc.util, g.util), temp: Math.max(acc.temp, g.temp),
+      mem_used: acc.mem_used + g.mem_used, mem_total: acc.mem_total + g.mem_total
+    }), { ...list[0], util: 0, temp: 0, mem_used: 0, mem_total: 0 });
+  });
   const cpu = $derived(stats?.cpu);
   const ram = $derived(stats?.ram);
 

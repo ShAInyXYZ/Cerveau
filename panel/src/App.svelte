@@ -21,9 +21,11 @@
   import MemoryView from './lib/MemoryView.svelte';
   import RfxDock from './lib/RfxDock.svelte';
   import Settings from './lib/Settings.svelte';
+  import IdleScreen from './lib/IdleScreen.svelte';
   import DeleteSessionDialog from './lib/DeleteSessionDialog.svelte';
-  import { api, onAuthRequired, setAuthToken } from './lib/api';
+  import { api, onAuthRequired, setAuthToken, type IdleStatus } from './lib/api';
   import { healthStore } from './lib/stores/health.svelte.ts';
+  import { idleStore } from './lib/stores/idle.svelte.ts';
   import { sessionStore } from './lib/stores/session.svelte.ts';
   import { tooltip } from './kit/tooltip.js';
   import { uiStore } from './lib/stores/ui.svelte.ts';
@@ -43,8 +45,9 @@
 
   $effect(() => {
     healthStore.start();
+    idleStore.start();
     sessionStore.start();
-    return () => { healthStore.stop(); sessionStore.stop(); };
+    return () => { healthStore.stop(); idleStore.stop(); sessionStore.stop(); };
   });
 
   // ── delete-session flow (dialog state is view-local, not store-worthy) ──
@@ -81,6 +84,12 @@
     <div class="offline" role="alert">
       <span class="offline-dot"></span>
       core unreachable — retrying. Start it with <code>crv</code> if it isn't running.
+    </div>
+  {/if}
+
+  {#if idleStore.visible}
+    <div class="idlewrap">
+      <IdleScreen status={idleStore.value} onchange={(s: IdleStatus) => idleStore.set(s)} />
     </div>
   {/if}
 
@@ -194,6 +203,23 @@
   .chatwrap :global(main.chat) { flex: 1; min-width: 0; }
   .body { flex: 1; display: flex; min-height: 0; gap: 1px; background: var(--line); position: relative; }
   .body > :global(*) { background: var(--bg); }
+
+  .idlewrap {
+    /* An interruption, not a layout member: it floats in the centre of the
+       screen instead of pushing the whole app down by its own height.
+       The wrapper ignores the pointer so the countdown never blocks the work
+       that would cancel it — typing a message keeps the Core awake by itself.
+       Only the card takes clicks. */
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    pointer-events: none;
+  }
+  .idlewrap > :global(*) { pointer-events: auto; }
 
   .offline {
     display: flex; align-items: center; gap: 8px;

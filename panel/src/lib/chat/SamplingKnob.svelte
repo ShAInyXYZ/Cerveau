@@ -15,6 +15,7 @@
   let open = $state(false);
 
   const TIP: Record<string, string> = {
+    default:  "the model's own settings — nothing sent (temperature 1.0, top_p 0.95, top_k 20)",
     strict:   'temperature 0.2 — the measured default. Best for code.',
     neutral:  'temperature 0.55 — looser, for drafting.',
     creative: 'temperature 0.7 — widest spread, when there is no single right answer.'

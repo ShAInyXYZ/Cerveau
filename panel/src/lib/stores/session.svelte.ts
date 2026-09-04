@@ -33,7 +33,17 @@ let question = $state<Question | null>(null);
 let errors = $state<SessionError[]>([]);
 let report = $state<PlanReport | null>(null);
 let skills = $state<unknown[]>([]);
-let mode = $state<Mode>('discussion');
+// Autopilot is the default: Cerveau is a build harness first, a chat second.
+// The last choice is remembered per browser, so a reload does not reset it.
+const MODE_KEY = 'crv.mode';
+function initialMode(): Mode {
+  try {
+    const m = localStorage.getItem(MODE_KEY);
+    if (m === 'discussion' || m === 'autopilot' || m === 'brainstorming') return m;
+  } catch { /* no storage */ }
+  return 'autopilot';
+}
+let mode = $state<Mode>(initialMode());
 let liveSteps = $state<LiveStep[]>([]);
 
 let dismissed = new Set<string>();
@@ -131,7 +141,7 @@ export const sessionStore = {
     return out;
   },
   get mode() { return mode; },
-  set mode(m: Mode) { mode = m; },
+  set mode(m: Mode) { mode = m; try { localStorage.setItem(MODE_KEY, m); } catch { /* no storage */ } },
 
   async loadSessions(): Promise<void> {
     sessions = await api.sessions();
@@ -299,7 +309,14 @@ export const sessionStore = {
       // keep the running set fresh: a CLI turn can start or finish at any
       // moment and the panel has no other way to learn about it.
       void api.runningSessions().then((ids) => { runningIds = ids; }).catch(() => {});
-      if (report) void loadReport();
+      // Poll while a turn is RUNNING too, not only once a report exists.
+      // `if (report)` refreshed a report we already had and never fetched the
+      // first one, so the plan strip could not appear until the turn ended —
+      // and by then the plan was complete, so it archived itself on arrival.
+      // The strip is a progress indicator; it has to show up during the work.
+      // The RFX planner fetches independently, which is why it filled in at
+      // the start while the chat strip stayed empty (2026-09-04, fan).
+      if (report || running) void loadReport();
     }, TICK_MS);
   },
   stop(): void {

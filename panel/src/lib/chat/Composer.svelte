@@ -4,6 +4,7 @@
   import WorkspacePath from '../WorkspacePath.svelte';
   import PlanStrip from './PlanStrip.svelte';
   import SamplingKnob from './SamplingKnob.svelte';
+  import ThinkingKnob from './ThinkingKnob.svelte';
   import { tooltip } from '../../kit/tooltip.js';
   import { sessionStore } from '../stores/session.svelte.ts';
   import { healthStore } from '../stores/health.svelte.ts';
@@ -36,12 +37,15 @@
 
 <div class="dockzone">
   <div class="dockstack">
-    {#if !sessionStore.activeIsInstant}
-      <div class="wsline">
+    <!-- the line above the bar: thinking effort on the left, the workspace
+         on the right — the two facts about HOW the next prompt will run. -->
+    <div class="wsline">
+      <span class="wsleft"><ThinkingKnob /></span>
+      {#if !sessionStore.activeIsInstant}
         <WorkspacePath workspace={healthStore.workspace}
           onChanged={(ws: string) => sessionStore.onWorkspaceChanged(ws)} />
-      </div>
-    {/if}
+      {/if}
+    </div>
 
     <PlanStrip />
 
@@ -83,9 +87,8 @@
      read as a single unit */
   .dockstack { width: 100%; max-width: var(--composer-w); display: flex; flex-direction: column; }
   .wsline {
-    align-self: flex-end; margin: 0 var(--dock-inset) 6px 0;
-    position: relative; z-index: var(--z-raised);
-  }
+    align-self: stretch; margin: 0 var(--dock-inset) 6px var(--dock-inset);
+    position: relative; z-index: var(--z-raised);; display: flex; align-items: center; justify-content: space-between; }
   .dockrow { width: 100%; display: flex; align-items: center; gap: var(--dock-gap); }
   .dockrow > :global(.knobbtn) { align-self: center; }
 
@@ -137,4 +140,5 @@
     /* input gets the full width; the ws chip aligns to the edge */
     .wsline { margin-right: 0; }
   }
+  .wsleft { margin-right: auto; }
 </style>

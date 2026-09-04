@@ -38,7 +38,9 @@
   >
     {#snippet actions()}
       {#if lastUserText}
-        <Button size="sm" variant="primary" onclick={() => sessionStore.retry(lastUserText)}>retry</Button>
+        <!-- A guard stop kept the history: sending the prompt again CONTINUES the
+             work. Calling that "retry" read as "try the failed thing again". -->
+        <Button size="sm" variant="primary" onclick={() => sessionStore.retry(lastUserText)}>{e.class === 'guard' ? 'continue' : 'retry'}</Button>
       {/if}
       <Button size="sm" variant="ghost" onclick={() => sessionStore.dismissAllErrors()}>dismiss</Button>
     {/snippet}

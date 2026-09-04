@@ -3,7 +3,7 @@
   import { ChevronDown, Check } from 'lucide-svelte';
   import { MODES, modeMeta } from './modes.js';
 
-  let { mode = $bindable('discussion') } = $props();
+  let { mode = $bindable('autopilot') } = $props();
   const current = $derived(modeMeta(mode));
   let open = $state(false);
 </script>

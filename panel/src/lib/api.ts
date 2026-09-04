@@ -114,6 +114,24 @@ export const api = {
     }).then((r) => r.ok),
   setWorkspace: (path: string) =>
     postJSON<{ ok?: string }>('/api/config/workspace', { path }),
+
+  // ── Idle / power parking ──
+  idleStatus: () => getJSON<IdleStatus>('/api/idle'),
+  idleStay: (minutes?: number) =>
+    postJSON<IdleStatus>('/api/idle/stay', { minutes: minutes ?? 0 }),
+  idleNow: () => postJSON<IdleStatus>('/api/idle/now', {}),
+  idleConfig: (c: { after_minutes?: number; warn_minutes?: number; enabled?: boolean }) =>
+    postJSON<IdleStatus>('/api/idle/config', c),
+};
+
+export type IdleStatus = {
+  state: 'active' | 'warning' | 'parked' | 'waking';
+  idle_seconds: number;
+  park_in_seconds: number;
+  enabled: boolean;
+  held: boolean;
+  after_seconds: number;
+  warn_seconds: number;
 };
 
 /**
@@ -172,6 +190,11 @@ export function fmtTime(ts: string | number): string {
 // Prefer `api.*` in new code; these mirror the old api.js surface.
 export const j = getJSON;
 export const jpost = postJSON;
+export const jput = <T,>(url: string, body?: unknown) => getJSON<T>(url, {
+  method: 'PUT',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body ?? {}),
+});
 export async function fetchEvents(url: string): Promise<unknown[]> {
   try {
     const r = await fetch(url);

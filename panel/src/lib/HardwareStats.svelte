@@ -6,20 +6,25 @@
   // would drift the moment either one changed.
   let { stats = null } = $props();
 
-  const gpu = $derived(stats?.gpu);
+  // Every GPU the core reports (`gpus`, index order). Older cores sent a
+  // single `gpu`; keep reading it so the panel never goes blank on one.
+  const gpus = $derived(stats?.gpus ?? (stats?.gpu ? [stats.gpu] : []));
   const cpu = $derived(stats?.cpu);
   const ram = $derived(stats?.ram);
 
   function tempTone(t) { return t >= 85 ? 'hot' : t >= 72 ? 'warm' : 'cool'; }
   function pct(u, t) { return t > 0 ? Math.round((u / t) * 100) : 0; }
   const ramPct = $derived(ram ? pct(ram.used, ram.total) : 0);
-  const vramPct = $derived(gpu ? pct(gpu.mem_used, gpu.mem_total) : 0);
   function bars(p) { return Math.round((p / 100) * 10); }
 </script>
 
-{#if gpu}
+{#each gpus as gpu, i (gpu.index ?? i)}
+  {@const vramPct = pct(gpu.mem_used, gpu.mem_total)}
   <div class="comp">
-    <div class="crow"><Gpu size={14} /><span class="cname">{gpu.name}</span></div>
+    <div class="crow"><Gpu size={14} />
+      {#if gpus.length > 1}<span class="cidx mono">{gpu.index ?? i}</span>{/if}
+      <span class="cname">{gpu.name}</span>
+    </div>
     <div class="grid">
       <div class="metric"><span class="mk">TEMP</span><span class="mv {tempTone(gpu.temp)}">{Math.round(gpu.temp)}°C</span></div>
       <div class="metric"><span class="mk">LOAD</span><span class="mv">{Math.round(gpu.util)}%</span></div>
@@ -27,11 +32,11 @@
       <div class="metric"><span class="mk">FAN</span><span class="mv">{Math.round(gpu.fan)}%</span></div>
     </div>
     <div class="barrow"><span class="blabel">VRAM</span>
-      <div class="bar">{#each Array(10) as _, i}<span class="seg" class:on={i < bars(vramPct)}></span>{/each}</div>
+      <div class="bar">{#each Array(10) as _, j}<span class="seg" class:on={j < bars(vramPct)}></span>{/each}</div>
       <span class="bval mono">{(gpu.mem_used/1024).toFixed(1)}/{(gpu.mem_total/1024).toFixed(0)}GB</span>
     </div>
   </div>
-{/if}
+{/each}
 
 {#if cpu}
   <div class="comp">
@@ -82,4 +87,5 @@
   .seg { flex: 1; height: 7px; border-radius: 2px; background: var(--s3); }
   .seg.on { background: var(--accent); }
   .bval { font-size: 10.5px; color: var(--muted); }
+  .cidx { font-size: var(--fs-micro); color: var(--dim); letter-spacing: .06em; padding: 1px 5px; border: 1px solid var(--line2); border-radius: 4px; }
 </style>
