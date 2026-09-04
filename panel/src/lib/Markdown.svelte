@@ -39,15 +39,31 @@
         + `<button class="md-copy" type="button" data-code="${encodeURIComponent(code)}">copy</button></div>`
         + `<pre class="md-code"><code>${highlighted}</code></pre></div>`;
     },
+    // marked hands a custom renderer the RAW token text, not escaped. A
+    // codespan of `<script>` was emitted as a literal <script> tag inside
+    // the <code>, DOMPurify then removed the tag — and everything after it in
+    // that table row. The "before/after" table on the car restructure showed
+    // one cell reading "435-line monolith in one" and nothing else.
+    //
+    // The fenced-code path is safe because highlight.js escapes on its own;
+    // this one has nothing in front of it, so escape here.
     codespan({ text: code }) {
-      return `<code class="md-inline">${code}</code>`;
+      return `<code class="md-inline">${escapeHtml(code)}</code>`;
     },
     link({ href, title, tokens }) {
       const inner = this.parser.parseInline(tokens);
-      const t = title ? ` title="${title}"` : '';
-      return `<a href="${href}"${t} target="_blank" rel="noopener noreferrer">${inner}</a>`;
+      const t = title ? ` title="${escapeHtml(title)}"` : '';
+      return `<a href="${escapeHtml(href)}"${t} target="_blank" rel="noopener noreferrer">${inner}</a>`;
     }
   };
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
   marked.use({ renderer });
 
   // Models habitually wrap illustrative markdown in a ```markdown fence — which
