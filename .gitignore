@@ -2,6 +2,10 @@
 # Working notes, architecture boards, briefs — for us, not for consumers.
 docs-private/
 
+# Benchmark artefacts: the pages a run actually produced, kept locally so a
+# later run can be compared against them. Output, not source.
+Benchmark/
+
 # ── dependencies ──────────────────────────────────────────────────────────
 node_modules/
 panel/node_modules/
