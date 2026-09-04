@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
 	"cerveau/internal/episodic"
 	"cerveau/internal/llm"
 	"cerveau/internal/memory"
+	"cerveau/internal/plan"
 	"cerveau/internal/tools"
 	"cerveau/internal/window"
 )
@@ -19,6 +21,11 @@ type PlanStep struct {
 	Detail string   `json:"detail"`
 	Files  []string `json:"files"`
 	Risk   string   `json:"risk"`
+
+	// Verify is the check that proves this step done. Absent on plans committed
+	// through the markdown path, and on every plan written before step-wise
+	// execution existed — those fall back to disk reconciliation.
+	Verify *plan.Verify `json:"verify,omitempty"`
 }
 
 type Plan struct {
@@ -173,7 +180,7 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 				"text": fmt.Sprintf("step window compressed: %d demoted, %d trimmed (%d tok)", rep.Demoted, rep.Trimmed, rep.Tokens)})
 		}
 		reply, usage, err := l.completeWithRetry(ctx, wr, msgs, l.registry().Specs(mode.Name), "", mode.ProseCap)
-		g.addTokens(usage.CompletionTokens)
+		g.addTokens(usage.AnswerTokens())
 		if err != nil {
 			return "", err
 		}
@@ -196,12 +203,12 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 				} else {
 					out = execErr.Error()
 				}
-				if _, tripped := g.toolError(tc.Function.Name); tripped {
+				if detail, tripped := g.toolError(tc.Function.Name, out); tripped {
 					wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": false, "output": out})
-					return "", fmt.Errorf("3 consecutive tool errors, last: %s", out)
+					return "", fmt.Errorf("%s, last: %s", detail, out)
 				}
 			} else {
-				g.toolOK()
+				g.toolOK(tc.Function.Name)
 			}
 			g.progress() // a tool returned — the turn is moving, not stalled
 			wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": execErr == nil, "output": out})
@@ -313,4 +320,111 @@ func autoCommitPlanFile(wr *episodic.Writer, tool string, args []byte) (*Plan, s
 		return nil, ""
 	}
 	return plan, fmt.Sprintf("note: %s looked like a plan, so it was ALSO committed as a structured plan (%d steps) — it now appears in the plan card. Next time call commit_plan directly.", a.Path, len(steps))
+}
+
+// planFromText translates a plan the model wrote as XML-style TEXT into a
+// committed plan. With thinking on, Qwen3.8 twice answered the planning
+// call with
+//
+//	<commit_plan><steps><step name="skeleton" files="a.html" description="…">…</step>…
+//
+// — a tool call in its head, in a shape the tool parser does not know. Same
+// rule as plan-shaped .md writes: translate, don't plead. Returns nil when
+// the text has no such steps.
+func planFromText(wr *episodic.Writer, text string) (*Plan, string) {
+	if !strings.Contains(text, "<step") {
+		return nil, ""
+	}
+	var steps []PlanStep
+	for _, m := range xmlSteps(text) {
+		attrs, body := m[0], strings.TrimSpace(m[1])
+		st := PlanStep{Title: xmlAttr(attrs, "name", "title"), Detail: xmlAttr(attrs, "description", "detail")}
+		if st.Detail == "" {
+			st.Detail = body
+		}
+		if st.Title == "" {
+			st.Title = firstLine(body)
+		}
+		for _, f := range strings.FieldsFunc(xmlAttr(attrs, "files", "file"), func(r rune) bool { return r == ',' || r == ' ' || r == ';' }) {
+			st.Files = append(st.Files, strings.TrimSpace(f))
+		}
+		if st.Title != "" {
+			steps = append(steps, st)
+		}
+	}
+	if len(steps) == 0 {
+		return nil, ""
+	}
+	title := xmlAttr(text, "title", "name")
+	if title == "" || len(title) > 80 {
+		title = "Plan"
+	}
+	plan := &Plan{Title: title, Steps: steps, AutonomyBudget: "low"}
+	if _, err := wr.Append(episodic.Plan, map[string]any{
+		"title": plan.Title, "steps": plan.Steps, "autonomy_budget": plan.AutonomyBudget,
+	}); err != nil {
+		return nil, ""
+	}
+	return plan, fmt.Sprintf("your plan was written as text, not as a commit_plan tool call — it was translated and committed anyway (%d steps). Next time call the tool. Start on step 1 now.", len(steps))
+}
+
+var (
+	// an opening <step …> tag; attribute values may hold '>' inside quotes
+	xmlStepOpen = regexp.MustCompile(`(?is)<step\b((?:"[^"]*"|[^>"])*?)(/?)>`)
+	xmlStepEnd  = regexp.MustCompile(`(?i)</step>`)
+	xmlAttrRe   = regexp.MustCompile(`(?i)\b([a-z_]+)\s*=\s*"([^"]*)"`)
+)
+
+// xmlSteps returns (attrs, body) for every step in document order, whether
+// written as <step …>body</step> (Crane5) or self-closing <step … /> with a
+// description attribute (Crane6). A step without a closing tag ends at the
+// next <step or at the end of the text.
+func xmlSteps(text string) [][2]string {
+	var out [][2]string
+	locs := xmlStepOpen.FindAllStringSubmatchIndex(text, -1)
+	for i, loc := range locs {
+		attrs := text[loc[2]:loc[3]]
+		selfClosing := loc[5] > loc[4] // the "/" group matched
+		body := ""
+		if !selfClosing {
+			end := len(text)
+			if i+1 < len(locs) {
+				end = locs[i+1][0]
+			}
+			seg := text[loc[1]:end]
+			if m := xmlStepEnd.FindStringIndex(seg); m != nil {
+				seg = seg[:m[0]]
+			}
+			body = seg
+		}
+		out = append(out, [2]string{attrs, body})
+	}
+	return out
+}
+
+// xmlAttr returns the first of the named attributes present in attrs.
+func xmlAttr(attrs string, names ...string) string {
+	found := map[string]string{}
+	for _, m := range xmlAttrRe.FindAllStringSubmatch(attrs, -1) {
+		if _, ok := found[strings.ToLower(m[1])]; !ok {
+			found[strings.ToLower(m[1])] = strings.TrimSpace(m[2])
+		}
+	}
+	for _, n := range names {
+		if v := found[n]; v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 80 {
+		s = s[:80]
+	}
+	return s
 }

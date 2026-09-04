@@ -16,7 +16,7 @@ func TestParsePlanMarkdownHeadings(t *testing.T) {
 	title, steps := ParsePlanMarkdown(`# 3D Chess Game
 
 ## Sprint 1: Foundation
-Set up vite, `+"`src/main.ts`"+` and `+"`src/engine/ChessEngine.ts`"+`.
+Set up vite, ` + "`src/main.ts`" + ` and ` + "`src/engine/ChessEngine.ts`" + `.
 
 ## Sprint 2: Rules
 Implement moves and check detection.

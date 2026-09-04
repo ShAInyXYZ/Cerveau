@@ -13,8 +13,8 @@ import (
 
 	"cerveau/internal/episodic"
 	"cerveau/internal/llm"
-	"cerveau/internal/window"
 	"cerveau/internal/tools"
+	"cerveau/internal/window"
 )
 
 func TestLatestPlan(t *testing.T) {
