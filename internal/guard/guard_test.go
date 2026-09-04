@@ -152,7 +152,7 @@ func TestConfirmedBypassesBlocked(t *testing.T) {
 	// Must NOT over-block legitimate commands that resemble the patterns.
 	for _, cmd := range []string{
 		`{"command":"dd if=/dev/zero of=out.img bs=1M count=1"}`, // dd to a file is fine
-		`{"command":"curl http://x/data.json -o data.json"}`,    // download without pipe-to-shell
+		`{"command":"curl http://x/data.json -o data.json"}`,     // download without pipe-to-shell
 	} {
 		if err := check(t, g, "bash", cmd); err != nil {
 			t.Errorf("guard over-blocked a safe command %s: %v", cmd, err)

@@ -176,7 +176,26 @@ func (r *Registry) Execute(ctx context.Context, name string, args json.RawMessag
 	return r.ExecuteMode(ctx, name, args, "")
 }
 
+// registryKey carries the executing registry on the context, so a tool that
+// dispatches to other tools (apply_patch → read/edit/write) runs them in the
+// SAME jail. apply_patch used a registry pointer set once at startup; with
+// per-session workspace registries that pointer was whichever workspace was
+// wired last, and a Crane6 build patched files in the Crane folder
+// (2026-09-04).
+type registryKey struct{}
+
+func WithRegistry(ctx context.Context, r *Registry) context.Context {
+	return context.WithValue(ctx, registryKey{}, r)
+}
+
+// RegistryFrom is the registry executing the current tool call, if any.
+func RegistryFrom(ctx context.Context) *Registry {
+	r, _ := ctx.Value(registryKey{}).(*Registry)
+	return r
+}
+
 func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMessage, mode string) (string, error) {
+	ctx = WithRegistry(ctx, r)
 	e, ok := r.entries[name]
 	if !ok {
 		return "", fmt.Errorf("unknown tool %q", name)
@@ -268,7 +287,6 @@ func CapIngress(out string, cap int) string {
 func isDesignArtifact(path string) bool {
 	return strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".json") || strings.HasPrefix(path, "docs/")
 }
-
 
 // ── human approval (RFX_UI manual runs) ─────────────────────────────────
 

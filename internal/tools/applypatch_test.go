@@ -136,3 +136,25 @@ func TestApplyPatchForgivesIndentation(t *testing.T) {
 		t.Fatalf("indentation not preserved: %q", string(got))
 	}
 }
+
+// One apply_patch instance is shared by every per-session registry. It must
+// edit inside the registry that is EXECUTING it, not the one wired last: a
+// Crane6 build patched files in the Crane folder (2026-09-04).
+func TestApplyPatchUsesTheExecutingRegistry(t *testing.T) {
+	dirA, dirB := t.TempDir(), t.TempDir()
+	os.WriteFile(filepath.Join(dirA, "game.html"), []byte("const WIN=80;\n"), 0o644)
+	os.WriteFile(filepath.Join(dirB, "game.html"), []byte("const WIN=80;\n"), 0o644)
+	ap := NewApplyPatch()
+	regA := NewRegistry(Entry{Tool: NewRead(dirA)}, Entry{Tool: NewEdit(dirA)}, Entry{Tool: NewWrite(dirA)}, Entry{Tool: ap})
+	regB := NewRegistry(Entry{Tool: NewRead(dirB)}, Entry{Tool: NewEdit(dirB)}, Entry{Tool: NewWrite(dirB)}, Entry{Tool: ap})
+	ap.SetRegistry(regA) // the startup wiring points at A; B is the session running now
+	args, _ := json.Marshal(map[string]any{"edits": []map[string]string{{"path": "game.html", "old_string": "WIN=80", "new_string": "WIN=8000"}}})
+	if _, err := regB.ExecuteMode(context.Background(), "apply_patch", args, ""); err != nil {
+		t.Fatalf("apply_patch via B: %v", err)
+	}
+	a, _ := os.ReadFile(filepath.Join(dirA, "game.html"))
+	b, _ := os.ReadFile(filepath.Join(dirB, "game.html"))
+	if !strings.Contains(string(b), "WIN=8000") || strings.Contains(string(a), "WIN=8000") {
+		t.Fatalf("patch landed in the wrong workspace: A=%q B=%q", a, b)
+	}
+}

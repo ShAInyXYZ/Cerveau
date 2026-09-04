@@ -25,8 +25,8 @@ import (
 // repairable: the model must see those and think.
 
 type fixRule struct {
-	tool   string                     // tool this rule applies to
-	match  func(errMsg string) bool   // does this failure fit?
+	tool   string                   // tool this rule applies to
+	match  func(errMsg string) bool // does this failure fit?
 	repair func(args json.RawMessage) (json.RawMessage, string, bool)
 }
 

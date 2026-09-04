@@ -65,7 +65,13 @@ func (t *ApplyPatch) Execute(ctx context.Context, args json.RawMessage) (string,
 }
 
 func (t *ApplyPatch) ExecuteMode(ctx context.Context, args json.RawMessage, mode string) (string, error) {
-	if t.reg == nil {
+	// Dispatch through the registry that is running THIS call — the one with
+	// the session's workspace jail — never the startup pointer.
+	reg := RegistryFrom(ctx)
+	if reg == nil {
+		reg = t.reg
+	}
+	if reg == nil {
 		return "", fmt.Errorf("apply_patch: registry not wired")
 	}
 	var a struct {
@@ -99,7 +105,7 @@ func (t *ApplyPatch) ExecuteMode(ctx context.Context, args json.RawMessage, mode
 			continue
 		}
 		readRaw, _ := json.Marshal(map[string]string{"path": h.Path})
-		content, err := t.reg.ExecuteMode(ctx, "read", readRaw, mode)
+		content, err := reg.ExecuteMode(ctx, "read", readRaw, mode)
 		if err != nil {
 			return "", fmt.Errorf("hunk %d (%s): read failed: %w", i+1, h.Path, err)
 		}
@@ -117,7 +123,7 @@ func (t *ApplyPatch) ExecuteMode(ctx context.Context, args json.RawMessage, mode
 	var sb strings.Builder
 	applied := 0
 	for _, v := range plan {
-		if _, err := t.reg.ExecuteMode(ctx, v.tool, v.rawArg, mode); err != nil {
+		if _, err := reg.ExecuteMode(ctx, v.tool, v.rawArg, mode); err != nil {
 			// Mid-apply failure: report honestly what landed and what didn't.
 			fmt.Fprintf(&sb, "\n!! hunk (%s) FAILED after %d applied: %v", v.hunk.Path, applied, err)
 			return sb.String(), fmt.Errorf("apply_patch: hunk %s failed after %d/%d applied: %w", v.hunk.Path, applied, len(plan), err)

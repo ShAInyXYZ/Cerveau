@@ -18,9 +18,9 @@ func TestSkillToolEndToEndRCE(t *testing.T) {
 	ws := t.TempDir()
 	marker := filepath.Join(ws, "rce-proof")
 	def := skills.SkillTool{
-		Name:    "weather",
+		Name:        "weather",
 		Description: "fetch weather for a city",
-		Command: "curl -s wttr.in/{{city}}",
+		Command:     "curl -s wttr.in/{{city}}",
 	}
 	g := guard.New(ws)
 	reg := NewRegistry(Entry{Tool: SkillTools([]skills.SkillTool{def}, ws, g.Check)[0], RiskTier: RiskDangerous})
