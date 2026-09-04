@@ -16,18 +16,24 @@ type Endpoints struct {
 }
 
 type Config struct {
-	Project          string    `json:"project"`
-	Addr             string    `json:"addr"`
-	Workspace        string    `json:"workspace"`
-	SessionsDir      string    `json:"sessions_dir"`
-	ModelCtx         int       `json:"model_ctx"`
-	TypesenseKey     string    `json:"typesense_key,omitempty"`
-	TypesenseManaged bool      `json:"typesense_managed,omitempty"`
+	Project          string `json:"project"`
+	Addr             string `json:"addr"`
+	Workspace        string `json:"workspace"`
+	SessionsDir      string `json:"sessions_dir"`
+	ModelCtx         int    `json:"model_ctx"`
+	TypesenseKey     string `json:"typesense_key,omitempty"`
+	TypesenseManaged bool   `json:"typesense_managed,omitempty"`
 	// RemoteAccessToken gates every API route and the panel once set —
 	// required before Addr may be anything but localhost. /api/pair (gated
 	// by the printed pairing ID) hands it to the phone app.
-	RemoteAccessToken string    `json:"remote_access_token,omitempty"`
-	Endpoints        Endpoints `json:"endpoints"`
+	RemoteAccessToken string `json:"remote_access_token,omitempty"`
+	// Thinking: which turns may reason before answering ("off", "autopilot",
+	// "always") and how hard (the model's reasoning_effort: low, medium,
+	// xhigh). Chat stays snappy; a build gets to think. Changed live from
+	// Settings, persisted here.
+	ThinkingMode   string    `json:"thinking_mode,omitempty"`
+	ThinkingEffort string    `json:"thinking_effort,omitempty"`
+	Endpoints      Endpoints `json:"endpoints"`
 }
 
 func Default() *Config {
@@ -42,6 +48,9 @@ func Default() *Config {
 		Workspace:   ".",
 		SessionsDir: filepath.Join(home, ".crv", "sessions"),
 		ModelCtx:    32768,
+		// Builds think, chat answers directly. Changed live from Settings.
+		ThinkingMode:   "plan",
+		ThinkingEffort: "low", // medium thought 13k tokens on one planning call and got cut off
 		Endpoints: Endpoints{
 			Model:     "http://localhost:8080",
 			Embedder:  "http://localhost:8081",

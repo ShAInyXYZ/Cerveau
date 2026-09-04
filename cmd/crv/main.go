@@ -18,6 +18,7 @@ import (
 	"cerveau/internal/codeintel"
 	"cerveau/internal/config"
 	"cerveau/internal/guard"
+	"cerveau/internal/idle"
 	"cerveau/internal/llm"
 	"cerveau/internal/loop"
 	"cerveau/internal/memory"
@@ -114,6 +115,21 @@ func main() {
 
 	a := api.New(cfg, sess)
 	a.SetConfigPath(*configPath)
+
+	// Idle parking. Cerveau only DECIDES; the request file is acted on by a
+	// systemd watchdog outside this process, so a crash here can never leave
+	// the machine with no Core and no way to say so (see internal/idle).
+	idleTracker := idle.New(idle.DefaultConfig(), idle.DefaultRequestPath())
+	a.SetIdle(idleTracker)
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			if idleTracker.Tick() {
+				slog.Info("idle: park requested", "after", idleTracker.Cfg().After)
+			}
+		}
+	}()
 	if tsClient != nil {
 		a.SetMemory(tsClient)
 	}
@@ -196,7 +212,10 @@ func main() {
 	}
 	a.SetSessionContext(sctx)
 	winMgr := window.NewManager(cfg.ModelCtx, 2048, window.NewHTTPCounter(cfg.Endpoints.Model))
+	a.SetContextFunc(winMgr.Budget)
+	a.SetContextSync(winMgr.Sync)
 	agentLoop := loop.New(llmClient, registry, a.Writer, sess.EventsPath, winMgr)
+	agentLoop.SetThinking(cfg.ThinkingMode, cfg.ThinkingEffort) // default autopilot/medium; persisted from Settings
 
 	// RFX: the loader validates step tools against the LIVE registry — which
 	// is replaced on workspace switch, so the predicate follows a pointer.

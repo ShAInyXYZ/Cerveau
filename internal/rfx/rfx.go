@@ -603,7 +603,7 @@ type Pack struct {
 	Author      string   `yaml:"author"`
 	Description string   `yaml:"description"`
 	Icon        string   `yaml:"icon" json:"icon,omitempty"` // from Icons; the pack's tab + card glyph
-	Panel       string   `yaml:"-"    json:"-"` // discovered ui/panel.html — full custom UI (RFX-UI tier 2)
+	Panel       string   `yaml:"-"    json:"-"`              // discovered ui/panel.html — full custom UI (RFX-UI tier 2)
 	UI          PackUI   `yaml:"ui"   json:"ui,omitempty"`
 	Docs        []string `yaml:"-"    json:"docs,omitempty"` // discovered docs/*.md
 	Path        string   `yaml:"-"    json:"-"`

@@ -130,6 +130,9 @@ func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
 		// guard rules treat that as their required confirmation.
 		ctx = tools.WithHumanApproval(ctx)
 	}
+	if a.idle != nil {
+		defer a.idle.Hold()()
+	}
 	out, err := a.chat.RunReflex(ctx, body.Name, body.Args)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "output": out, "error": err.Error()})

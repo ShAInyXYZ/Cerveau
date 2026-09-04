@@ -15,49 +15,64 @@ import (
 // RAM (/proc/meminfo + a cached dmidecode brand read). This runs because crv is on
 // the user's own machine — a browser can't read sensors.
 func (a *API) SystemStats(w http.ResponseWriter, r *http.Request) {
+	gpus := gpuStats()
+	var first map[string]any
+	if len(gpus) > 0 {
+		first = gpus[0]
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"gpu": gpuStats(),
+		// every GPU nvidia-smi sees, in index order — the rig has five
+		"gpus": gpus,
+		// the first one, kept for the status-bar chip and older panels
+		"gpu": first,
 		"cpu": cpuStats(),
 		"ram": ramStats(),
 	})
 }
 
 // ---- GPU ----
-func gpuStats() map[string]any {
+// One entry per GPU. Reading only the first line of nvidia-smi showed a
+// single 3090 on a machine with four of them and a 3060 (2026-09-04).
+func gpuStats() []map[string]any {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "nvidia-smi",
-		"--query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,power.limit,fan.speed",
+		"--query-gpu=index,name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,power.limit,fan.speed",
 		"--format=csv,noheader,nounits").Output()
 	if err != nil {
 		return nil
 	}
-	line := strings.TrimSpace(string(out))
-	if line == "" {
-		return nil
-	}
-	f := splitCSV(line)
-	get := func(i int) float64 {
-		if i < len(f) {
-			v, _ := strconv.ParseFloat(strings.TrimSpace(f[i]), 64)
-			return v
+	var gpus []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
-		return 0
+		f := splitCSV(line)
+		get := func(i int) float64 {
+			if i < len(f) {
+				v, _ := strconv.ParseFloat(strings.TrimSpace(f[i]), 64)
+				return v
+			}
+			return 0
+		}
+		name := ""
+		if len(f) > 1 {
+			name = strings.TrimSpace(f[1])
+		}
+		gpus = append(gpus, map[string]any{
+			"index":     int(get(0)),
+			"name":      name,
+			"temp":      get(2),
+			"util":      get(3),
+			"mem_used":  get(4), // MiB
+			"mem_total": get(5),
+			"power":     get(6),
+			"power_max": get(7),
+			"fan":       get(8),
+		})
 	}
-	name := ""
-	if len(f) > 0 {
-		name = strings.TrimSpace(f[0])
-	}
-	return map[string]any{
-		"name":      name,
-		"temp":      get(1),
-		"util":      get(2),
-		"mem_used":  get(3), // MiB
-		"mem_total": get(4),
-		"power":     get(5),
-		"power_max": get(6),
-		"fan":       get(7),
-	}
+	return gpus
 }
 
 // ---- CPU ----

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"cerveau/internal/cores"
+	"cerveau/internal/llm"
 	"context"
 	"crypto/sha1"
 	"encoding/json"
@@ -16,6 +18,7 @@ import (
 	"cerveau/internal/codeintel"
 	"cerveau/internal/config"
 	"cerveau/internal/episodic"
+	"cerveau/internal/idle"
 	"cerveau/internal/loop"
 	"cerveau/internal/memory"
 	"cerveau/internal/rfx"
@@ -37,6 +40,7 @@ type API struct {
 	ci         *codeintel.Indexer
 	mem        *memory.TSClient
 	started    time.Time
+	idle       *idle.Tracker
 
 	wmu     sync.Mutex
 	writers map[string]*episodic.Writer
@@ -46,6 +50,10 @@ type API struct {
 	skillLoader *skills.Loader
 	rfxLoader   *rfx.Loader
 	wsChange    func(string) error
+	// modelCtx reports the window the packer is actually using — the Core's
+	// own once it has answered, the configured number until then.
+	modelCtx func() int
+	ctxSync  func(context.Context)
 }
 
 type pendingQuestion struct {
@@ -58,7 +66,7 @@ func New(cfg *config.Config, sess session.Store) *API {
 	return &API{
 		cfg:       cfg,
 		sess:      sess,
-		http:      &http.Client{Timeout: 2 * time.Second},
+		http:      &http.Client{Timeout: 2 * time.Second, Transport: llm.CoreTransport()},
 		writers:   map[string]*episodic.Writer{},
 		questions: map[string]*pendingQuestion{},
 		started:   time.Now(),
@@ -179,6 +187,11 @@ func (a *API) Health(w http.ResponseWriter, r *http.Request) {
 	model := a.ping("model", a.cfg.Endpoints.Model, "/health")
 	if model.OK {
 		model.Info = a.probeModelName(a.cfg.Endpoints.Model)
+		if a.ctxSync != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			a.ctxSync(ctx)
+			cancel()
+		}
 	}
 	embedder := a.ping("embedder", a.cfg.Endpoints.Embedder, "/health")
 	if embedder.OK {
@@ -214,12 +227,22 @@ func (a *API) Health(w http.ResponseWriter, r *http.Request) {
 		},
 		"system": map[string]any{
 			"version":   Version,
-			"model_ctx": a.cfg.ModelCtx,
+			"model_ctx": a.contextWindow(),
 			"uptime":    up,
 			"typesense": map[string]any{"managed": a.cfg.TypesenseManaged},
 			"sessions":  a.cfg.SessionsDir,
 		},
 	})
+}
+
+// coreAuth adds the Core's bearer token (CRV_MODEL_KEY, the same one the LLM
+// client sends) to a probe. A vLLM Core started with VLLM_API_KEY answers 401
+// to /v1/models without it — which read as "model name unknown" in health and,
+// worse, left the window at its config fallback instead of the Core's 262k.
+func coreAuth(req *http.Request) {
+	if k := strings.TrimSpace(os.Getenv("CRV_MODEL_KEY")); k != "" {
+		req.Header.Set("Authorization", "Bearer "+k)
+	}
 }
 
 // probeModalities reads llama.cpp's /props and reports which input modalities the
@@ -230,6 +253,7 @@ func (a *API) probeModalities(base string) map[string]bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/props", nil)
+	coreAuth(req)
 	resp, err := a.http.Do(req)
 	if err != nil {
 		return out
@@ -238,9 +262,21 @@ func (a *API) probeModalities(base string) map[string]bool {
 	var props struct {
 		Modalities map[string]bool `json:"modalities"`
 	}
-	if json.NewDecoder(resp.Body).Decode(&props) == nil {
+	if json.NewDecoder(resp.Body).Decode(&props) == nil && len(props.Modalities) > 0 {
 		for k, v := range props.Modalities {
 			out[k] = v
+		}
+		return out
+	}
+	// No /props (vLLM): the Core's registry entry says whether its vision
+	// tower is loaded — VISION=1 in its profile parameters, or `vision` in
+	// its notes for a hand-written entry. Verified 2026-09-04: this endpoint
+	// read text-only for a Core that was answering image requests.
+	if reg, err := cores.Load(cores.DefaultPath()); err == nil {
+		if c := reg.ByEndpoint(base); c != nil {
+			if c.Params["VISION"] == "1" || strings.Contains(strings.ToLower(c.Model), "vision") {
+				out["vision"] = true
+			}
 		}
 	}
 	return out
@@ -251,6 +287,7 @@ func (a *API) probeModelName(base string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/models", nil)
+	coreAuth(req)
 	resp, err := a.http.Do(req)
 	if err != nil {
 		return ""
@@ -304,6 +341,7 @@ func (a *API) ping(name, base, path string) ComponentStatus {
 		st.Detail = err.Error()
 		return st
 	}
+	coreAuth(req)
 	resp, err := a.http.Do(req)
 	if err != nil {
 		st.Detail = "unreachable"
@@ -546,6 +584,12 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.sess.Touch(id) // keep an actively-used instant session alive (TTL from last activity)
+	// A turn HOLDS the idle clock rather than merely resetting it: a long
+	// generation (or an unattended workflow) must not be parked out from
+	// under itself mid-run.
+	if a.idle != nil {
+		defer a.idle.Hold()()
+	}
 	var body struct {
 		Text string `json:"text"`
 		Mode string `json:"mode"`
@@ -597,6 +641,10 @@ func (a *API) Autopilot(w http.ResponseWriter, r *http.Request) {
 	if a.chat == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "loop not wired"})
 		return
+	}
+	// Autopilot is the unattended case the idle timer must never interrupt.
+	if a.idle != nil {
+		defer a.idle.Hold()()
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
 	defer cancel()
@@ -771,4 +819,22 @@ func normalizeErrorCard(payload json.RawMessage) map[string]any {
 		m["class"] = "error"
 	}
 	return m
+}
+
+// SetContextFunc wires the live window budget into /api/status, so the panel
+// shows what the Core serves rather than what config.json guessed.
+func (a *API) SetContextFunc(f func() int) { a.modelCtx = f }
+
+// SetContextSync wires the window's probe so Health can refresh the budget
+// once the Core is known to be up. Health is the one place that already
+// knows the Core answered, so it is the one place syncing cannot wake it.
+func (a *API) SetContextSync(f func(context.Context)) { a.ctxSync = f }
+
+func (a *API) contextWindow() int {
+	if a.modelCtx != nil {
+		if n := a.modelCtx(); n > 0 {
+			return n
+		}
+	}
+	return a.cfg.ModelCtx
 }
