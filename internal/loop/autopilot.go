@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"cerveau/internal/episodic"
@@ -100,29 +101,116 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 	if l.recall != nil {
 		pulls = l.recall.TurnStart(runCtx, sessionID, plan.Title, nil)
 	}
-	results := []StepResult{}
+	// The supervisor owns the cursor. Steps are no longer a for-range over the
+	// plan: a step that fails is retried, a step that needs earlier work
+	// reopens it as a revision, and only a PASSED check advances. Which step
+	// runs next is its decision, not the loop counter's.
+	sup := NewSupervisor(plan)
+	results := make([]StepResult, len(plan.Steps))
+	for i, st := range plan.Steps {
+		results[i] = StepResult{Step: st.Title, Status: "pending"}
+	}
 	handback := false
-	for i, step := range plan.Steps {
+
+	// A hard ceiling on runs, not on steps: retries and revisions are extra
+	// runs by design, and without a cap a plan could ask for them forever.
+	maxRuns := 3*len(plan.Steps) + 4
+
+	for runs := 0; runs < maxRuns; runs++ {
+		idx := sup.Next()
+		if idx < 0 {
+			break // done, or blocked
+		}
 		if h.killed.Load() {
-			results = append(results, StepResult{Step: step.Title, Status: "skipped", Summary: "killed by user"})
+			results[idx].Status = "skipped"
+			results[idx].Summary = "killed by user"
 			handback = true
-			continue
+			break
 		}
-		if handback {
-			results = append(results, StepResult{Step: step.Title, Status: "skipped", Summary: "handed back earlier"})
-			continue
-		}
-		summary, stepErr := l.runStep(runCtx, wr, sessionID, systemPrompt, mode, plan, i, pulls)
+
+		state := sup.Steps[idx]
+		results[idx].Status = "running"
+
+		summary, stepErr := l.runStep(runCtx, wr, sessionID, systemPrompt, mode, plan, idx, pulls,
+			StepPrompt{
+				Index:   idx,
+				Rev:     state.Rev,
+				Step:    plan.Steps[idx],
+				Verify:  plan.Steps[idx].Verify,
+				Context: stepRunContext(sup, idx),
+			})
+
+		// A run that died on a guard has no verdict worth trusting: the model
+		// never got to finish, so its check is not evidence either way.
 		if stepErr != nil {
-			results = append(results, StepResult{Step: step.Title, Status: "failed", Summary: stepErr.Error()})
-			wr.Append(episodic.Checkpoint, map[string]string{"step": step.Title, "status": "failed", "detail": stepErr.Error()})
+			results[idx].Status = "failed"
+			results[idx].Summary = stepErr.Error()
+			wr.Append(episodic.Checkpoint, map[string]any{
+				"step": plan.Steps[idx].Title, "index": idx, "rev": state.Rev,
+				"status": "failed", "detail": stepErr.Error()})
 			if plan.AutonomyBudget != "high" {
 				handback = true
+				break
 			}
+			sup.Record(idx, Verdict{Pass: false, Check: "run did not finish", Evidence: stepErr.Error()}, -1)
 			continue
 		}
-		results = append(results, StepResult{Step: step.Title, Status: "done", Summary: summary})
-		wr.Append(episodic.Checkpoint, map[string]string{"step": step.Title, "status": "done", "summary": summary})
+
+		// The step's own check decides, not the model's report that it is done.
+		//
+		// A plan committed through the markdown path (or before verifies
+		// existed) declares none. Fall back to the model's summary rather than
+		// blocking every such plan — but say "unverified" plainly, so nobody
+		// reads it as proof.
+		verdict := Verdict{Pass: true, Check: "no check declared", Evidence: "unverified: " + summary}
+		if v := plan.Steps[idx].Verify; v != nil {
+			verdict = RunVerify(runCtx, l.registry(), l.workspace(sessionID), v)
+		}
+
+		needs := needsStepFrom(summary, idx)
+		dec := sup.Record(idx, verdict, needs)
+
+		results[idx].Status = statusFor(sup.Steps[idx].Status)
+		results[idx].Summary = summaryFor(verdict, summary)
+		wr.Append(episodic.Checkpoint, map[string]any{
+			"step": plan.Steps[idx].Title, "index": idx, "rev": state.Rev,
+			"status": results[idx].Status, "summary": results[idx].Summary,
+			"check": verdict.Check, "evidence": clipEvidence(verdict.Evidence),
+			"decision": dec.Action, "why": dec.Reasoning})
+
+		// A revision can invalidate a later step whose check was observed
+		// against the old file. Re-run those checks — cheap, because it is the
+		// declared check and not another run.
+		for _, d := range dec.Reverify {
+			if plan.Steps[d].Verify == nil {
+				continue
+			}
+			rv := RunVerify(runCtx, l.registry(), l.workspace(sessionID), plan.Steps[d].Verify)
+			if !rv.Pass {
+				sup.ReverifyFailed(d, rv)
+				results[d].Status = "pending"
+				results[d].Summary = "re-check failed after step " + fmt.Sprint(dec.Step+1) + " changed: " + rv.Check
+				wr.Append(episodic.Checkpoint, map[string]any{
+					"step": plan.Steps[d].Title, "index": d, "status": "pending",
+					"summary": results[d].Summary, "check": rv.Check, "evidence": clipEvidence(rv.Evidence)})
+			}
+		}
+
+		if dec.HandBack {
+			handback = true
+			wr.Append(episodic.Note, map[string]string{"kind": "step_handback", "text": dec.Reasoning})
+			break
+		}
+	}
+
+	// Anything the cursor never reached.
+	for i := range results {
+		if results[i].Status == "pending" || results[i].Status == "running" {
+			results[i].Status = "skipped"
+			if results[i].Summary == "" {
+				results[i].Summary = "not reached"
+			}
+		}
 	}
 
 	report := renderReport(plan, results, handback)
@@ -136,15 +224,12 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 	return &Result{Reply: report, Iterations: len(plan.Steps), StopReason: stopReason, Pulls: len(pulls)}, nil
 }
 
-func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, systemPrompt string, mode Mode, plan *Plan, idx int, pulls []memory.Pull) (string, error) {
-	step := plan.Steps[idx]
-	stepGoal := fmt.Sprintf("Execute step %d of %d: %s", idx+1, len(plan.Steps), step.Title)
-	if step.Detail != "" {
-		stepGoal += "\nDetail: " + step.Detail
-	}
-	if len(step.Files) > 0 {
-		stepGoal += "\nFiles: " + strings.Join(step.Files, ", ")
-	}
+func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, systemPrompt string, mode Mode, plan *Plan, idx int, pulls []memory.Pull, sp StepPrompt) (string, error) {
+	// The prompt for THIS step, carrying its check verbatim. The user's
+	// original prompt is not here: it was used once, to plan. Re-injecting it
+	// into every step is what let a run wander across the whole task and made
+	// the plan decoration.
+	stepGoal := sp.Text()
 
 	items := []window.Item{{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"}}
 	// see loop.go: the template allows exactly one system message, at index 0
@@ -425,6 +510,82 @@ func firstLine(s string) string {
 	}
 	if len(s) > 80 {
 		s = s[:80]
+	}
+	return s
+}
+
+// stepRunContext is what a step's run is told about the ground it stands on:
+// the steps already verified, and — for a revision — who asked for it and why.
+func stepRunContext(sup *Supervisor, idx int) string {
+	parts := []string{}
+	if c := StepContext(sup); c != "" {
+		parts = append(parts, c)
+	}
+	if st := sup.Steps[idx]; st.Rev > 0 && st.Verdict != nil {
+		parts = append(parts, st.Verdict.Evidence)
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// reNeedsStep finds a run asking for an EARLIER step to be reopened.
+//
+// The model asks; the harness never guesses. A run that discovers step 1 should
+// have declared a variable it needs says so in its report, and the supervisor
+// turns that into a revision run rather than letting the model patch around it
+// here — which is how a later step quietly grows a workaround for an earlier
+// step's omission.
+var reNeedsStep = regexp.MustCompile(`(?i)\bstep\s+(\d+)\s+(?:must|needs to|should|has to)\b`)
+
+// needsStepFrom reports the 0-based index of an earlier step the run asked to
+// reopen, or -1. Only EARLIER steps count: a run naming a later step is
+// describing what comes next, not a dependency it is blocked on.
+func needsStepFrom(summary string, idx int) int {
+	m := reNeedsStep.FindStringSubmatch(summary)
+	if m == nil {
+		return -1
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n < 1 {
+		return -1
+	}
+	if target := n - 1; target < idx {
+		return target
+	}
+	return -1
+}
+
+// statusFor maps the supervisor's step state to the report's vocabulary.
+func statusFor(s string) string {
+	switch s {
+	case "passed":
+		return "done"
+	case "blocked":
+		return "failed"
+	case "failed":
+		return "failed"
+	}
+	return s
+}
+
+// summaryFor prefers what was OBSERVED over what was claimed. The model's own
+// sentence is kept as context, never as the verdict.
+func summaryFor(v Verdict, modelSummary string) string {
+	if v.Pass {
+		if v.Check == "no check declared" {
+			return modelSummary
+		}
+		return "verified: " + v.Check
+	}
+	if v.Evidence != "" {
+		return "check failed (" + v.Check + "): " + clipEvidence(v.Evidence)
+	}
+	return "check failed: " + v.Check
+}
+
+func clipEvidence(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 300 {
+		return s[:297] + "…"
 	}
 	return s
 }

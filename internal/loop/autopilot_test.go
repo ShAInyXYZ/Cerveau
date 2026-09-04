@@ -265,3 +265,159 @@ func TestAutoCommitPlanFile(t *testing.T) {
 		t.Error("code writes must not commit plans")
 	}
 }
+
+// The whole point of the stepwise design: a step is done when its own check
+// says so, not when the model says so.
+//
+// Here the model reports success on every step, but step 2's check cannot pass
+// because the file never gets the symbol it requires. The old loop marked all
+// three done (and the report inferred "done" from files existing). The
+// supervisor must retry step 2, then hand back — without ever reaching step 3.
+func TestAutopilotStopsWhenAStepsOwnCheckFails(t *testing.T) {
+	tmp := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message":       map[string]string{"role": "assistant", "content": "step done"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]int{"prompt_tokens": 5, "completion_tokens": 3},
+		})
+	}))
+	defer srv.Close()
+
+	// step 1 and 3 will pass; step 2 requires a symbol nothing writes
+	os.WriteFile(filepath.Join(tmp, "a.js"), []byte("export const a = 1;"), 0o644)
+	os.WriteFile(filepath.Join(tmp, "b.js"), []byte("// empty on purpose"), 0o644)
+
+	eventsPath := filepath.Join(tmp, "sessions", "s1", "events.jsonl")
+	os.MkdirAll(filepath.Dir(eventsPath), 0o755)
+	wr, _ := episodic.Open(eventsPath)
+	wr.Append(episodic.Plan, map[string]any{
+		"title": "three steps",
+		"steps": []map[string]any{
+			{"title": "one", "files": []string{"a.js"},
+				"verify": map[string]any{"kind": "contains", "file": "a.js", "symbol": "export const a"}},
+			{"title": "two", "files": []string{"b.js"},
+				"verify": map[string]any{"kind": "contains", "file": "b.js", "symbol": "buildEverything"}},
+			{"title": "three", "files": []string{"a.js"},
+				"verify": map[string]any{"kind": "contains", "file": "a.js", "symbol": "export const a"}},
+		},
+	})
+	wr.Close()
+
+	open := func(id string) (*episodic.Writer, error) { return episodic.Open(eventsPath) }
+	reg := tools.NewRegistry(tools.Entry{Tool: tools.NewRead(tmp), RiskTier: tools.RiskSafe})
+	l := New(llm.NewClient(srv.URL), reg, open, func(string) string { return eventsPath }, nil)
+	l.SetWorkspaceFunc(func(string) string { return tmp })
+
+	res, err := l.RunAutopilot(context.Background(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// It must NOT claim three done just because the model said so each time.
+	if strings.Contains(res.Reply, "3 done") {
+		t.Errorf("a failing check must not read as done:\n%s", res.Reply)
+	}
+	// And it must stop rather than march on to step 3.
+	if !strings.Contains(res.Reply, "1 done") {
+		t.Errorf("step 1 passed its real check, so it should be done:\n%s", res.Reply)
+	}
+
+	// The checkpoints are the record: step 2 must appear with its check.
+	events, _ := episodic.Replay(eventsPath)
+	var sawFailingCheck bool
+	for _, e := range events {
+		if e.Type != episodic.Checkpoint {
+			continue
+		}
+		var cp struct {
+			Step, Status, Check string
+		}
+		json.Unmarshal(e.Payload, &cp)
+		if cp.Step == "two" && cp.Status != "done" && strings.Contains(cp.Check, "buildEverything") {
+			sawFailingCheck = true
+		}
+	}
+	if !sawFailingCheck {
+		t.Error("no checkpoint recorded step 2 failing its declared check")
+	}
+}
+
+// A run that says an EARLIER step is incomplete reopens it, then resumes —
+// rather than patching around the gap in the later step, which is how a
+// workaround for step 1's omission ends up buried in step 3.
+func TestAutopilotReopensAnEarlierStepOnRequest(t *testing.T) {
+	tmp := t.TempDir()
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		body := "step done"
+		// The second step's first run asks for step 1 back. On the revision
+		// run the file gains the symbol step 2 needs.
+		if calls == 2 {
+			body = "blocked: step 1 must declare the shared state object"
+		}
+		// the revision run adds what step 2 said was missing
+		if calls == 3 {
+			os.WriteFile(filepath.Join(tmp, "a.js"),
+				[]byte("export const state = {};\nexport const shared = {};"), 0o644)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message":       map[string]string{"role": "assistant", "content": body},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]int{"prompt_tokens": 5, "completion_tokens": 3},
+		})
+	}))
+	defer srv.Close()
+
+	// Step 1 passes its own check on the first run, so the cursor reaches step
+	// 2 — which then discovers that step 1 left out something it needs.
+	os.WriteFile(filepath.Join(tmp, "a.js"), []byte("export const state = {};"), 0o644)
+	os.WriteFile(filepath.Join(tmp, "b.js"), []byte("import { state } from './a.js';"), 0o644)
+
+	eventsPath := filepath.Join(tmp, "sessions", "s1", "events.jsonl")
+	os.MkdirAll(filepath.Dir(eventsPath), 0o755)
+	wr, _ := episodic.Open(eventsPath)
+	wr.Append(episodic.Plan, map[string]any{
+		"title": "two steps",
+		"steps": []map[string]any{
+			{"title": "state", "files": []string{"a.js"},
+				"verify": map[string]any{"kind": "contains", "file": "a.js", "symbol": "export const state"}},
+			{"title": "consumer", "files": []string{"b.js"},
+				"verify": map[string]any{"kind": "contains", "file": "b.js", "symbol": "import { state }"}},
+		},
+	})
+	wr.Close()
+
+	open := func(id string) (*episodic.Writer, error) { return episodic.Open(eventsPath) }
+	reg := tools.NewRegistry(tools.Entry{Tool: tools.NewRead(tmp), RiskTier: tools.RiskSafe})
+	l := New(llm.NewClient(srv.URL), reg, open, func(string) string { return eventsPath }, nil)
+	l.SetWorkspaceFunc(func(string) string { return tmp })
+
+	if _, err := l.RunAutopilot(context.Background(), "s1"); err != nil {
+		t.Fatal(err)
+	}
+
+	events, _ := episodic.Replay(eventsPath)
+	var revised bool
+	for _, e := range events {
+		if e.Type != episodic.Checkpoint {
+			continue
+		}
+		var cp struct {
+			Step, Decision string
+			Rev            int
+		}
+		json.Unmarshal(e.Payload, &cp)
+		if cp.Decision == "revise" || cp.Rev > 0 {
+			revised = true
+		}
+	}
+	if !revised {
+		t.Error("a run asking for step 1 should have reopened it as a revision")
+	}
+}
