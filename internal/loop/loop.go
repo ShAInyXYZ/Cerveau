@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -518,6 +519,27 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 					"text": fmt.Sprintf("plan written as text — translated and committed (%d steps), executing in order", len(p.Steps))})
 				iterCancel()
 				continue
+			}
+			// Not every autopilot turn is a build. "Who was president in 1950"
+			// is answered, not planned, and the gate used to throw that answer
+			// away: the model replied "Harry S. Truman…", the gate saw prose
+			// instead of a tool call, asked twice more, and returned the
+			// model's third-round "no plan to commit" as the reply. A correct
+			// answer was lost to a gate that only wanted a plan (2026-09-04).
+			//
+			// So: an answer that is not a plan attempt IS the turn. Recognise
+			// it before insisting, and finish.
+			if answersWithoutAPlan(reply.Content) {
+				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+					"text": "answered directly — nothing here needs a plan"})
+				iterCancel()
+				if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage)); err != nil {
+					return nil, err
+				}
+				wr.Append(episodic.TurnClose, map[string]any{"iterations": i, "pulls": len(turnPulls)})
+				l.runBoundary(sessionID)
+				return &Result{Reply: reply.Content, Iterations: i, StopReason: StopFinalAnswer,
+					Pulls: len(turnPulls), Window: &winRep}, nil
 			}
 			// Prose, or an empty reply (a tool call the server's parser
 			// swallowed — every planning call WITH thinking did one or the
@@ -1117,3 +1139,65 @@ func workFP(w *workTracker) uint64 {
 	}
 	return w.last
 }
+
+// answersWithoutAPlan reports whether a reply to the plan gate is an ANSWER
+// rather than a failed attempt at a plan.
+//
+// The gate asks the first call of an autopilot turn to divide the task into
+// steps. That is right for a build and wrong for a question: "who was
+// president in 1950" has an answer, not a plan. Before this, such a reply was
+// treated as a missed tool call — the answer was discarded, the model was
+// asked twice more, and its "there is nothing to plan" became the user's
+// reply.
+//
+// Two things are NOT answers, and both must keep going through the insist
+// path, because both are the model failing to produce a plan it does intend:
+//
+//   - an empty reply (a tool call the server's parser swallowed)
+//   - a reply that is talking ABOUT planning: "here are the steps", "I will
+//     start by", a numbered list of things to do
+//
+// Deliberately conservative. A wrong "yes" ends a build turn after one call
+// with no work done, which is far worse than a wrong "no" — that merely costs
+// the extra ask the gate already made twice.
+func answersWithoutAPlan(content string) bool {
+	s := strings.TrimSpace(content)
+	if s == "" {
+		return false
+	}
+	// Long enough to be a plan in prose; let the translator have it.
+	if len(s) > 900 {
+		return false
+	}
+	low := strings.ToLower(s)
+
+	// Plan-shaped language: the model is trying to plan, just not with the
+	// tool. planFromText already had its chance; the insist path is next.
+	for _, marker := range []string{
+		"step 1", "step 1:", "steps:", "here is the plan", "here's the plan",
+		"the plan is", "i will start", "i'll start", "first, i", "first i will",
+		"plan:", "<commit_plan", "<steps", "<step ",
+	} {
+		if strings.Contains(low, marker) {
+			return false
+		}
+	}
+	// A numbered list of more than one item reads as a plan.
+	if len(reNumberedItem.FindAllString(s, 3)) > 1 {
+		return false
+	}
+	// Refusing to plan is not an answer either — it is the gate's own question
+	// coming back, and it must not become the user's reply.
+	for _, marker := range []string{
+		"no plan to commit", "nothing to plan", "no plan is needed",
+		"does not need a plan", "doesn't need a plan", "no build",
+	} {
+		if strings.Contains(low, marker) {
+			return false
+		}
+	}
+	return true
+}
+
+// reNumberedItem matches "1." / "2)" at the start of a line.
+var reNumberedItem = regexp.MustCompile(`(?m)^\s*\d+[.)]\s+\S`)
