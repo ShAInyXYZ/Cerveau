@@ -93,7 +93,13 @@ async function loadErrors(): Promise<void> {
 
 async function loadReport(): Promise<void> {
   if (!activeId) return;
-  report = await api.report(activeId);
+  // Keep the last good report. The fetch helper returns null for ANY non-200,
+  // and /report 404s until a plan event exists — the first seconds of every
+  // turn. Assigning that null erased the plan the strip was waiting for, over
+  // and over, so the strip could never appear mid-run. `report` is cleared
+  // explicitly on session switch, which is the only place it should go blank.
+  const next = await api.report(activeId);
+  if (next) report = next;
 }
 
 /** The workspace follows the SESSION: selecting a session in another project

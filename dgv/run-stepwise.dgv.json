@@ -53,7 +53,7 @@
       },
       "size": {
         "width": 672,
-        "height": 874
+        "height": 904
       }
     },
     {
@@ -66,7 +66,7 @@
       },
       "size": {
         "width": 996,
-        "height": 412
+        "height": 517
       }
     },
     {
@@ -75,11 +75,11 @@
       "label": "4 · Record — what makes progress real",
       "position": {
         "x": 0,
-        "y": 1014
+        "y": 1044
       },
       "size": {
         "width": 996,
-        "height": 315
+        "height": 345
       }
     },
     {
@@ -88,7 +88,7 @@
       "label": "5 · Show",
       "position": {
         "x": 1136,
-        "y": 1014
+        "y": 1044
       },
       "size": {
         "width": 672,
@@ -132,15 +132,27 @@
       "id": "criteria",
       "kind": "module",
       "label": "Step criteria",
-      "sublabel": "NEW · each step declares a check that CAN FAIL",
+      "sublabel": "each step declares a check that CAN FAIL · enforced at commit",
       "note": "commit_plan gains a `verify` field per step: the concrete observation that proves the step done. Without it there is nothing to verify against and \"done\" falls back to guessing from disk — the bug in run-dataflow.\n\nThe model writes its own exam, so the SHAPE is constrained rather than the wording trusted (decided 2026-09-04). A verify must be one of three runnable forms:\n  • a check_page eval that returns a boolean\n  • a command whose exit code decides it\n  • a file that must contain a named symbol\n\nExistence-only checks are REJECTED at commit time, the way the plan gate already rejects a prose plan — \"index.html exists\" is the disk guess wearing a costume.\n\nAnd a criterion can be impossible as easily as it can be lazy: the car run's own eval could never pass under file:// however correct the page was. So a step whose verify never passes gets a small budget, then hands back with the evidence. An unpassable check costs one step, never the task.",
       "frame": "plan",
       "tech": "Go",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 768,
         "y": 60
-      }
+      },
+      "path": "internal/plan/verify.go",
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "question",
+          "title": "Nothing has yet confirmed the model can write a usable verify",
+          "note": "The whole design rests on the model declaring a check that is neither trivial nor impossible. commit_plan rejects the trivial ones, and a step whose check never passes hands back after two attempts rather than eating the task. Both are tested.\\n\\nBut every test so far uses a stub model. The real Qwen3.8-27B has never been asked for a verify, and it does not reliably call commit_plan as a tool at all — every run on record wrote its plan as prose, which the salvage path translates. Prose plans carry no verify, so they take the \"no check declared\" fallback and the run is unverified exactly as before.\\n\\nSo the machinery is proven and the input is not.",
+          "fix": "Run the fan or car prompt against the real Core and read the committed plan: does it carry verifies, are they runnable, do they pass when the step is genuinely done? If prose plans stay the norm, the salvage path needs to ask for checks too — or the plan gate needs to insist harder on the tool call.",
+          "by": "agent",
+          "at": "2026-09-04T22:40:13.012Z"
+        }
+      ]
     },
     {
       "ports": [],
@@ -162,15 +174,16 @@
       "id": "supervisor",
       "kind": "service",
       "label": "Step supervisor",
-      "sublabel": "NEW · owns the cursor: which step, which revision, what next",
+      "sublabel": "owns the cursor: which step, which revision, what next",
       "note": "The piece that does not exist today. It holds the step cursor, starts one run per step, reads each verdict and decides: advance, retry this step, or reopen an earlier one. It never writes code itself — it only decides what the next run is asked to do.\n\nIt is also the natural home for the turn budget: a stall or a loop ends THIS step's run, not the whole task, so the other steps still get their chance.",
       "frame": "drive",
       "tech": "Go",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 1580,
-        "y": 360
-      }
+        "y": 367
+      },
+      "path": "internal/loop/supervisor.go"
     },
     {
       "ports": [],
@@ -178,15 +191,16 @@
       "id": "promptgen",
       "kind": "module",
       "label": "Step prompt writer",
-      "sublabel": "NEW · the model writes the prompt for the next run",
-      "note": "Given the plan, the step, and what earlier steps actually produced, the model writes the prompt for this step's run: what to build, which files, what must be true at the end. Generated, never templated — a hardcoded prompt cannot know that step 2 renamed a function step 3 depends on.\n\nCheap: one short call per step, against a plan that is already committed.",
+      "sublabel": "the prompt for ONE step, carrying its check verbatim",
+      "note": "Assembled from committed facts rather than generated prose, so the prompt cannot drift from the plan it claims to execute. It carries the step, its files, its check quoted verbatim, and — as context — only the steps already VERIFIED. A failed step never appears as ground truth.\n\nThe user's original prompt is used once, to plan, and never re-injected. Re-injecting it into every iteration is what let one run wander across the whole task.",
       "frame": "drive",
       "tech": "Go + one model call",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 1904,
         "y": 589
-      }
+      },
+      "path": "internal/loop/stepprompt.go"
     },
     {
       "ports": [],
@@ -194,11 +208,11 @@
       "id": "revision",
       "kind": "module",
       "label": "Revision decider",
-      "sublabel": "NEW · reopen an earlier step as rev_n · cap 2 · re-verify downstream",
+      "sublabel": "reopen an earlier step as rev_n · cap 2 · re-verify downstream",
       "note": "When a run reports that an EARLIER step is wrong or incomplete, the supervisor opens a revision run for that step — rev_2, rev_3 — with the new context explaining what is needed and why. When it passes, the cursor returns to where it left off. The model asks for this via a `needs_step` field on the verdict; the harness does not guess.\n\nTWO RULES stop it looping, decided 2026-09-04:\n\n1. CAP. Two revisions per step. The third request hands back to the user with every verdict on record, rather than spending the task on one disputed file.\n\n2. RE-VERIFY DOWNSTREAM. A revision can invalidate a later step that was verified against the old file. After any revision, re-run the verify of every later step that shares a file with the revised one. Cheap — it is the declared check, not a new run — and it catches the silent breakage. If the same PAIR of steps fails twice, that is a genuine disagreement about the design: hand back with both verdicts instead of trying a third time.",
       "frame": "drive",
       "tech": "Go",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 1904,
         "y": 60
@@ -210,15 +224,16 @@
       "id": "steprun",
       "kind": "worker",
       "label": "Step run",
-      "sublabel": "one step · its own generated prompt · its own iteration budget",
-      "note": "The existing agent loop, scoped. Same tools, same guards, but the turn is ONE step: it starts with the step's prompt, ends when the step verifies or the budget runs out. Failures stop a step, not the task.",
+      "sublabel": "one step · its own prompt · its own budget · runPlanFrom",
+      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose: a step run by a button must obey exactly the same rules as a step run by autopilot, or the surfaces drift apart again.",
       "frame": "run",
       "tech": "Go",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 2392,
-        "y": 134
-      }
+        "y": 213
+      },
+      "path": "internal/loop/autopilot.go"
     },
     {
       "ports": [],
@@ -226,15 +241,16 @@
       "id": "verify",
       "kind": "module",
       "label": "Step verify",
-      "sublabel": "run the step's own criteria · pass / fail, with evidence",
-      "note": "Runs what the step declared: the eval, the command, the file check. The verdict is an observation, not the model's opinion that it is finished.",
+      "sublabel": "run the step's own check · pass / fail, with evidence · fails CLOSED",
+      "note": "Runs what the step declared: the eval, the command, the file check. The verdict is an observation, not the model's opinion that it is finished.\n\nEvery kind fails CLOSED. A check that cannot run is exactly as unproven as one that failed, and treating \"could not check\" as success is how a plan goes green while nothing works — the car run's check_page returned \"eval produced no result\" and that now reads as a failure.",
       "frame": "run",
       "tech": "Go",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 2716,
         "y": 60
-      }
+      },
+      "path": "internal/loop/verifyrun.go"
     },
     {
       "ports": [],
@@ -249,7 +265,7 @@
       "path": "internal/tools",
       "position": {
         "x": 2716,
-        "y": 274
+        "y": 379
       }
     },
     {
@@ -263,7 +279,7 @@
       "status": "done",
       "position": {
         "x": 3040,
-        "y": 185
+        "y": 264
       }
     },
     {
@@ -272,13 +288,13 @@
       "id": "checkpoint",
       "kind": "storage",
       "label": "checkpoint event",
-      "sublabel": "step N, rev R — passed / failed, and the evidence",
-      "note": "Written by the supervisor when a run ends, per step and revision. This is the event BuildReportAt already prefers and has never once received, which is why status is currently guessed from disk.\n\nOnce these exist, \"done\" means the step's own check was observed to pass.",
+      "sublabel": "step N, rev R — verdict, the check, its evidence, and why",
+      "note": "Written when a run ends, per step and revision, carrying the step INDEX so a revision's checkpoint is distinguishable from the first attempt's and two steps with the same name do not share a verdict.\n\nThis is the event BuildReportAt always preferred and had never once received, which is why status used to be guessed from disk.",
       "frame": "record",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 44,
-        "y": 1074
+        "y": 1104
       }
     },
     {
@@ -292,7 +308,7 @@
       "status": "done",
       "position": {
         "x": 368,
-        "y": 1133
+        "y": 1178
       }
     },
     {
@@ -314,7 +330,7 @@
       "status": "wip",
       "position": {
         "x": 692,
-        "y": 1120
+        "y": 1165
       }
     },
     {
@@ -323,14 +339,14 @@
       "id": "strip",
       "kind": "ui",
       "label": "Native plan strip",
-      "sublabel": "SIMPLE surface · steps, which one is running, pass/fail · no knobs",
-      "note": "What a user gets with no RFX pack installed. Shows the plan the moment it commits, marks the running step, shows each verdict as it lands, and offers ONE action: continue after a hand-back. Everything else is automatic.\n\nIt must not be a second implementation of the loop — it renders core state and nothing more.",
+      "sublabel": "SIMPLE surface · steps, which is running, pass/fail · no knobs",
+      "note": "What a user gets with no RFX pack installed. Shows the plan the moment it commits, marks the running step, shows each verdict as it lands, and offers ONE action: continue after a hand-back.\n\nNot yet moved onto the step API: it still renders /report, which now carries real per-step status from checkpoints but not the cursor (next, blocked, revision).",
       "frame": "show",
       "tech": "Svelte 5",
-      "status": "wip",
+      "status": "todo",
       "position": {
         "x": 1180,
-        "y": 1438
+        "y": 1453
       },
       "path": "panel/src/lib/chat/PlanStrip.svelte"
     },
@@ -340,26 +356,15 @@
       "id": "planner",
       "kind": "ui",
       "label": "RFX Planner panel",
-      "sublabel": "ADVANCED surface · per-step run, re-run, revise, select, auto-continue",
-      "note": "~/.crv/rfx/planner/ui/panel.html. Already drives steps today, but ONLY by writing English prompts through rfx.turn() (\"Continue the committed plan: do step 3 only, then stop and report\") and inferring status from which files exist. It is a smart panel compensating for a core that has no step cursor.\n\nWhen the supervisor exists, the panel stops composing prompts and starts calling it: run step N, re-run with revision, set auto-continue. Same buttons, real semantics — and its own comment already says the intelligence belongs in cerveau, not the panel.",
+      "sublabel": "ADVANCED surface · calls runStep(), no longer writes prompts",
+      "note": "~/.crv/rfx/planner/ui/panel.html. Its step buttons now call rfx.runStep(i) — the core scopes the run, executes it, checks it and records the verdict. Re-running a passed step calls runStep(i, true), a revision, which is what it is: a human saw something the check did not.\n\nIts scenario rules (auto-continue, pause on failure, run a selected subset in order) stay in the panel — those are genuinely UI policy, unlike prompt-writing.\n\nStill wip: the pack lives in ~/.crv/rfx and is not versioned with the repo.",
       "frame": "show",
       "tech": "HTML in a sandboxed iframe",
       "status": "wip",
       "position": {
         "x": 1180,
-        "y": 1074
-      },
-      "flags": [
-        {
-          "id": "f1",
-          "kind": "issue",
-          "title": "The panel drives steps by writing English, which is why the plan is decoration",
-          "note": "Today the planner's step buttons build a sentence and post it as a normal autopilot turn: \"Continue the committed plan: do step 3 (Cameras + UI) only, then stop and report.\" The core has no idea a step was requested. It gets a prompt like any other, so nothing binds the run to step 3, nothing verifies step 3, and no checkpoint is written. The panel then infers status from which declared files exist — the same disk guess as the report.\\n\\nThat is the whole decoration problem in one place: a surface that looks like it controls execution, sitting on a core with no concept of a step. The panel's own comment (\"deliberately dumb, the intelligence is cerveau's\") describes the intent; the code cannot honour it because there is nothing in the core to be intelligent.",
-          "fix": "Give the core the step semantics (supervisor + step control API), then change the panel's kick() from composing prose to calling run-step {step, rev}. The buttons stay; what they mean becomes real. Keep the panel's scenario rules (auto-continue, pause on failure) as UI policy — those are genuinely presentation, unlike prompt-writing.",
-          "by": "agent",
-          "at": "2026-09-04T21:34:45.447Z"
-        }
-      ]
+        "y": 1104
+      }
     },
     {
       "ports": [
@@ -374,15 +379,16 @@
       "id": "stepapi",
       "kind": "api",
       "label": "Step control API",
-      "sublabel": "NEW · the one way to drive a plan · both surfaces call it",
-      "note": "One contract so the two surfaces cannot drift apart. The native strip uses a slice of it (continue after hand-back); the planner uses all of it (run one step, re-run, revise, select a subset, auto-continue).\n\nThe RFX bridge gains a matching capability so a sandboxed panel can call it without composing prompts.",
+      "sublabel": "GET /plan · POST /plan/step — the one way to drive a plan",
+      "note": "GET  /api/sessions/{id}/plan       the plan + per-step status, next, blocked\nPOST /api/sessions/{id}/plan/step  run one step (step -1 = whichever is next)\n\nOne contract so the two surfaces cannot drift apart. The cursor is rebuilt from the event log on every call rather than held in memory: a panel button, a CLI call and a resumed session must all see the same state, and the log is the only thing all three share.\n\nThe RFX bridge exposes the same two as rfx.plan() and rfx.runStep().",
       "frame": "show",
       "tech": "Go net/http",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 1504,
-        "y": 1266
-      }
+        "y": 1251
+      },
+      "path": "internal/api/api.go"
     }
   ],
   "edges": [
@@ -1166,6 +1172,264 @@
         "id": "f1",
         "kind": "question",
         "title": "The model writes its own exam, so it can write an easy one"
+      }
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "NEW · each step declares a check that CAN FAIL",
+          "to": "each step declares a check that CAN FAIL · enforced at commit"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "to": "internal/plan/verify.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "NEW · owns the cursor: which step, which revision, what next",
+          "to": "owns the cursor: which step, which revision, what next"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "to": "internal/loop/supervisor.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "NEW · the model writes the prompt for the next run",
+          "to": "the prompt for ONE step, carrying its check verbatim"
+        },
+        {
+          "field": "note",
+          "from": "Given the plan, the step, and what earlier steps actually produced, the model…",
+          "to": "Assembled from committed facts rather than generated prose, so the prompt can…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "to": "internal/loop/stepprompt.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "revision",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "NEW · reopen an earlier step as rev_n · cap 2 · re-verify downstream",
+          "to": "reopen an earlier step as rev_n · cap 2 · re-verify downstream"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "one step · its own generated prompt · its own iteration budget",
+          "to": "one step · its own prompt · its own budget · runPlanFrom"
+        },
+        {
+          "field": "note",
+          "from": "The existing agent loop, scoped. Same tools, same guards, but the turn is ONE…",
+          "to": "The existing agent loop, scoped to one step. Autopilot and a single step shar…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "to": "internal/loop/autopilot.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "run the step's own criteria · pass / fail, with evidence",
+          "to": "run the step's own check · pass / fail, with evidence · fails CLOSED"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "to": "internal/loop/verifyrun.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkpoint",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "step N, rev R — passed / failed, and the evidence",
+          "to": "step N, rev R — verdict, the check, its evidence, and why"
+        },
+        {
+          "field": "note",
+          "from": "Written by the supervisor when a run ends, per step and revision. This is the…",
+          "to": "Written when a run ends, per step and revision, carrying the step INDEX so a …"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "SIMPLE surface · steps, which one is running, pass/fail · no knobs",
+          "to": "SIMPLE surface · steps, which is running, pass/fail · no knobs"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "todo"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "ADVANCED surface · per-step run, re-run, revise, select, auto-continue",
+          "to": "ADVANCED surface · calls runStep(), no longer writes prompts"
+        },
+        {
+          "field": "note",
+          "from": "~/.crv/rfx/planner/ui/panel.html. Already drives steps today, but ONLY by wri…",
+          "to": "~/.crv/rfx/planner/ui/panel.html. Its step buttons now call rfx.runStep(i) — …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:39:54.508Z",
+      "by": "agent",
+      "type": "node",
+      "id": "stepapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "NEW · the one way to drive a plan · both surfaces call it",
+          "to": "GET /plan · POST /plan/step — the one way to drive a plan"
+        },
+        {
+          "field": "note",
+          "from": "One contract so the two surfaces cannot drift apart. The native strip uses a …",
+          "to": "GET  /api/sessions/{id}/plan       the plan + per-step status, next, blocked\n…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "to": "internal/api/api.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:40:00.716Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "The panel drives steps by writing English, which is why the plan is decoration"
+      }
+    },
+    {
+      "at": "2026-09-04T22:40:13.013Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "Nothing has yet confirmed the model can write a usable verify"
       }
     }
   ]

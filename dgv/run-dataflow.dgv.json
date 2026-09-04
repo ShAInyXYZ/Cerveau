@@ -35,12 +35,12 @@
       "id": "produce",
       "label": "1 · Produce — the turn writes events",
       "position": {
-        "x": 400,
+        "x": 396,
         "y": 0
       },
       "size": {
-        "width": 996,
-        "height": 349
+        "width": 1004,
+        "height": 353
       }
     },
     {
@@ -48,12 +48,12 @@
       "id": "store",
       "label": "2 · Store — one append-only log",
       "position": {
-        "x": 1536,
+        "x": 1532,
         "y": 0
       },
       "size": {
-        "width": 348,
-        "height": 285
+        "width": 356,
+        "height": 289
       }
     },
     {
@@ -61,12 +61,12 @@
       "id": "serve",
       "label": "3 · Serve — two endpoints, two shapes",
       "position": {
-        "x": 2024,
+        "x": 2020,
         "y": 0
       },
       "size": {
-        "width": 672,
-        "height": 600
+        "width": 680,
+        "height": 692
       }
     },
     {
@@ -74,12 +74,12 @@
       "id": "show",
       "label": "4 · Show — two readers, two behaviours",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 740
       },
       "size": {
-        "width": 672,
-        "height": 567
+        "width": 680,
+        "height": 646
       }
     }
   ],
@@ -185,27 +185,16 @@
       "id": "report",
       "kind": "api",
       "label": "GET /report",
-      "sublabel": "INTERPRETED · plan + a status per step",
-      "note": "404s with \"no plan in this session\" until a plan event exists. That 404 is the first half of the chat bug: the panel's fetch helper turns any non-200 into null.",
+      "sublabel": "INTERPRETED · plan + a status per step, from checkpoints",
+      "note": "404s with \"no plan in this session\" until a plan event exists. That is correct — there is no report to give — and the panel now keeps its last good value instead of overwriting it with the 404.\n\nSince the supervisor writes checkpoints, the status here is observed rather than inferred. A third endpoint, GET /plan, adds what this one deliberately lacks: the CURSOR (next, blocked, revision), for a surface that renders controls rather than progress. See run-stepwise.",
       "frame": "serve",
       "tech": "Go net/http",
-      "status": "wip",
+      "status": "done",
       "path": "internal/api/api.go",
       "position": {
         "x": 2392,
         "y": 332
-      },
-      "flags": [
-        {
-          "id": "f1",
-          "kind": "idea",
-          "title": "Two endpoints for one plan, and only the simpler one is reliable",
-          "note": "/state and /report are both built from the same events.jsonl on every request. /state hands back the plan verbatim and cannot be wrong about progress because it makes no claim. /report adds a status per step, and every bug in this diagram lives in that added interpretation: the 404 before a plan exists, the disk inference, the false \"done\". The planner survives on the plain endpoint and derives progress itself from the files it can see.",
-          "fix": "Make the strip read what the planner reads: take the plan from /state so it appears the moment it commits and cannot be erased by a 404, and treat per-step status as an overlay that arrives later when /report has something real to say. The strip then shows the steps during the run even before any status is known — which is the whole point of a progress indicator.",
-          "by": "agent",
-          "at": "2026-09-04T21:25:50.407Z"
-        }
-      ]
+      }
     },
     {
       "ports": [],
@@ -213,27 +202,16 @@
       "id": "buildreport",
       "kind": "module",
       "label": "BuildReportAt",
-      "sublabel": "decides done / partial / pending per step",
-      "note": "Status comes from checkpoint events. When there are none it falls back to DISK RECONCILIATION: if every file a step declared exists, call it done.\n\nZero checkpoints have been written in any run on record, so this fallback decides every status. It was also reporting 4/4 done for a plan whose four steps all declared index.html — fixed 2026-09-04 to require a step's files to be its own.",
+      "sublabel": "decides done / partial / pending per step · checkpoints first",
+      "note": "Status comes from checkpoint events, which the step supervisor now writes for every run — carrying the step INDEX, so a revision is distinguishable from a first attempt and two steps with the same name do not share a verdict.\n\nDisk reconciliation is a fallback again, for plans committed through the markdown path or before checks existed. It also no longer fires when steps SHARE a file set: a plan whose four steps all declared index.html used to flip every step to done the moment step 1 wrote it, Verify included (2026-09-04, car run).",
       "frame": "serve",
       "tech": "Go",
-      "status": "wip",
+      "status": "done",
       "path": "internal/loop/report.go",
       "position": {
         "x": 2068,
         "y": 300
-      },
-      "flags": [
-        {
-          "id": "f1",
-          "kind": "issue",
-          "title": "Step status is inferred from disk because no checkpoint is ever written",
-          "note": "BuildReportAt prefers checkpoint events and falls back to disk reconciliation. Every run on record has ZERO checkpoint events, so the fallback is not a fallback — it is the only source of truth for \"done\". Existence of a file cannot distinguish which step wrote it, and can never show that a verification passed. That is how the car run reported 4/4 green, Verify included, while the turn was dying in a check_page loop. The shared-files case is fixed, but the underlying gap remains: the loop never records that a step finished, so a plan whose steps DO own distinct files is still marked done the moment the file appears, not when the step's work succeeded.",
-          "fix": "Have the loop write a checkpoint event when it moves off a step: which step, whether its tool calls succeeded, and what verified it. Then disk reconciliation goes back to being a fallback for chat-mode turns, and \"done\" means the work was observed, not that a file exists.",
-          "by": "agent",
-          "at": "2026-09-04T21:25:39.979Z"
-        }
-      ]
+      }
     },
     {
       "ports": [],
@@ -274,27 +252,16 @@
       "id": "store2",
       "kind": "module",
       "label": "Session store",
-      "sublabel": "polls every 2 s · holds `report`",
-      "note": "loadReport() assigns the fetch result UNCONDITIONALLY, and the fetch helper returns null for any non-200. So every poll during the seconds before the plan commits overwrites `report` with null — and the poll was gated on `report` being set in the first place.",
+      "sublabel": "polls every 2 s while a turn runs · keeps the last good report",
+      "note": "Fixed 2026-09-04. loadReport() assigned whatever the fetch returned, and the helper returns null for ANY non-200 — and /report 404s until a plan event exists, which is the first seconds of every turn. So each poll in that window erased the plan the strip was waiting for. The poll was also gated on `report` already being set, so the strip could not appear until the turn ended, by which point the plan read complete and it archived itself on arrival.",
       "frame": "show",
       "tech": "Svelte 5 runes",
-      "status": "wip",
+      "status": "done",
       "path": "panel/src/lib/stores/session.svelte.ts",
       "position": {
         "x": 44,
         "y": 1052
-      },
-      "flags": [
-        {
-          "id": "f1",
-          "kind": "issue",
-          "title": "A failed poll erases the plan the strip is waiting for",
-          "note": "loadReport() does `report = await api.report(id)` with no guard, and the fetch helper returns null for ANY non-200. /report answers 404 with \"no plan in this session\" for the first seconds of every turn, before the plan event exists — three seconds in the car run. So each poll in that window assigns null. Combined with the poll being gated on `report` already being set, the strip could never appear: the only unconditional fetches happen after the turn ends, by which time the plan reads complete and the strip archives itself on arrival. The planner is immune because it reads /state, which returns the plan verbatim and is never gated.",
-          "fix": "Keep the last good report: only assign when the fetch returns a value, and clear it explicitly on session switch (where it is already reset). Poll whenever a turn is running, not only once a report exists.",
-          "by": "agent",
-          "at": "2026-09-04T21:25:28.348Z"
-        }
-      ]
+      }
     },
     {
       "ports": [],
@@ -804,6 +771,114 @@
       "type": "node",
       "id": "report",
       "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "idea",
+        "title": "Two endpoints for one plan, and only the simpler one is reliable"
+      }
+    },
+    {
+      "at": "2026-09-04T22:40:30.493Z",
+      "by": "agent",
+      "type": "node",
+      "id": "buildreport",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "decides done / partial / pending per step",
+          "to": "decides done / partial / pending per step · checkpoints first"
+        },
+        {
+          "field": "note",
+          "from": "Status comes from checkpoint events. When there are none it falls back to DIS…",
+          "to": "Status comes from checkpoint events, which the step supervisor now writes for…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:40:30.493Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store2",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "polls every 2 s · holds `report`",
+          "to": "polls every 2 s while a turn runs · keeps the last good report"
+        },
+        {
+          "field": "note",
+          "from": "loadReport() assigns the fetch result UNCONDITIONALLY, and the fetch helper r…",
+          "to": "Fixed 2026-09-04. loadReport() assigned whatever the fetch returned, and the …"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:40:59.297Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store2",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "A failed poll erases the plan the strip is waiting for"
+      }
+    },
+    {
+      "at": "2026-09-04T22:41:04.315Z",
+      "by": "agent",
+      "type": "node",
+      "id": "buildreport",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Step status is inferred from disk because no checkpoint is ever written"
+      }
+    },
+    {
+      "at": "2026-09-04T22:41:13.616Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "INTERPRETED · plan + a status per step",
+          "to": "INTERPRETED · plan + a status per step, from checkpoints"
+        },
+        {
+          "field": "note",
+          "from": "404s with \"no plan in this session\" until a plan event exists. That 404 is th…",
+          "to": "404s with \"no plan in this session\" until a plan event exists. That is correc…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T22:41:18.733Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "resolve",
       "flag": {
         "id": "f1",
         "kind": "idea",
