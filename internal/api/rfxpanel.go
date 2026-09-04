@@ -74,6 +74,31 @@ body { font: 12px/1.5 system-ui, sans-serif; }
         parent.postMessage({ rfx: "session", id }, "*");
       });
     },
+    // plan(): the committed plan WITH its cursor — per-step status, which
+    // step is next, which is blocked, which revision each is on. Unlike
+    // session().plan this carries what the supervisor knows, so a panel can
+    // render controls rather than guessing progress from files on disk.
+    // Requires ui.session.
+    plan() {
+      return new Promise((resolve) => {
+        const id = ++seq; pending.set(id, resolve);
+        parent.postMessage({ rfx: "plan", id }, "*");
+      });
+    },
+    // runStep(step, revision): run ONE step of the committed plan and verify
+    // it against that step's own check. step is 0-based; omit it (or pass -1)
+    // for "whichever is next".
+    //
+    // Use this instead of turn("do step 3 only, then stop and report"): a
+    // prompt asks the model to scope itself and nothing enforces it, so the
+    // core never knew a step was requested, never verified one, and never
+    // wrote a checkpoint. Requires ui.turn.
+    runStep(step, revision) {
+      return new Promise((resolve) => {
+        const id = ++seq; pending.set(id, resolve);
+        parent.postMessage({ rfx: "runStep", id, step, revision: !!revision }, "*");
+      });
+    },
     // files(paths): ground truth for the workspace — which declared paths
     // actually exist. Requires ui.session; read-only (stat, never open).
     files(paths) {

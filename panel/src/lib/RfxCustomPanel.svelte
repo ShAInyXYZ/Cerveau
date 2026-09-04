@@ -99,6 +99,41 @@
     }
   }
 
+  // plan(): read the committed plan WITH its cursor — which step is next,
+  // which is blocked, which revision each is on. Same gate as session: a read.
+  async function readPlan(id, source) {
+    if (!pack.ui?.session) return reply(source, id, { ok: false, error: 'pack does not declare ui.session' });
+    if (!sessionId) return reply(source, id, { ok: false, error: 'no active session' });
+    try {
+      reply(source, id, { ok: true, ...(await j(`/api/sessions/${sessionId}/plan`)) });
+    } catch (e) {
+      reply(source, id, { ok: false, error: String(e) });
+    }
+  }
+
+  // runStep(): run ONE step of the committed plan and verify it.
+  //
+  // This replaces composing an English prompt and posting it as an ordinary
+  // turn ("do step 3 only, then stop and report"), which left the core with no
+  // idea a step was requested: nothing bound the run to step 3, nothing
+  // verified it, and no checkpoint was written. Same ui.turn gate — it starts
+  // work in the user's session either way.
+  async function runStep(id, step, revision, source) {
+    if (!pack.ui?.turn) return reply(source, id, { ok: false, error: 'pack does not declare ui.turn' });
+    if (!sessionId) return reply(source, id, { ok: false, error: 'no active session' });
+    try {
+      const r = await fetch(`/api/sessions/${sessionId}/plan/step`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ step: Number.isInteger(step) ? step : -1, revision: !!revision })
+      });
+      const body = await r.json().catch(() => ({}));
+      reply(source, id, r.ok ? { ok: true, ...body } : { ok: false, error: body.error || `HTTP ${r.status}` });
+    } catch (e) {
+      reply(source, id, { ok: false, error: String(e) });
+    }
+  }
+
   function onMessage(e) {
     if (!iframeEl || e.source !== iframeEl.contentWindow) return;
     const m = e.data ?? {};
@@ -107,6 +142,8 @@
       return;
     }
     if (m.rfx === 'session') { readSession(m.id, e.source); return; }
+    if (m.rfx === 'plan') { readPlan(m.id, e.source); return; }
+    if (m.rfx === 'runStep') { runStep(m.id, m.step, m.revision, e.source); return; }
     if (m.rfx === 'files') { probeFiles(m.id, m.paths, e.source); return; }
     if (m.rfx === 'turn') { postTurn(m.id, m.text, m.mode, e.source); return; }
     if (m.rfx !== 'run') return;
