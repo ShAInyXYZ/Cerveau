@@ -85,3 +85,63 @@ func TestReportReconcilesWithDisk(t *testing.T) {
 		t.Fatalf("done count = %d, want 1", rep.Done)
 	}
 }
+
+// The car run (2026-09-04): a single-page build whose four steps all declare
+// files:["index.html"]. Step 1 writes the file; disk reconciliation then marked
+// every step done — including a final "Verify" step that never ran — and the
+// panel showed 4/4 green while the turn was dying in a check_page loop.
+// Existence proves a file was written, never which step wrote it, and never
+// that a verification passed.
+func TestSharedFilesAreNotReconciledFromDisk(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.WriteFile(filepath.Join(ws, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ts := time.Date(2026, 9, 4, 21, 3, 0, 0, time.UTC)
+	events := []episodic.Event{{
+		ID: "evt_000004", TS: ts, Type: episodic.Plan,
+		Payload: json.RawMessage(`{"title":"Car","steps":[
+			{"title":"HTML shell","files":["index.html"]},
+			{"title":"Buildings and car","files":["index.html"]},
+			{"title":"Physics and cameras","files":["index.html"]},
+			{"title":"Verify rendering","files":["index.html"]}]}`),
+	}}
+	rep := BuildReportAt(events, ws)
+	if rep == nil {
+		t.Fatal("no report")
+	}
+	if rep.Done != 0 {
+		t.Fatalf("done = %d, want 0: a shared file cannot prove any step ran (%+v)", rep.Done, rep.Steps)
+	}
+	for i, s := range rep.Steps {
+		if s.Status != "pending" {
+			t.Errorf("step %d (%s) = %q, want pending", i+1, s.Title, s.Status)
+		}
+	}
+}
+
+// A step with files of its OWN still reconciles: that is the case the feature
+// exists for, and it must keep working.
+func TestOwnFilesStillReconcileFromDisk(t *testing.T) {
+	ws := t.TempDir()
+	for _, f := range []string{"index.html", "fan.js"} {
+		if err := os.WriteFile(filepath.Join(ws, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts := time.Date(2026, 9, 4, 21, 3, 0, 0, time.UTC)
+	events := []episodic.Event{{
+		ID: "evt_000001", TS: ts, Type: episodic.Plan,
+		Payload: json.RawMessage(`{"title":"Fan","steps":[
+			{"title":"Shell","files":["index.html"]},
+			{"title":"Geometry","files":["fan.js"]},
+			{"title":"Animation","files":["animate.js"]}]}`),
+	}}
+	rep := BuildReportAt(events, ws)
+	if rep.Steps[0].Status != "done" || rep.Steps[1].Status != "done" {
+		t.Fatalf("own-file steps should reconcile: %+v", rep.Steps)
+	}
+	if rep.Steps[2].Status != "pending" {
+		t.Fatalf("missing file must stay pending: %+v", rep.Steps[2])
+	}
+}

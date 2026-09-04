@@ -98,7 +98,24 @@ func BuildReportAt(events []episodic.Event, workspace string) *Report {
 		// Disk reconciliation: a pending or partial step whose declared files
 		// all exist really is done — the checkpoint just never got written
 		// (chat-mode turns write no step checkpoints at all).
-		if (sr.Status == "pending" || sr.Status == "partial") && workspace != "" && len(ps.Files) > 0 {
+		//
+		// ONLY when the step's files are its own. A plan that appends to one
+		// file — the common shape for a single-page build — gives every step
+		// the same `files: [index.html]`, so the moment step 1 writes it,
+		// EVERY step reconciles to done, including a final "Verify" step that
+		// never ran. The car run reported 4/4 green while the turn was dying
+		// in a check_page loop (2026-09-04). Existence proves a file was
+		// written; it cannot prove which step wrote it, and it can never prove
+		// a verification passed. When steps share files, only a real
+		// checkpoint counts.
+		shared := false
+		for other, op := range plan.Steps {
+			if other != idx && sameFiles(op.Files, ps.Files) {
+				shared = true
+				break
+			}
+		}
+		if (sr.Status == "pending" || sr.Status == "partial") && workspace != "" && len(ps.Files) > 0 && !shared {
 			if have := filesPresent(workspace, ps.Files); have == len(ps.Files) {
 				sr.Status = "done"
 				sr.Summary = "verified on disk"
@@ -122,6 +139,27 @@ func BuildReportAt(events []episodic.Event, workspace string) *Report {
 // filesPresent counts how many workspace-relative paths exist. Containment
 // mirrors the file-tool jail: a path escaping the workspace never counts.
 func statOK(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// sameFiles reports whether two steps declare the same file set, in any order.
+// Two steps that touch the same files cannot be told apart by looking at disk,
+// so neither may be reconciled to "done" from existence alone.
+func sameFiles(a, b []string) bool {
+	if len(a) == 0 || len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, f := range a {
+		seen[filepath.Clean(f)]++
+	}
+	for _, f := range b {
+		k := filepath.Clean(f)
+		if seen[k] == 0 {
+			return false
+		}
+		seen[k]--
+	}
+	return true
+}
 
 func filesPresent(workspace string, paths []string) int {
 	root, err := filepath.Abs(workspace)
