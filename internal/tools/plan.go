@@ -6,7 +6,23 @@ import (
 	"fmt"
 
 	"cerveau/internal/episodic"
+	cplan "cerveau/internal/plan"
 )
+
+// planStepIn is one step as the model sends it.
+//
+// Verify is what turns a plan from a description into something executable: the
+// observation that proves the step done. Without it, "done" is inferred from
+// whether the step's files exist, which cannot say which step wrote a file and
+// can never say a verification passed — the inference that reported 4/4 green
+// on the car run while the turn was dying in a check_page loop.
+type planStepIn struct {
+	Title  string          `json:"title"`
+	Detail string          `json:"detail"`
+	Files  []string        `json:"files"`
+	Risk   string          `json:"risk"`
+	Verify json.RawMessage `json:"verify,omitempty"`
+}
 
 type CommitPlan struct {
 	open func(sessionID string) (*episodic.Writer, error)
@@ -22,8 +38,11 @@ func (t *CommitPlan) Name() string { return "commit_plan" }
 func (t *CommitPlan) Description() string {
 	return "Commit the plan so it appears as a tracked plan card and Autopilot can execute it step by step. " +
 		"EASIEST: pass your whole plan as markdown in the `markdown` field (## headings, numbered list, or checkboxes " +
-		"— they become steps automatically). Or pass structured title+steps. Never write a plan to a .md file " +
-		"or narrate it in prose — an uncommitted plan cannot be tracked."
+		"— they become steps automatically). BETTER: pass structured steps, because each one can then carry a " +
+		"`verify` — the check that proves the step done, which is what lets Autopilot run and confirm one step " +
+		"at a time instead of guessing from which files exist. A verify must be able to FAIL: a check_page eval, " +
+		"a command's exit code, or a file that must contain a named symbol. \"The file exists\" is not a check. " +
+		"Never write a plan to a .md file or narrate it in prose — an uncommitted plan cannot be tracked."
 }
 
 func (t *CommitPlan) Schema() map[string]any {
@@ -41,8 +60,9 @@ func (t *CommitPlan) Schema() map[string]any {
 						"detail": map[string]any{"type": "string"},
 						"files":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 						"risk":   map[string]any{"type": "string", "enum": []string{"low", "medium", "high"}},
+						"verify": cplan.VerifySchema(),
 					},
-					"required": []string{"title"},
+					"required": []string{"title", "verify"},
 				},
 			},
 			"autonomy_budget": map[string]any{
@@ -57,15 +77,10 @@ func (t *CommitPlan) Schema() map[string]any {
 
 func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var plan struct {
-		Title    string `json:"title"`
-		Markdown string `json:"markdown"`
-		Steps    []struct {
-			Title  string   `json:"title"`
-			Detail string   `json:"detail"`
-			Files  []string `json:"files"`
-			Risk   string   `json:"risk"`
-		} `json:"steps"`
-		AutonomyBudget string `json:"autonomy_budget"`
+		Title          string       `json:"title"`
+		Markdown       string       `json:"markdown"`
+		Steps          []planStepIn `json:"steps"`
+		AutonomyBudget string       `json:"autonomy_budget"`
 	}
 	if err := json.Unmarshal(args, &plan); err != nil {
 		return "", fmt.Errorf("bad plan: %w", err)
@@ -79,12 +94,7 @@ func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string,
 			plan.Title = mdTitle
 		}
 		for _, p := range parsed {
-			plan.Steps = append(plan.Steps, struct {
-				Title  string   `json:"title"`
-				Detail string   `json:"detail"`
-				Files  []string `json:"files"`
-				Risk   string   `json:"risk"`
-			}{Title: p.Title, Detail: p.Detail, Files: p.Files, Risk: p.Risk})
+			plan.Steps = append(plan.Steps, planStepIn{Title: p.Title, Detail: p.Detail, Files: p.Files, Risk: p.Risk})
 		}
 	}
 	if plan.Title == "" && len(plan.Steps) > 0 {
@@ -92,6 +102,25 @@ func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string,
 	}
 	if plan.Title == "" || len(plan.Steps) == 0 {
 		return "", fmt.Errorf("plan needs steps — pass your plan text in the markdown field (## headings, a numbered list, or checkboxes)")
+	}
+	// Every step must declare a check that can FAIL, and it is rejected here —
+	// at commit time, the way a prose plan is rejected — because a criterion
+	// decides the step's fate and a bad one cannot be caught later.
+	//
+	// Markdown plans are exempt: that path exists so a small model can hand
+	// over the plan as it naturally wrote it, and demanding structured verifies
+	// through it would put the easy path out of reach. Those steps fall back to
+	// the old disk reconciliation, which is now honest about its limits.
+	if plan.Markdown == "" {
+		for i, st := range plan.Steps {
+			v, err := cplan.UnmarshalVerify(st.Verify)
+			if err != nil {
+				return "", fmt.Errorf("step %d (%s): %w", i+1, st.Title, err)
+			}
+			if err := v.Validate(); err != nil {
+				return "", fmt.Errorf("step %d (%s): %w", i+1, st.Title, err)
+			}
+		}
 	}
 	if plan.AutonomyBudget == "" {
 		plan.AutonomyBudget = "low"
