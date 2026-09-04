@@ -20,7 +20,15 @@ type Sampling struct {
 	TopP float64
 }
 
+// Unset means "send no sampling field at all", so the Core applies the
+// model's own generation_config (Qwen3.8-27B: temperature 1.0, top_p 0.95,
+// top_k 20). It is not the same as temperature 0 — that would be greedy.
+const Unset = -1
+
 var presets = map[string]Sampling{
+	// "default" hands sampling back to the model. The tuned presets below
+	// override it; this one gets out of the way.
+	"default":  {"default", Unset, Unset},
 	"strict":   {"strict", 0.2, 0},
 	"neutral":  {"neutral", 0.55, 0.85},
 	"creative": {"creative", 0.7, 0.9},
@@ -38,7 +46,7 @@ func Preset(name string) Sampling {
 
 // PresetNames lists the presets in the order a UI should show them: tightest
 // first, since that is the default and the one that writes code.
-func PresetNames() []string { return []string{"strict", "neutral", "creative"} }
+func PresetNames() []string { return []string{"default", "strict", "neutral", "creative"} }
 
 // samplingFor applies a per-request override, falling back to the client's
 // session default. This is what lets one turn run hotter without changing the

@@ -10,8 +10,8 @@ func TestPresetsResolveToMeasuredValues(t *testing.T) {
 		// 0.2 is not a taste call: every good benchmark run this project has
 		// produced used it, and a "strict" preset of 0.4 lost visibly on all
 		// four projects.
-		"strict":  {0.2, 0},
-		"neutral": {0.55, 0.85},
+		"strict":   {0.2, 0},
+		"neutral":  {0.55, 0.85},
 		"creative": {0.7, 0.9},
 	}
 	for name, want := range cases {

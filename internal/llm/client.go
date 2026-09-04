@@ -17,6 +17,20 @@ type Message struct {
 	Content    string     `json:"content,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+	// Reasoning is the model's thinking, split out by the Core's reasoning
+	// parser when thinking is on. Never sent back: the window is rebuilt from
+	// the episodic log, and the template handles history without it.
+	Reasoning string `json:"reasoning_content,omitempty"`
+	// ReasoningAlt: vLLM 0.27 names the field `reasoning`; older servers and
+	// llama.cpp use `reasoning_content`. Folded into Reasoning after decode.
+	ReasoningAlt string `json:"reasoning,omitempty"`
+	// FinishReason is why the model stopped: "stop", "tool_calls", or
+	// "length" — cut off at max_tokens. Never sent back.
+	FinishReason string `json:"-"`
+	// Raw is the first 2 KB of the server's response, kept ONLY when the
+	// reply is empty (no text, no tool call) so the log can show what the
+	// tool parser swallowed. Never sent back.
+	Raw string `json:"-"`
 }
 
 type ToolCall struct {
@@ -72,10 +86,17 @@ type Usage struct {
 	// The field is parsed anyway because it costs nothing and a newer vLLM,
 	// llama.cpp, or a hosted endpoint will fill it.
 	CachedTokens int `json:"-"`
+	// ReasoningTokens is the thinking part of the completion, from
+	// completion_tokens_details.reasoning_tokens. They are generated but
+	// never re-sent, so the turn's window budget must not count them.
+	ReasoningTokens int `json:"-"`
 
 	Details *struct {
 		CachedTokens int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details,omitempty"`
+	CompletionDetails *struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details,omitempty"`
 }
 
 // UnmarshalJSON lifts the nested cache count into a flat field, so every
@@ -90,7 +111,19 @@ func (u *Usage) UnmarshalJSON(b []byte) error {
 	if u.Details != nil {
 		u.CachedTokens = u.Details.CachedTokens
 	}
+	if u.CompletionDetails != nil {
+		u.ReasoningTokens = u.CompletionDetails.ReasoningTokens
+	}
 	return nil
+}
+
+// AnswerTokens is what the completion cost the WINDOW: reasoning is dropped
+// after the call, the answer and tool calls come back on every later turn.
+func (u Usage) AnswerTokens() int {
+	if u.ReasoningTokens > u.CompletionTokens {
+		return 0
+	}
+	return u.CompletionTokens - u.ReasoningTokens
 }
 
 // FreshPromptTokens is the prompt work actually done — total minus what was
@@ -124,9 +157,10 @@ type chatResponse struct {
 }
 
 type Client struct {
-	base  string
-	key   string
-	model string
+	base     string
+	key      string
+	model    string
+	thinking string // session default thinking level; "" or ThinkingOff = off
 	// session default; a request may override it (see samplingFor)
 	sampling Sampling
 	http     *http.Client
@@ -152,7 +186,7 @@ func NewClient(base string) *Client {
 		key:      strings.TrimSpace(os.Getenv("CRV_MODEL_KEY")),
 		model:    model,
 		sampling: Preset(os.Getenv("CRV_TEMP")),
-		http:     &http.Client{Timeout: 10 * time.Minute},
+		http:     &http.Client{Timeout: 10 * time.Minute, Transport: CoreTransport()},
 	}
 }
 
@@ -164,20 +198,40 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []ToolS
 // session default.
 func (c *Client) CompleteWith(ctx context.Context, messages []Message, tools []ToolSpec, grammar string, maxTokens int, sampling string) (Message, Usage, error) {
 	sp := c.samplingFor(sampling)
+	// Thinking. Off was the only setting for a long time: on the single-card
+	// Core a <think> block ate the whole per-call budget and the truncated
+	// buffer parsed as a malformed tool call. It is now a level — off, low,
+	// medium, xhigh — chosen per call (ThinkingOf(ctx)) or as the session
+	// default. When on, the per-call cap grows by a thinking budget so the
+	// answer still fits after the reasoning, and reasoning_effort bounds it.
+	level := ThinkingOf(ctx)
+	if level == "" {
+		level = c.thinking
+	}
+	kw := map[string]any{"enable_thinking": false}
+	if level != "" && level != ThinkingOff {
+		kw = map[string]any{"enable_thinking": true, "reasoning_effort": level}
+		budget := BudgetFor(level)
+		if b := ThinkingBudgetOf(ctx); b > 0 {
+			budget = b
+		}
+		maxTokens += budget
+	}
 	body := chatRequest{
-		Model:       c.model,
-		Messages:    messages,
-		Tools:       tools,
-		Grammar:     grammar,
-		Temperature: sp.Temp,
-		TopP:        sp.TopP,
-		MaxTokens:   maxTokens,
-		// Qwen3 is a reasoning model: left on, it burns the entire token budget
-		// inside a <think> block and never emits an answer (finish_reason=length,
-		// empty content) — and --jinja then mis-parses the truncated buffer as a
-		// malformed tool call. This harness wants straight-to-the-point output,
-		// so thinking is disabled at the template level for every request.
-		TemplateKW: map[string]any{"enable_thinking": false},
+		Model:      c.model,
+		Messages:   messages,
+		Tools:      tools,
+		Grammar:    grammar,
+		MaxTokens:  maxTokens,
+		TemplateKW: kw,
+	}
+	// Unset leaves the field out of the request entirely, so the Core falls
+	// back to the model's generation_config rather than to an OpenAI default.
+	if sp.Temp != Unset {
+		body.Temperature = sp.Temp
+	}
+	if sp.TopP != Unset {
+		body.TopP = sp.TopP
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -210,5 +264,50 @@ func (c *Client) CompleteWith(ctx context.Context, messages []Message, tools []T
 	if len(out.Choices) == 0 {
 		return Message{}, Usage{}, fmt.Errorf("llm returned no choices")
 	}
-	return out.Choices[0].Message, out.Usage, nil
+	msg := out.Choices[0].Message
+	msg.FinishReason = out.Choices[0].FinishReason
+	if len(msg.ToolCalls) == 0 && strings.TrimSpace(msg.Content) == "" {
+		if len(data) > 2048 {
+			msg.Raw = string(data[:2048]) + "…"
+		} else {
+			msg.Raw = string(data)
+		}
+	}
+	if msg.Reasoning == "" && msg.ReasoningAlt != "" {
+		msg.Reasoning = msg.ReasoningAlt
+	}
+	msg.ReasoningAlt = ""
+	// This vLLM reports no completion_tokens_details. The reasoning is in
+	// hand, so estimate its share (~4 chars per token) rather than charge
+	// the whole think block to the window budget.
+	if out.Usage.ReasoningTokens == 0 && msg.Reasoning != "" {
+		out.Usage.ReasoningTokens = len(msg.Reasoning) / 4
+		if out.Usage.ReasoningTokens > out.Usage.CompletionTokens {
+			out.Usage.ReasoningTokens = out.Usage.CompletionTokens
+		}
+	}
+	return msg, out.Usage, nil
+}
+
+// CoreTransport keeps idle connections for less time than the Core's server
+// does. vLLM (uvicorn) closes an idle keep-alive after ~5 s; a turn spends far
+// longer than that in tools between two model calls, so the next POST went
+// out on a connection the server had already closed and came back as a bare
+// EOF — "model call failed — retrying", five times in one chess build
+// (2026-09-04). Go retries idempotent requests on a dead connection; a POST
+// is not one. Dropping idle connections after 2 s means every model call
+// after a pause opens fresh, at the cost of one local TCP handshake.
+func CoreTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.IdleConnTimeout = 2 * time.Second
+	return t
+}
+
+// Truncated reports a reply that ran out of tokens before saying anything:
+// no tool call, no text, finish_reason length. With thinking on, that is
+// the model still reasoning when the cap hit. The Crane session (2026-09-04)
+// closed two turns this way — 16,384 tokens of reasoning each, empty text,
+// and the panel played the done sound over nothing.
+func (m Message) Truncated() bool {
+	return m.FinishReason == "length" && len(m.ToolCalls) == 0 && strings.TrimSpace(m.Content) == ""
 }
