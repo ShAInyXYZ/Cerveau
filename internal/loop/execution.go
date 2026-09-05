@@ -42,7 +42,20 @@ func taskBrief(path string) string {
 	return ""
 }
 
-func (l *Loop) prepareRunRegistry(ctx context.Context, sid string) (*tools.Registry, []string, error) {
+// Original context is supplied only by plan execution. Direct chat must not
+// inherit the brief of an old (possibly completed) plan from the journal.
+func runBrief(original, instruction string) string {
+	original, instruction = strings.TrimSpace(original), strings.TrimSpace(instruction)
+	if original == "" {
+		return instruction
+	}
+	if instruction == "" || instruction == original {
+		return original
+	}
+	return original + "\nCurrent instruction: " + instruction
+}
+
+func (l *Loop) prepareRunRegistry(ctx context.Context, sid, originalBrief string) (*tools.Registry, []string, error) {
 	h := handleOf(ctx)
 	if h != nil && h.registry != nil {
 		return h.registry, h.skillNotes, nil
@@ -55,19 +68,39 @@ func (l *Loop) prepareRunRegistry(ctx context.Context, sid string) (*tools.Regis
 		var errs []error
 		reg, errs = reg.WithReflexes(l.rfx.List())
 		if len(errs) > 0 {
+			for _, registrationErr := range errs {
+				if h != nil {
+					if _, err := h.writer.Append(episodic.Note, map[string]string{"kind": "rfx_rejected", "text": registrationErr.Error()}); err != nil {
+						return nil, nil, fmt.Errorf("record RFX rejection: %w", err)
+					}
+				}
+			}
+			// WithReflexes can return a partially composed registry. Never
+			// publish or dispatch it after an enabled reflex was rejected.
 			return nil, nil, fmt.Errorf("RFX registration: %v", errs)
 		}
 	}
-	brief := taskBrief(l.path(sid))
-	if h != nil && h.brief != "" {
-		brief += "\nCurrent instruction: " + h.brief
+	instruction := ""
+	if h != nil {
+		instruction = h.brief
 	}
+	brief := runBrief(originalBrief, instruction)
 	var notes []string
 	if l.skills != nil {
 		for _, sk := range l.skills.Match(brief) {
-			notes = append(notes, "Loaded skill: "+sk.Name+"\n"+sk.CappedBody())
+			notes = append(notes, "## Loaded skill: "+sk.Name+"\n"+sk.CappedBody())
 			reg = reg.WithSkills(sk.Tools)
+			if h != nil {
+				if _, err := h.writer.Append(episodic.Note, map[string]string{"kind": "skill_loaded", "text": "skill loaded: " + sk.Name}); err != nil {
+					return nil, nil, fmt.Errorf("record skill registration: %w", err)
+				}
+			}
 		}
+	}
+	if h != nil {
+		// One prepared capability bundle for the entire owner, including
+		// nested chat-to-plan handoff. Changes apply to the next run.
+		h.registry, h.skillNotes = reg, notes
 	}
 	return reg, notes, nil
 }

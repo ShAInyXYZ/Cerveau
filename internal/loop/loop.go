@@ -72,27 +72,26 @@ const (
 )
 
 type Loop struct {
-	commandMu    sync.Mutex
-	llm          *llm.Client
-	toolsMu      sync.RWMutex
-	tools        *tools.Registry
-	open         func(sessionID string) (*episodic.Writer, error)
-	path         func(sessionID string) string
-	win          *window.Manager
-	recall       *memory.Recall
-	runs         *runsRegistry
-	curator      *memory.Curator
-	skills       *skills.Loader
-	skillFactory func([]skills.SkillTool) []tools.Tool
-	rfx          *rfx.Loader
-	workspace    func(sessionID string) string // the SESSION's workspace path (per-session, e.g. instant scratch)
-	thinkMu      sync.RWMutex
-	thinkMode    string               // off | autopilot | always
-	thinkEffort  string               // low | medium | xhigh
-	stackInfo    func() string        // the harness's own running services + reserved ports
-	isInstant    func(id string) bool // is this session an ephemeral instant session?
-	bg           sync.WaitGroup
-	regFor       func(ws string) *tools.Registry
+	commandMu   sync.Mutex
+	llm         *llm.Client
+	toolsMu     sync.RWMutex
+	tools       *tools.Registry
+	open        func(sessionID string) (*episodic.Writer, error)
+	path        func(sessionID string) string
+	win         *window.Manager
+	recall      *memory.Recall
+	runs        *runsRegistry
+	curator     *memory.Curator
+	skills      *skills.Loader
+	rfx         *rfx.Loader
+	workspace   func(sessionID string) string // the SESSION's workspace path (per-session, e.g. instant scratch)
+	thinkMu     sync.RWMutex
+	thinkMode   string               // off | autopilot | always
+	thinkEffort string               // low | medium | xhigh
+	stackInfo   func() string        // the harness's own running services + reserved ports
+	isInstant   func(id string) bool // is this session an ephemeral instant session?
+	bg          sync.WaitGroup
+	regFor      func(ws string) *tools.Registry
 }
 
 // SetWorkspaceFunc wires a live getter for the active workspace path so the
@@ -177,9 +176,8 @@ func New(llmClient *llm.Client, reg *tools.Registry, openWriter func(string) (*e
 
 func (l *Loop) SetRecall(r *memory.Recall) { l.recall = r }
 
-func (l *Loop) SetSkills(s *skills.Loader, f func([]skills.SkillTool) []tools.Tool) {
+func (l *Loop) SetSkills(s *skills.Loader) {
 	l.skills = s
-	l.skillFactory = f
 }
 
 // SetReflexes wires the RFX loader. Reflexes are applied per turn in Run —
@@ -248,6 +246,10 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 			// A completed plan belongs to its old task; the new task must plan afresh.
 		}
 	}
+	sessionReg, skillNotes, err := l.prepareRunRegistry(ctx, sessionID, "")
+	if err != nil {
+		return nil, err
+	}
 	g := newTurnGuardBudget(mode.MaxIter, turnBudget(ctx))
 	var winRep window.Report
 	lastCompacted := 0
@@ -259,63 +261,37 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 	if l.recall != nil {
 		turnPulls = l.recall.TurnStart(ctx, sessionID, userMsg, l.tailEvtIDs(sessionID, 20))
 	}
-	sessionReg := l.registryFor(sessionID)
-	if sessionReg == nil {
-		return nil, fmt.Errorf("invalid session workspace")
-	}
-	if l.rfx != nil {
-		defs := l.rfx.List()
-		reg, rfxErrs := sessionReg.WithReflexes(defs)
-		sessionReg = reg
-		for _, e := range rfxErrs {
-			// Loud, never silent: a reflex that couldn't register is told
-			// to the session log where the user and the report can see it.
-			wr.Append(episodic.Note, map[string]string{"kind": "rfx_rejected", "text": e.Error()})
-		}
+	if defs := sessionReg.ReflexNames(""); len(defs) > 0 {
 		// Prompt link: the model must KNOW reflexes exist (a tool it doesn't
 		// know about is a tool that doesn't exist) — and EVERY mode sees the
 		// full inventory with mode tags, so "what reflexes do you have?" is
 		// answerable anywhere, even where they're all fenced out.
-		if len(defs) > 0 {
-			avail := sessionReg.ReflexNames(mode.Name)
-			var sb strings.Builder
-			fmt.Fprintf(&sb, "\n\nRFX: %d pre-wired reflex tools are installed (from ~/.crv/rfx — typed, guard-checked; prefer a fitting reflex over raw bash). Installed: ", len(defs))
-			for i, d := range defs {
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(d.Name)
-				if len(d.Modes) > 0 {
-					sb.WriteString(" [" + strings.Join(d.Modes, ", ") + "]")
-				} else {
-					sb.WriteString(" [all modes]")
-				}
+		avail := sessionReg.ReflexNames(mode.Name)
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "\n\nRFX: %d pre-wired reflex tools are installed (from ~/.crv/rfx — typed, guard-checked; prefer a fitting reflex over raw bash). Installed: ", len(defs))
+		for i, name := range defs {
+			if i > 0 {
+				sb.WriteString(", ")
 			}
-			sb.WriteString(".")
-			if len(avail) > 0 {
-				sb.WriteString(" Callable in THIS mode: " + strings.Join(avail, ", ") + ".")
+			sb.WriteString(name)
+			entry, _ := sessionReg.Entry(name)
+			if len(entry.Modes) > 0 {
+				sb.WriteString(" [" + strings.Join(entry.Modes, ", ") + "]")
 			} else {
-				sb.WriteString(" None are callable in this mode (mode-fenced); they activate in their declared modes.")
+				sb.WriteString(" [all modes]")
 			}
-			systemPrompt += sb.String()
-			wr.Append(episodic.Note, map[string]string{"kind": "rfx_loaded", "text": fmt.Sprintf("%d reflexes loaded, %d available in %s", len(defs), len(avail), mode.Name)})
+		}
+		sb.WriteString(".")
+		if len(avail) > 0 {
+			sb.WriteString(" Callable in THIS mode: " + strings.Join(avail, ", ") + ".")
+		} else {
+			sb.WriteString(" None are callable in this mode (mode-fenced); they activate in their declared modes.")
+		}
+		systemPrompt += sb.String()
+		if _, err := wr.Append(episodic.Note, map[string]string{"kind": "rfx_loaded", "text": fmt.Sprintf("%d reflexes loaded, %d available in %s", len(defs), len(avail), mode.Name)}); err != nil {
+			return nil, err
 		}
 	}
-	var skillNotes []string
-	if l.skills != nil {
-		var st []tools.Tool
-		for _, sk := range l.skills.Match(userMsg) {
-			skillNotes = append(skillNotes, "## Loaded skill: "+sk.Name+"\n"+sk.CappedBody())
-			if l.skillFactory != nil {
-				st = append(st, tools.SkillTools(sk.Tools, h.state.Workspace, nil)...)
-			}
-			wr.Append(episodic.Note, map[string]string{"kind": "skill_loaded", "text": "skill loaded: " + sk.Name})
-		}
-		if len(st) > 0 {
-			sessionReg = sessionReg.WithSessionTools(st)
-		}
-	}
-	h.registry, h.skillNotes = sessionReg, skillNotes
 	runCtx := ctx
 	// Thinking follows the MODE: a build in autopilot may reason before each
 	// call; a chat turn answers directly. The level travels with the context,
@@ -1203,11 +1179,10 @@ func (l *Loop) RunReflexFor(ctx context.Context, sid, name string, args json.Raw
 		return "", err
 	}
 	defer func() { finish(&Result{StopReason: "final_answer"}, runErr) }()
-	reg, notes, err := l.prepareRunRegistry(ctx, sid)
+	reg, _, err := l.prepareRunRegistry(ctx, sid, "")
 	if err != nil {
 		return "", err
 	}
-	h.registry, h.skillNotes = reg, notes
 	out, runErr, _ = l.executeCall(ctx, h.writer, reg, reg.Specs(""), "", llm.ToolCall{ID: h.state.ID + "-manual", Type: "function", Function: llm.FunctionCall{Name: name, Arguments: string(args)}})
 	return
 }

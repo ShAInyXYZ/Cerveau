@@ -120,6 +120,16 @@ Brain Core configuration is changed by this work.
    reconnect and late cross-session responses are silent; genuinely new
    incidents sound once. Identical text in a later run is not hidden by an old
    dismissal. Frontend suite: 55 passing tests.
+2. **Registry preparation consolidated.** Chat and plan execution share one
+   preparation path and fail closed on enabled-reflex registration errors;
+   partial registries never reach inference. Skills match the accepted current
+   instruction, plus explicit original task context for plan execution only.
+   Completed-task context does not leak into a new chat. The prepared bundle
+   and load evidence are reused for the lifetime of the run. Removed the unused
+   factory and its global-workspace closures. Tests first exposed factory-gated
+   skills, divergent registration errors and uncached preparation; those tests
+   now pass. The differing-workspaces skill read/write test is a regression
+   guard: the prior chat implementation already used the session workspace.
 
 ## Build and handoff
 

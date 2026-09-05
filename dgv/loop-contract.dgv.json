@@ -12,12 +12,12 @@
       "id": "surface",
       "label": "1 · Every surface sees the same state",
       "position": {
-        "x": -4,
+        "x": 0,
         "y": 0
       },
       "size": {
-        "width": 680,
-        "height": 563
+        "width": 656,
+        "height": 590
       }
     },
     {
@@ -25,12 +25,12 @@
       "id": "control",
       "label": "2 · Accept and own one run",
       "position": {
-        "x": 808,
+        "x": 796,
         "y": 0
       },
       "size": {
-        "width": 1004,
-        "height": 304
+        "width": 348,
+        "height": 790
       }
     },
     {
@@ -38,12 +38,12 @@
       "id": "execution",
       "label": "3 · Execute / verify under one policy",
       "position": {
-        "x": -4,
-        "y": 699
+        "x": 1284,
+        "y": 0
       },
       "size": {
-        "width": 1976,
-        "height": 605
+        "width": 748,
+        "height": 1660
       }
     },
     {
@@ -51,12 +51,12 @@
       "id": "evidence",
       "label": "4 · Record once, replay everywhere",
       "position": {
-        "x": -4,
-        "y": 1440
+        "x": 2172,
+        "y": 0
       },
       "size": {
-        "width": 1652,
-        "height": 289
+        "width": 348,
+        "height": 1220
       }
     }
   ],
@@ -73,8 +73,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 368,
-        "y": 304
+        "x": 352,
+        "y": 335
       }
     },
     {
@@ -89,8 +89,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 368,
-        "y": 60
+        "x": 44,
+        "y": 343
       }
     },
     {
@@ -105,8 +105,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 856,
-        "y": 68
+        "x": 840,
+        "y": 60
       }
     },
     {
@@ -121,8 +121,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1180,
-        "y": 68
+        "x": 840,
+        "y": 305
       }
     },
     {
@@ -137,8 +137,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1504,
-        "y": 60
+        "x": 840,
+        "y": 550
       }
     },
     {
@@ -153,8 +153,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 44,
-        "y": 891
+        "x": 1492,
+        "y": 60
       }
     },
     {
@@ -169,8 +169,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 368,
-        "y": 891
+        "x": 1492,
+        "y": 320
       }
     },
     {
@@ -185,8 +185,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 692,
-        "y": 891
+        "x": 1492,
+        "y": 580
       }
     },
     {
@@ -201,8 +201,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1016,
-        "y": 1075
+        "x": 1728,
+        "y": 848
       }
     },
     {
@@ -212,13 +212,13 @@
       "kind": "module",
       "label": "Tool dispatcher",
       "sublabel": "validate → authorize → journal → act",
-      "note": "Offered-set, object JSON, mode/guard, session registry enforced; trusted internal null/noargs preserved. Rewritten arguments rechecked; backups confined with os.Root. Generic JSON-Schema validation remains future work.",
+      "note": "Shared prepareRunRegistry now used by chat, plan/steps and manual reflexes; obsolete factory removed. Current instruction plus explicit plan-original brief; accepted registry cached/frozen. Registration rejection recorded and fails closed before inference on both paths. Tests red-before/green-after cover policy and cache; session/global skill write regression guard passes. Full Go race suite and vet pass.",
       "frame": "execution",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1340,
-        "y": 825
+        "x": 1410,
+        "y": 1100
       }
     },
     {
@@ -233,8 +233,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1016,
-        "y": 759
+        "x": 1328,
+        "y": 840
       }
     },
     {
@@ -249,8 +249,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1664,
-        "y": 833
+        "x": 1410,
+        "y": 1435
       }
     },
     {
@@ -264,8 +264,8 @@
       "frame": "execution",
       "status": "done",
       "position": {
-        "x": 1340,
-        "y": 1083
+        "x": 1728,
+        "y": 1153
       }
     },
     {
@@ -280,8 +280,8 @@
       "status": "wip",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 692,
-        "y": 1500
+        "x": 2216,
+        "y": 505
       }
     },
     {
@@ -296,8 +296,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1016,
-        "y": 1500
+        "x": 2216,
+        "y": 750
       }
     },
     {
@@ -312,8 +312,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 44,
-        "y": 178
+        "x": 198,
+        "y": 60
       }
     },
     {
@@ -328,8 +328,8 @@
       "status": "wip",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 1340,
-        "y": 1500
+        "x": 2216,
+        "y": 995
       }
     },
     {
@@ -344,8 +344,8 @@
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 44,
-        "y": 1515
+        "x": 2216,
+        "y": 60
       }
     },
     {
@@ -360,8 +360,8 @@
       "status": "wip",
       "path": "docs/loop-contract-2026-09-05.md",
       "position": {
-        "x": 368,
-        "y": 1508
+        "x": 2216,
+        "y": 275
       }
     }
   ],
@@ -1680,6 +1680,44 @@
           "field": "note",
           "from": "Follow-up 1: restore current-incident chime keyed by session/run/event. Initi…",
           "to": "Canonical snapshots remain authoritative. Follow-up 1: ErrorChime wired in se…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:22:23.335Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Offered-set, object JSON, mode/guard, session registry enforced; trusted inte…",
+          "to": "Follow-up 2 consolidation: chat and plan paths share prepareRunRegistry; dele…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:27:01.813Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 2 consolidation: chat and plan paths share prepareRunRegistry; dele…",
+          "to": "Shared prepareRunRegistry now used by chat, plan/steps and manual reflexes; o…"
         },
         {
           "field": "status",

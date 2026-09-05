@@ -117,20 +117,16 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 	}
 	defer func() { finish(result, runErr) }()
 	wr := h.writer
-	reg, notes, err := l.prepareRunRegistry(ctx, sessionID)
+	original := taskBrief(l.path(sessionID))
+	_, notes, err := l.prepareRunRegistry(ctx, sessionID, original)
 	if err != nil {
 		return nil, err
 	}
-	h.registry = reg
-	h.skillNotes = notes
 	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + ModeByName("autopilot").Module
 	for _, note := range notes {
 		systemPrompt += "\n\n" + note
 	}
-	original := taskBrief(l.path(sessionID))
-	if original != "" && original != h.brief {
-		h.brief = original + "\nCurrent instruction: " + h.brief
-	}
+	h.brief = runBrief(original, h.brief)
 	var pulls []memory.Pull
 	if l.recall != nil {
 		pulls = l.recall.TurnStart(ctx, sessionID, plan.Title, nil)

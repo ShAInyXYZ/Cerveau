@@ -66,7 +66,7 @@
       },
       "size": {
         "width": 1004,
-        "height": 521
+        "height": 668
       }
     },
     {
@@ -257,7 +257,8 @@
       "position": {
         "x": 2716,
         "y": 379
-      }
+      },
+      "note": "Chat and steps share prepareRunRegistry; one matching, registration-error and cached capability contract. Tests cover actual session-scoped skill read/write with distinct global root, original+current plan skills, no completed-task bleed, rejected partial RFX registrations and one-time load evidence. Full race suite and vet pass."
     },
     {
       "ports": [],
@@ -1872,6 +1873,43 @@
           "field": "note",
           "from": "Follow-up 1: current-run incident notifications and dismissal use scoped iden…",
           "to": "Canonical plan/report retained. Incident chime restored with session/run/even…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:22:23.340Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "Follow-up 2: one registry preparation contract for chat and steps, determinis…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:27:01.817Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 2: one registry preparation contract for chat and steps, determinis…",
+          "to": "Chat and steps share prepareRunRegistry; one matching, registration-error and…"
         },
         {
           "field": "status",

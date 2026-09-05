@@ -337,9 +337,7 @@ func main() {
 		agentLoop.SetCurator(curator)
 	}
 	skillLoader := skills.NewLoader(filepath.Join(cfg.SessionsDir, "..", "skills"))
-	agentLoop.SetSkills(skillLoader, func(defs []skills.SkillTool) []tools.Tool {
-		return tools.SkillTools(defs, a.ConfigSnapshot().Workspace, grd.Check)
-	})
+	agentLoop.SetSkills(skillLoader)
 	a.SetSkillLoader(skillLoader)
 	a.SetLoop(agentLoop)
 	drainBackground = func() { agentLoop.WaitBackground(3 * time.Second) }
@@ -383,9 +381,6 @@ func main() {
 		}
 		*currentReg = newReg // rfx step-tool validation follows the new registry
 		agentLoop.SetRegistry(newReg)
-		agentLoop.SetSkills(skillLoader, func(defs []skills.SkillTool) []tools.Tool {
-			return tools.SkillTools(defs, abs, newGrd.Check)
-		})
 		a.SetCodeIntel(newCi)
 		go func() {
 			rep, err := newCi.Index(context.Background())
