@@ -97,7 +97,7 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 	if err != nil {
 		return nil, err
 	}
-	return l.runPlanFrom(ctx, sessionID, plan, sup, sup.Next(), false)
+	return l.runPlanFrom(ctx, sessionID, plan, sup, sup.Next(), false, "")
 }
 
 // runPlanFrom is the one execution path. Autopilot walks the whole plan;
@@ -105,7 +105,7 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 // deliberate: a step run by a button must obey exactly the same rules — its own
 // prompt, its own check, a checkpoint carrying the verdict — as a step run by
 // autopilot, or the two surfaces drift apart again.
-func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, sup *Supervisor, start int, single bool) (*Result, error) {
+func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, sup *Supervisor, start int, single bool, steer string) (*Result, error) {
 	ctx = tools.WithSession(ctx, sessionID) // see Run
 	wr, err := l.open(sessionID)
 	if err != nil {
@@ -169,7 +169,7 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 				Rev:     state.Rev,
 				Step:    plan.Steps[idx],
 				Verify:  plan.Steps[idx].Verify,
-				Context: stepRunContext(sup, idx),
+				Context: stepRunContext(sup, idx, steer),
 				Sources: sources,
 			})
 
@@ -598,8 +598,11 @@ func firstLine(s string) string {
 
 // stepRunContext is what a step's run is told about the ground it stands on:
 // the steps already verified, and — for a revision — who asked for it and why.
-func stepRunContext(sup *Supervisor, idx int) string {
+func stepRunContext(sup *Supervisor, idx int, steer string) string {
 	parts := []string{}
+	if strings.TrimSpace(steer) != "" {
+		parts = append(parts, "The user says: "+strings.TrimSpace(steer))
+	}
 	if c := StepContext(sup); c != "" {
 		parts = append(parts, c)
 	}

@@ -148,5 +148,5 @@ func (l *Loop) RunStep(ctx context.Context, sessionID string, req StepRunRequest
 		sup.Steps[idx].Attempts = 0
 	}
 
-	return l.runPlanFrom(ctx, sessionID, plan, sup, idx, true)
+	return l.runPlanFrom(ctx, sessionID, plan, sup, idx, true, "")
 }

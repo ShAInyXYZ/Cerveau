@@ -395,3 +395,56 @@ func TestStepRequestCarriesThePlanningReads(t *testing.T) {
 		t.Error("the step must be told the source is already in hand")
 	}
 }
+
+// "keep going" in an autopilot turn must RESUME the unfinished plan through
+// the supervisor — not start a free turn with the plan pasted in as guidance,
+// which replayed the model's stuck reply six times on the NFQ run.
+func TestAutopilotTurnResumesAnUnfinishedPlan(t *testing.T) {
+	m := newScriptedModel(textReply("done"))
+	defer m.srv.Close()
+	l, eventsPath := gateFixture(t, m)
+	// a committed plan whose one step is BLOCKED after a hand-back; its check
+	// is on content the fixture's index.html already has
+	wr, _ := episodic.Open(eventsPath)
+	wr.Append(episodic.Plan, map[string]any{"title": "P", "steps": []map[string]any{
+		{"title": "one", "files": []string{"index.html"},
+			"verify": map[string]any{"kind": "contains", "file": "index.html", "symbol": "monolith"}},
+	}})
+	wr.Append(episodic.Checkpoint, map[string]any{"step": "one", "index": 0, "status": "failed", "check": "c"})
+	wr.Close()
+
+	res, err := l.Run(context.Background(), "s1", "keep going", "autopilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, _ := episodic.Replay(eventsPath)
+	var resumed, passed bool
+	for _, e := range events {
+		if e.Type == episodic.Note {
+			var n struct{ Kind, Text string }
+			json.Unmarshal(e.Payload, &n)
+			if n.Kind == "plan_first" && strings.Contains(n.Text, "resuming the committed plan") {
+				resumed = true
+			}
+		}
+		if e.Type == episodic.Checkpoint {
+			var cp struct {
+				Status string `json:"status"`
+				Index  int    `json:"index"`
+			}
+			json.Unmarshal(e.Payload, &cp)
+			if cp.Index == 0 && cp.Status == "done" {
+				passed = true
+			}
+		}
+	}
+	if !resumed {
+		t.Error("an autopilot turn with an unfinished plan must resume it, not run free")
+	}
+	if !passed {
+		t.Errorf("the blocked step should be reopened and, its check satisfied, pass:\n%s", res.Reply)
+	}
+	if len(m.bodies) == 0 || !strings.Contains(m.bodies[len(m.bodies)-1], "The user says: keep going") {
+		t.Error("the user's message should steer the resumed step")
+	}
+}

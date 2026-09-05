@@ -223,6 +223,16 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 	var activePlan *Plan
 	if mode.Name == "autopilot" {
 		if plan, _, perr := LatestPlan(l.path(sessionID)); perr == nil && plan != nil {
+			// An UNFINISHED plan owns the session. "keep going" typed into
+			// the chat used to start a free turn with the plan pasted in as
+			// guidance — the old one-turn path, never the supervisor — and
+			// the model replayed the exact reply it had been stuck on, six
+			// times (NFQ, 2026-09-05). Resume the plan instead: the next
+			// pending step, or the blocked one reopened, with the user's
+			// words as steering. A finished plan does not capture the turn.
+			if sup, serr := l.restoreSupervisor(sessionID, plan); serr == nil && !sup.Done() {
+				return l.handOffToPlan(ctx, sessionID, plan, nil, userMsg)
+			}
 			systemPrompt += "\n\n" + plan.AsGuidance()
 			activePlan = plan
 		}
@@ -551,7 +561,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
 					"text": fmt.Sprintf("plan written as text — translated and committed (%d steps): %s", len(p.Steps), note)})
 				iterCancel()
-				return l.handOffToPlan(runCtx, sessionID, p, wr)
+				return l.handOffToPlan(runCtx, sessionID, p, wr, "")
 			}
 			// Not every autopilot turn is a build. "Who was president in 1950"
 			// is answered, not planned, and the gate used to throw that answer
@@ -840,7 +850,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 				// recorded as a checkpoint. The chat turn ends with that
 				// report.
 				iterCancel()
-				return l.handOffToPlan(runCtx, sessionID, plan, wr)
+				return l.handOffToPlan(runCtx, sessionID, plan, wr, "")
 			} else {
 				// No plan landed. Either the calls were reads (count them,
 				// minus orientation), or commit_plan ran and Validate refused
@@ -901,10 +911,33 @@ const planInstruction = "Divide this task into steps and commit them with the co
 // committed a ten-step plan with real checks and then wrote five modules in
 // one unbroken turn with zero checkpoints. The supervisor exists for exactly
 // this moment.
-func (l *Loop) handOffToPlan(ctx context.Context, sessionID string, plan *Plan, wr *episodic.Writer) (*Result, error) {
-	wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
-		"text": fmt.Sprintf("plan committed: %d steps — handing off to step-by-step execution", len(plan.Steps))})
-	return l.runPlanFrom(ctx, sessionID, plan, NewSupervisor(plan), 0, false)
+func (l *Loop) handOffToPlan(ctx context.Context, sessionID string, plan *Plan, wr *episodic.Writer, steer string) (*Result, error) {
+	if wr == nil {
+		w, err := l.open(sessionID)
+		if err != nil {
+			return nil, err
+		}
+		wr = w
+	}
+	// Restore the cursor from the log: a fresh plan has no checkpoints and
+	// starts at step 1; a resumed one carries what already passed.
+	sup, err := l.restoreSupervisor(sessionID, plan)
+	if err != nil {
+		return nil, err
+	}
+	if b := sup.Blocked(); b >= 0 && steer != "" {
+		// the user asked to continue past a blocked step: one more run
+		sup.Steps[b].Status = "pending"
+		sup.Steps[b].Attempts = 0
+	}
+	if steer != "" {
+		wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+			"text": fmt.Sprintf("resuming the committed plan at step %d — the user said: %s", sup.Next()+1, clipEvidence(steer))})
+	} else {
+		wr.Append(episodic.Note, map[string]string{"kind": "plan_first",
+			"text": fmt.Sprintf("plan committed: %d steps — handing off to step-by-step execution", len(plan.Steps))})
+	}
+	return l.runPlanFrom(ctx, sessionID, plan, sup, sup.Next(), false, steer)
 }
 
 // planningTools are what a plan may be made FROM: the code-reading set plus
