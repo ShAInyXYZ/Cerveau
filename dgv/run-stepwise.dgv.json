@@ -79,7 +79,7 @@
       },
       "size": {
         "width": 1004,
-        "height": 349
+        "height": 421
       }
     },
     {
@@ -164,8 +164,8 @@
       "id": "supervisor",
       "kind": "service",
       "label": "Step supervisor",
-      "sublabel": "owns the cursor: which step, which revision, what next",
-      "note": "The piece that did not exist. It holds the step cursor, starts one run per step, reads each verdict and decides: advance, retry, or reopen an earlier one. It never writes code — it decides what the next run is asked to do.\n\nRebuilt from the event log on every call rather than held in memory, so a panel button, a CLI call and a resumed session all see the same state.\n\nProven live 2026-09-05: eleven advances in a row, each on an observed check, ending in done.",
+      "sublabel": "owns the cursor · an autopilot turn with an unfinished plan RESUMES it",
+      "note": "The piece that did not exist. It holds the step cursor, starts one run per step, reads each verdict and decides: advance, retry, or reopen an earlier one. It never writes code — it decides what the next run is asked to do.\n\nRebuilt from the event log on every call rather than held in memory, so a panel button, a CLI call and a resumed session all see the same state.\n\nAn UNFINISHED plan owns autopilot turns in its session (2026-09-05). \"keep going\" typed into the chat used to start a free turn with the plan pasted in as guidance — never the supervisor — and the model replayed its stuck reply six times. Now the turn hands off at the next pending step, or reopens the blocked one for a single further run, with the user's words carried into the step as steering. A finished plan does not capture the turn.\n\nProven live: eleven advances in a row on the car refactor, each on an observed check, ending in done.",
       "frame": "drive",
       "tech": "Go",
       "status": "done",
@@ -214,8 +214,8 @@
       "id": "steprun",
       "kind": "worker",
       "label": "Step run",
-      "sublabel": "one step · SESSION registry · THINK level honoured · workspace-aware repeat guard · judged by its check",
-      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose.\n\nRules learned live:\n\n• It runs in the SESSION's registry, jailed to the session's workspace — not the global one, which is whatever the panel last pointed the core at.\n\n• Its CHECK decides, not its exit. An overrun still runs the check; a satisfied check is done. Only a user kill skips it.\n\n• The cap is 10 iterations; the loop guards are what catch a circling step.\n\n• The repeat guard is WORKSPACE-AWARE (2026-09-05). A result identical to an earlier one is a loop only if nothing changed in between. Re-checking a page after an edit and getting the same answer is the model learning the edit did not help — it was being coached as a repeat one call after a write. Six identical probes on an untouched file still trip it, because the fingerprint never moved. That is exactly the NFQ run: the guard was right, and the model had no way to get unstuck because —\n\n• Steps now honour the THINK level. They inherited the client default, off, whatever the knob said: at xhigh the model debugged a keypress that did not register with 154-token replies and zero reasoning. mode \"plan\" still means plan-only; \"autopilot\" and \"always\" reach the steps, with the same overflow step-down as the plan gate.",
+      "sublabel": "one step · SESSION registry · THINK level honoured · a retry is TOLD why it failed · earns iterations while it changes files · judged by its check",
+      "note": "A retry used to start blind: the prompt was the same, the model never saw the failed verdict, and the step it re-did was the one that had just failed (NFQ step 4, a Three.js TypeError, 2026-09-05). Now the step prompt carries the failed check and what was observed, first thing. The iteration cap is not fixed either: a step earns another window while the workspace fingerprint keeps moving (guard-based extension); a step that stops changing files stops.",
       "frame": "run",
       "tech": "Go",
       "status": "done",
@@ -314,14 +314,15 @@
       "id": "report",
       "kind": "api",
       "label": "GET /report + /state",
-      "sublabel": "status now comes from checkpoints, not from disk",
+      "sublabel": "GET /report + /state — status from checkpoints · /state carries the working log per reply",
       "frame": "record",
       "tech": "Go",
-      "status": "wip",
+      "status": "done",
       "position": {
         "x": 692,
         "y": 1165
-      }
+      },
+      "note": "Fold keeps tool calls, results, notes and errors between a user message and the reply that closes them, keyed by the reply's event id (State.Logs). The chat shows them collapsed above each reply — the live log cleared at the end of the turn, so a finished turn had no record of what led to its report."
     },
     {
       "ports": [],
@@ -1599,6 +1600,62 @@
           "field": "sublabel",
           "from": "one step · SESSION registry · up to 10 iterations · judged by its check even …",
           "to": "one step · SESSION registry · THINK level honoured · workspace-aware repeat g…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T01:19:12.320Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "owns the cursor: which step, which revision, what next",
+          "to": "owns the cursor · an autopilot turn with an unfinished plan RESUMES it"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T01:34:55.102Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "one step · SESSION registry · THINK level honoured · workspace-aware repeat g…",
+          "to": "one step · SESSION registry · THINK level honoured · a retry is TOLD why it f…"
+        },
+        {
+          "field": "note",
+          "from": "The existing agent loop, scoped to one step. Autopilot and a single step shar…",
+          "to": "A retry used to start blind: the prompt was the same, the model never saw the…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T01:34:55.102Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "status now comes from checkpoints, not from disk",
+          "to": "GET /report + /state — status from checkpoints · /state carries the working l…"
+        },
+        {
+          "field": "note",
+          "to": "Fold keeps tool calls, results, notes and errors between a user message and t…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
         }
       ]
     }
