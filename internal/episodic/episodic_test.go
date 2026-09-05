@@ -1,6 +1,7 @@
 package episodic
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,5 +145,36 @@ func TestReplayFold(t *testing.T) {
 	}
 	if st.Counts[MsgUser] != 1 || st.Counts[Checkpoint] != 1 {
 		t.Fatalf("counts = %+v", st.Counts)
+	}
+}
+
+// The working log between a user message and the reply is kept, keyed by the
+// reply, so the chat can show what happened after the turn is over.
+func TestFoldKeepsTheWorkingLogPerReply(t *testing.T) {
+	mk := func(id string, typ EventType, payload string) Event {
+		return Event{ID: id, Type: typ, Payload: json.RawMessage(payload)}
+	}
+	st := Fold([]Event{
+		mk("e1", MsgUser, `{"text":"build it"}`),
+		mk("e2", Note, `{"kind":"plan_first","text":"no plan yet"}`),
+		mk("e3", MsgAssistant, `{"text":""}`), // tool-call-only: not a reply
+		mk("e4", ToolCall, `{"id":"c","name":"write","args":{"path":"a.js"}}`),
+		mk("e5", ToolResult, `{"id":"c","name":"write","ok":true,"output":"wrote"}`),
+		mk("e6", MsgAssistant, `{"text":"Done."}`),
+		mk("e7", MsgUser, `{"text":"again"}`),
+		mk("e8", MsgAssistant, `{"text":"Sure."}`),
+	})
+	log := st.Logs["e6"]
+	if len(log) != 3 {
+		t.Fatalf("the reply should carry the 3 events before it (note, call, result), got %d", len(log))
+	}
+	if log[0].ID != "e2" || log[2].ID != "e5" {
+		t.Errorf("wrong events kept: %s..%s", log[0].ID, log[2].ID)
+	}
+	if _, ok := st.Logs["e3"]; ok {
+		t.Error("a tool-call-only assistant message is not a reply and must not close the log")
+	}
+	if _, ok := st.Logs["e8"]; ok {
+		t.Error("a reply with nothing before it has no log")
 	}
 }

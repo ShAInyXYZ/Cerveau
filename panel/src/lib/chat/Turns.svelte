@@ -1,5 +1,6 @@
 <script lang="ts">
   import Markdown from '../Markdown.svelte';
+  import TurnLog from './TurnLog.svelte';
   import { fmtTime } from '../api';
   import { sessionStore } from '../stores/session.svelte.ts';
   import { tooltip } from '../../kit/tooltip.js';
@@ -77,6 +78,9 @@
       <span class="tag">{fmtTime(m.ts)}</span>
     </div>
     <div class="tbody">
+      {#if !user && m.id && sessionStore.logs[m.id]?.length}
+        <TurnLog events={sessionStore.logs[m.id]} />
+      {/if}
       {#if user && isEditing(m)}
         <div class="edit">
           <div class="edit-title">

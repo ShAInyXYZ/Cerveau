@@ -32,6 +32,10 @@ let windowReport = $state<WindowReport | null>(null);
 let question = $state<Question | null>(null);
 let errors = $state<SessionError[]>([]);
 let report = $state<PlanReport | null>(null);
+// What happened on the way to each reply, keyed by the reply's event id.
+// Served by /state so it survives the end of the turn, a reload, and a
+// session switch — the live working log is cleared when a turn ends.
+let logs = $state<Record<string, EpisodicEvent[]>>({});
 let skills = $state<unknown[]>([]);
 // Autopilot is the default: Cerveau is a build harness first, a chat second.
 // The last choice is remembered per browser, so a reload does not reset it.
@@ -54,7 +58,10 @@ async function loadMessages(): Promise<void> {
   if (!activeId) return;
   const d = await api.sessionState(activeId);
   // never blank the chat on a transient failed fetch
-  if (d && Array.isArray(d.messages)) messages = d.messages;
+  if (d && Array.isArray(d.messages)) {
+    messages = d.messages;
+    logs = (d as { logs?: Record<string, EpisodicEvent[]> }).logs ?? {};
+  }
 }
 
 async function loadTicks(): Promise<void> {
@@ -129,6 +136,7 @@ export const sessionStore = {
   get question() { return question; },
   get errors() { return errors; },
   get report() { return report; },
+  get logs() { return logs; },
   get skills() { return skills; },
   get runningIds() { return runningIds; },
   get turnSampling() { return turnSampling; },
@@ -161,7 +169,7 @@ export const sessionStore = {
 
   select(id: string): void {
     activeId = id;
-    messages = []; errors = []; question = null; report = null;
+    messages = []; errors = []; question = null; report = null; logs = {};
     chime.reset();   // a session opened for the first time must be silent
     dismissed = new Set(storage.get<string[]>(storageKeys.dismissedErrors(id), []));
     void loadMessages(); void loadTicks(); void loadErrors(); void loadReport();

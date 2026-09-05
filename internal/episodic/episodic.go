@@ -112,15 +112,37 @@ type State struct {
 	Plan           json.RawMessage   `json:"plan,omitempty"`
 	LastCheckpoint *Event            `json:"last_checkpoint,omitempty"`
 	Counts         map[EventType]int `json:"counts"`
+	// Logs is what happened on the way to each reply — tool calls, results,
+	// notes, errors — keyed by the reply's event id. The panel showed these
+	// live and then dropped them when the turn ended, so a finished turn had
+	// no record in the chat of the six identical probes and three guard
+	// notes that led to its report (2026-09-05). Kept per reply, so the chat
+	// can offer them collapsed above the answer.
+	Logs map[string][]Event `json:"logs,omitempty"`
 }
 
 func Fold(events []Event) *State {
-	st := &State{Counts: map[EventType]int{}}
+	st := &State{Counts: map[EventType]int{}, Logs: map[string][]Event{}}
+	var pending []Event
 	for _, ev := range events {
 		st.Counts[ev.Type]++
 		switch ev.Type {
-		case MsgUser, MsgAssistant:
+		case MsgUser:
 			st.Messages = append(st.Messages, ev)
+			pending = nil
+		case MsgAssistant:
+			st.Messages = append(st.Messages, ev)
+			// A reply with text closes the log. A tool-call-only assistant
+			// message is part of the work, not a reply; keep accumulating.
+			var m struct {
+				Text string `json:"text"`
+			}
+			if json.Unmarshal(ev.Payload, &m) == nil && strings.TrimSpace(m.Text) != "" && len(pending) > 0 {
+				st.Logs[ev.ID] = pending
+				pending = nil
+			}
+		case ToolCall, ToolResult, Note, Err, Aborted:
+			pending = append(pending, ev)
 		case Plan:
 			st.Plan = ev.Payload
 		case Checkpoint:
