@@ -10,7 +10,7 @@ try {
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
   // No routes mocked: this is the production panel talking to the real Go API.
   await page.goto(base);
-  await page.getByRole('img',{name:'V0.6 ALPHA',exact:true}).waitFor();
+  await page.getByRole('img',{name:'V0.6',exact:true}).waitFor();
   await page.getByRole('button',{name:'Pause',exact:true}).click();
   await page.getByRole('button',{name:'Resume',exact:true}).waitFor();
   const sessions=await(await fetch(base+'/api/sessions')).json();

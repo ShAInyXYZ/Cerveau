@@ -12,7 +12,7 @@ const run=(cmd,args,cwd=root)=>execFileSync(cmd,args,{cwd,stdio:'inherit'});
 const output=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8'}).trim();
 const version=readFileSync(join(root,'internal/api/api.go'),'utf8').match(/const Version = "([^"]+)"/)?.[1];
 if(version!=='0.6.0-alpha')throw new Error('Review release script/version before another release.');
-run('node',['--test','scripts/release-identity.test.mjs']);
+run('node',['--test','scripts/release-identity.test.mjs','scripts/qa-labrig-safety.test.mjs']);
 run('npx',['vitest','run'],join(root,'panel'));
 run('npx',['svelte-check','--tsconfig','./tsconfig.json'],join(root,'panel'));
 run('npm',['run','build'],join(root,'panel'));

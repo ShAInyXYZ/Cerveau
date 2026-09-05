@@ -2,7 +2,7 @@
   "dgv": 1,
   "meta": {
     "title": "Stepwise runs — one step, one run, one verdict",
-    "description": "0.6 LABRIG source: detached admission, plan-bound supervisor state, validated checks and revision ordering, one-prefix UI projection. Bundled Planner 1.5.0 requires matching deployment. Prior happy-path benchmarks remain historical evidence, not full lifecycle proof. See release-0.6-LABRIG.md and loop-contract.",
+    "description": "0.6 LABRIG: detached admission, plan-bound supervisor state, validated checks and revision ordering, one-prefix UI projection. Planner1.5.0 embedded atomically in host; installed copies untouched. Bounded real W8A16 pause, steer, crash/reopen, whole and selected cases PASS. Limits and evidence: docs/release-0.6-LABRIG.md.",
     "updated": "2026-09-05",
     "colorBy": "kind",
     "driftIgnore": [
@@ -35,12 +35,12 @@
       "id": "plan",
       "label": "1 · Plan — once per task",
       "position": {
-        "x": 400,
+        "x": 396,
         "y": 0
       },
       "size": {
-        "width": 348,
-        "height": 985
+        "width": 356,
+        "height": 989
       }
     },
     {
@@ -48,12 +48,12 @@
       "id": "drive",
       "label": "2 · Drive — the new part: who decides what runs next",
       "position": {
-        "x": 888,
+        "x": 884,
         "y": 0
       },
       "size": {
-        "width": 656,
-        "height": 740
+        "width": 664,
+        "height": 744
       }
     },
     {
@@ -61,12 +61,12 @@
       "id": "run",
       "label": "3 · Run — one step, start to verdict",
       "position": {
-        "x": 1684,
+        "x": 1680,
         "y": 0
       },
       "size": {
-        "width": 656,
-        "height": 883
+        "width": 664,
+        "height": 887
       }
     },
     {
@@ -74,12 +74,12 @@
       "id": "record",
       "label": "4 · Record — what makes progress real",
       "position": {
-        "x": 2480,
+        "x": 2476,
         "y": 0
       },
       "size": {
-        "width": 348,
-        "height": 729
+        "width": 356,
+        "height": 733
       }
     },
     {
@@ -87,12 +87,12 @@
       "id": "show",
       "label": "5 · Show",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 1125
       },
       "size": {
-        "width": 656,
-        "height": 616
+        "width": 664,
+        "height": 740
       }
     }
   ],
@@ -381,7 +381,7 @@
       "kind": "api",
       "label": "Step control API",
       "sublabel": "GET /plan · POST /plan/step — the one way to drive a plan",
-      "note": "POSTcommands accepts chat/step/continue/selected withpersistedcommandIDs; controls matchrun/controlversion. Legacy HTTPwaiters observe detachedworker.",
+      "note": "Plan-bound commands preserve one detached owner. Actual embedded Planner W8A16 acceptance PASS: continue138476378209f67abfacf52e completes2/2; selected2f137b8440434ee9f33bffd5 completes0,1 only, third pending with0attempts/no artifact. Browser closes after acceptance; fresh contexts display canonical counts. Isolated child crash/reopen tested mid-step, not resumed inference. Evidence: docs/release-0.6-LABRIG.md; scripts/qa-labrig-realcore.mjs.",
       "frame": "show",
       "tech": "Go net/http",
       "status": "done",
@@ -1994,6 +1994,58 @@
           "field": "path",
           "from": "rfx/planner/pack.yaml, rfx/planner/ui/panel.html, panel/src/lib/RfxCustomPanel.svelte",
           "to": "rfx/planner, internal/rfx/builtin.go, internal/api/rfxpanel.go, internal/api/build.go, panel/src/lib/RfxCustomPanel.svelte, panel/src/lib/PackSource.svelte"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:39:13.042Z",
+      "by": "agent",
+      "type": "node",
+      "id": "stepapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "POSTcommands accepts chat/step/continue/selected withpersistedcommandIDs; con…",
+          "to": "Follow-up 5 live whole-plan and selected commands via actual embedded Planner…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T08:05:01.241Z",
+      "by": "agent",
+      "type": "node",
+      "id": "stepapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 5 live whole-plan and selected commands via actual embedded Planner…",
+          "to": "Plan-bound commands preserve one detached owner. Actual embedded Planner W8A1…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T08:05:01.241Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "0.6 LABRIG source: detached admission, plan-bound supervisor state, validated…",
+          "to": "0.6 LABRIG: detached admission, plan-bound supervisor state, validated checks…"
         }
       ]
     }

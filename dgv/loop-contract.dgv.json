@@ -17,7 +17,7 @@
       },
       "size": {
         "width": 664,
-        "height": 639
+        "height": 647
       }
     },
     {
@@ -84,7 +84,7 @@
       "kind": "ui",
       "label": "Settings and controls",
       "sublabel": "requested → applied / rejected",
-      "note": "Run controls require run_id/control_id/control_version; questions require run_id/question_id. Future defaults acknowledged and persisted, active settings frozen. No active-run policy update UI. Tests: runcontrol_test.go, settings_test.go.",
+      "note": "Scoped run controls and settings retain prior regression coverage. Real W8A16 follow-up: pause/resume d05abf5aab0bb8fe9080cbe7 PASS (same owner, paused inactivity, competing409); steer a1f0acced785ec0a67aeb1f4 PASS (next request receives instruction, changed marker read back). Isolated sessions, Core unchanged. Evidence: docs/release-0.6-LABRIG.md; internal/api/labrig_controls_test.go.",
       "frame": "surface",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -307,7 +307,7 @@
       "kind": "api",
       "label": "Snapshot + event stream",
       "sublabel": "cursor resume · gap detection",
-      "note": "Single-prefix /state includes events,cursor,run,plan,report,errors. SSE IDs resume after cursor; UI deduplicates and resnapshots on invalidation/reconnect with 2s fallback. Real Go API desktop/mobile browser tests; no incremental UI reducer.",
+      "note": "Single-prefix snapshots remain canonical. Real W8A16 child crash after actual planned write/before result: 9e8d202f88420dd41dc5de8c reopens interrupted/pending; three observer replays have no effects. Actual Planner whole/selected complete with browser closed; fresh contexts show2/2 and2/3. Unknown-outcome helper checked; resumed inference not exercised. Evidence: docs/release-0.6-LABRIG.md.",
       "frame": "surface",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -1794,6 +1794,82 @@
           "field": "note",
           "from": "Follow-up 4: embed first-party Planner canonical repo bytes with executable; …",
           "to": "Canonical snapshots and session/run/event incident chime tested. First-party …"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:39:13.037Z",
+      "by": "agent",
+      "type": "node",
+      "id": "controls",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Run controls require run_id/control_id/control_version; questions require run…",
+          "to": "Follow-up 5 live acceptance: real W8A16 pause/resume and steer in isolated se…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:39:13.037Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Single-prefix /state includes events,cursor,run,plan,report,errors. SSE IDs r…",
+          "to": "Follow-up 5 isolated child-process recovery and actual Planner/browser comman…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T08:05:01.236Z",
+      "by": "agent",
+      "type": "node",
+      "id": "controls",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 5 live acceptance: real W8A16 pause/resume and steer in isolated se…",
+          "to": "Scoped run controls and settings retain prior regression coverage. Real W8A16…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T08:05:01.236Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 5 isolated child-process recovery and actual Planner/browser comman…",
+          "to": "Single-prefix snapshots remain canonical. Real W8A16 child crash after actual…"
         },
         {
           "field": "status",
