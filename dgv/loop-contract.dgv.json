@@ -12,12 +12,12 @@
       "id": "surface",
       "label": "1 · Every surface sees the same state",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 0
       },
       "size": {
-        "width": 656,
-        "height": 590
+        "width": 664,
+        "height": 594
       }
     },
     {
@@ -25,12 +25,12 @@
       "id": "control",
       "label": "2 · Accept and own one run",
       "position": {
-        "x": 796,
+        "x": 792,
         "y": 0
       },
       "size": {
-        "width": 348,
-        "height": 790
+        "width": 356,
+        "height": 794
       }
     },
     {
@@ -38,12 +38,12 @@
       "id": "execution",
       "label": "3 · Execute / verify under one policy",
       "position": {
-        "x": 1284,
+        "x": 1280,
         "y": 0
       },
       "size": {
-        "width": 748,
-        "height": 1660
+        "width": 756,
+        "height": 1664
       }
     },
     {
@@ -51,12 +51,12 @@
       "id": "evidence",
       "label": "4 · Record once, replay everywhere",
       "position": {
-        "x": 2172,
+        "x": 2168,
         "y": 0
       },
       "size": {
-        "width": 348,
-        "height": 1220
+        "width": 356,
+        "height": 1224
       }
     }
   ],
@@ -291,7 +291,7 @@
       "kind": "module",
       "label": "Canonical state reducer",
       "sublabel": "live state = replay at every prefix",
-      "note": "Snapshot from one journal prefix drives run/plan/report/events/current errors. Unowned unfinished run is interrupted; external process leases remain active. Prefix and subprocess-crash tests pass.",
+      "note": "Snapshot drives run/plan/report/current errors from one prefix. Follow-up 3 removed sameFiles/filesPresent/statOK dead reconciliation. File-existence-cannot-pass tests retained with accurate names/comments/messages; targeted race checks pass before and after. No behavior change.",
       "frame": "evidence",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -1718,6 +1718,44 @@
           "field": "note",
           "from": "Follow-up 2 consolidation: chat and plan paths share prepareRunRegistry; dele…",
           "to": "Shared prepareRunRegistry now used by chat, plan/steps and manual reflexes; o…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:27:57.790Z",
+      "by": "agent",
+      "type": "node",
+      "id": "reducer",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Snapshot from one journal prefix drives run/plan/report/events/current errors…",
+          "to": "Follow-up 3 cleanup: remove unreachable filesystem reconciliation helpers. Ke…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:28:56.820Z",
+      "by": "agent",
+      "type": "node",
+      "id": "reducer",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 3 cleanup: remove unreachable filesystem reconciliation helpers. Ke…",
+          "to": "Snapshot drives run/plan/report/current errors from one prefix. Follow-up 3 r…"
         },
         {
           "field": "status",

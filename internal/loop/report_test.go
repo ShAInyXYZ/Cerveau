@@ -54,10 +54,9 @@ func TestBuildReportNoPlan(t *testing.T) {
 	}
 }
 
-// A step whose declared files all exist is DONE even when no checkpoint was
-// ever written (the turn was cut short by a guard). Without this the chat's
-// plan strip shows "pending" for work that is visibly finished on disk.
-func TestReportReconcilesWithDisk(t *testing.T) {
+// Declared files can exist after an interrupted or unverified attempt. Only
+// recorded verification evidence, never their presence, can pass a step.
+func TestReportFilePresenceCannotPassUnverifiedSteps(t *testing.T) {
 	ws := t.TempDir()
 	os.MkdirAll(filepath.Join(ws, "js"), 0o755)
 	os.WriteFile(filepath.Join(ws, "js", "a.js"), []byte("x"), 0o644)
@@ -82,7 +81,7 @@ func TestReportReconcilesWithDisk(t *testing.T) {
 		t.Fatalf("step with missing files must not be done, got %q", rep.Steps[1].Status)
 	}
 	if rep.Done != 0 {
-		t.Fatalf("done count = %d, want 1", rep.Done)
+		t.Fatalf("done count = %d, want 0", rep.Done)
 	}
 }
 
@@ -120,9 +119,8 @@ func TestSharedFilesAreNotReconciledFromDisk(t *testing.T) {
 	}
 }
 
-// A step with files of its OWN still reconciles: that is the case the feature
-// exists for, and it must keep working.
-func TestOwnFilesStillReconcileFromDisk(t *testing.T) {
+// Even files unique to one step cannot substitute for its verification.
+func TestOwnFilesCannotPassUnverifiedSteps(t *testing.T) {
 	ws := t.TempDir()
 	for _, f := range []string{"index.html", "fan.js"} {
 		if err := os.WriteFile(filepath.Join(ws, f), []byte("x"), 0o644); err != nil {
@@ -139,7 +137,7 @@ func TestOwnFilesStillReconcileFromDisk(t *testing.T) {
 	}}
 	rep := BuildReportAt(events, ws)
 	if rep.Steps[0].Status != "pending" || rep.Steps[1].Status != "pending" {
-		t.Fatalf("own-file steps should reconcile: %+v", rep.Steps)
+		t.Fatalf("own-file steps must remain pending without verification: %+v", rep.Steps)
 	}
 	if rep.Steps[2].Status != "pending" {
 		t.Fatalf("missing file must stay pending: %+v", rep.Steps[2])

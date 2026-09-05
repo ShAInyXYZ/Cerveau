@@ -130,6 +130,11 @@ Brain Core configuration is changed by this work.
    skills, divergent registration errors and uncached preparation; those tests
    now pass. The differing-workspaces skill read/write test is a regression
    guard: the prior chat implementation already used the session workspace.
+3. **Dead report reconciliation removed.** Deleted unused `sameFiles`,
+   `filesPresent` and `statOK`. Kept the existence-cannot-pass regressions and
+   corrected inverted test names, comments and assertion messages. Report
+   behavior remains exclusively derived from `ReducePlan`; targeted race tests
+   pass both before and after this behavior-preserving cleanup.
 
 ## Build and handoff
 

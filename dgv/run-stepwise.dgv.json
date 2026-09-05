@@ -79,7 +79,7 @@
       },
       "size": {
         "width": 1004,
-        "height": 300
+        "height": 345
       }
     },
     {
@@ -324,7 +324,7 @@
         "x": 692,
         "y": 939
       },
-      "note": "Report and plan are from the same replay projection; no filesystem-based passed status. 0.6 /state packages both with one cursor."
+      "note": "ReducePlan remains sole completion authority, no filesystem-based pass inference. Removed unused reconciliation helpers and corrected inverse test wording. Existing file-presence regressions retained; targeted race tests pass before/after cleanup."
     },
     {
       "ports": [],
@@ -1910,6 +1910,44 @@
           "field": "note",
           "from": "Follow-up 2: one registry preparation contract for chat and steps, determinis…",
           "to": "Chat and steps share prepareRunRegistry; one matching, registration-error and…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:27:57.795Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Report and plan are from the same replay projection; no filesystem-based pass…",
+          "to": "Follow-up 3: remove sameFiles/filesPresent/statOK dead code and misleading re…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:28:56.824Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 3: remove sameFiles/filesPresent/statOK dead code and misleading re…",
+          "to": "ReducePlan remains sole completion authority, no filesystem-based pass infere…"
         },
         {
           "field": "status",
