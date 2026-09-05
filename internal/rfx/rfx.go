@@ -8,6 +8,7 @@ package rfx
 
 import (
 	"fmt"
+	"io/fs"
 	"regexp"
 	"strings"
 	"time"
@@ -597,16 +598,20 @@ type PackUI struct {
 }
 
 type Pack struct {
-	RFX         int      `yaml:"rfx"`
-	Pack        string   `yaml:"pack"`
-	Version     string   `yaml:"version"`
-	Author      string   `yaml:"author"`
-	Description string   `yaml:"description"`
-	Icon        string   `yaml:"icon" json:"icon,omitempty"` // from Icons; the pack's tab + card glyph
-	Panel       string   `yaml:"-"    json:"-"`              // discovered ui/panel.html — full custom UI (RFX-UI tier 2)
-	UI          PackUI   `yaml:"ui"   json:"ui,omitempty"`
-	Docs        []string `yaml:"-"    json:"docs,omitempty"` // discovered docs/*.md
-	Path        string   `yaml:"-"    json:"-"`
+	RFX              int                    `yaml:"rfx"`
+	Pack             string                 `yaml:"pack"`
+	Version          string                 `yaml:"version"`
+	Author           string                 `yaml:"author"`
+	Description      string                 `yaml:"description"`
+	Icon             string                 `yaml:"icon" json:"icon,omitempty"` // from Icons; the pack's tab + card glyph
+	Panel            string                 `yaml:"-"    json:"-"`              // discovered ui/panel.html — full custom UI (RFX-UI tier 2)
+	UI               PackUI                 `yaml:"ui"   json:"ui,omitempty"`
+	Docs             []string               `yaml:"-"    json:"docs,omitempty"` // discovered docs/*.md
+	Path             string                 `yaml:"-"    json:"-"`
+	Origin           string                 `yaml:"-"    json:"origin"`
+	ContentSHA256    string                 `yaml:"-"    json:"content_sha256,omitempty"`
+	IgnoredInstalled []IgnoredInstalledPack `yaml:"-" json:"ignored_installed,omitempty"`
+	panelFS          fs.FS
 }
 
 func ParsePack(data []byte, path string) (*Pack, error) {

@@ -91,6 +91,11 @@ The single-card setup remains supported.
   historical failures stay inspectable without becoming fresh error cards
   on every refresh. Rejected submissions retain the draft, and changing
   sessions cannot apply an old response to the new view.
+- **Planner is built into the application.** Its versioned source stays in
+  `rfx/planner`; executable and Planner upgrade or roll back together. The
+  built-in copy takes precedence over installed copies without changing their
+  files. The pack card and `/api/build` disclose the source and precedence;
+  other RFX packs remain independently installed.
 - **The matrix/status readout identifies the 0.6 alpha build.** Build
   metadata also exposes its source revision. Thinking and sampling controls
   share acknowledged settings, with future-run defaults separated from the

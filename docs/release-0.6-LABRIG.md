@@ -1,8 +1,9 @@
 # 0.6.0-alpha — LABRIG
 
-Release preparation: 2026-09-05, `feat/stepwise-runs`, based on `b570da2` plus
-the working-tree changes. This is a **build-only** handoff: no installation,
-service restart, git commit/push, Core switch or engine tuning is performed.
+Release preparation: 2026-09-05, `feat/stepwise-runs`. The original release,
+based on `b570da2` plus working-tree changes, is checkpointed at `8571d5f`.
+Follow-ups are separate commits below. This remains a **build-only** handoff:
+no installation, service restart, push, Core switch or engine tuning is performed.
 The generated `build.json` identifies the exact source/embedded-asset digest;
 the base commit alone does not identify this uncommitted release.
 
@@ -23,8 +24,10 @@ the base commit alone does not identify this uncommitted release.
   current errors. Questions are copied while locked and scoped to that run.
   SSE carries resumable event IDs; the UI treats it as an invalidation hint
   and reloads the full canonical snapshot, with polling as a backstop.
-- The Planner is versioned in `rfx/planner` (pack 1.5.0) and packaged with the
-  host. Whole-plan and selected-step work each use one server command; no
+- The Planner is versioned in `rfx/planner` (pack 1.5.0) and embedded in the
+  host. Its built-in identity takes precedence over installed copies, which
+  remain untouched. Other RFX packs remain external. Whole-plan and selected-step
+  work each use one server command; no
   browser polling loop restarts interrupted work. Selections must include
   unfinished dependencies. An out-of-scope revision suspends for a decision
   instead of silently expanding the requested work.
@@ -135,6 +138,21 @@ Brain Core configuration is changed by this work.
    corrected inverted test names, comments and assertion messages. Report
    behavior remains exclusively derived from `ReducePlan`; targeted race tests
    pass both before and after this behavior-preserving cleanup.
+4. **Planner ships atomically with Cerveau.** The canonical manifest and panel
+   in `rfx/planner` are embedded, not copied to a second source directory.
+   Production server and CLI prefer this built-in identity, including on fresh
+   installs and when an old, malformed or renamed installed copy is present.
+   Installed copies remain untouched; other RFX packs still load normally.
+   The pack card discloses precedence and ignored copies. `/api/build` reports
+   bundled version/content digest, precedence and actual loaded state.
+   `crv -build-info` prints bundled identity before any configuration or service
+   setup. The release builder derives metadata from that executable and no
+   longer distributes a separate Planner archive.
+   Validation: full Go race suite and vet, two packaging tests, 58 frontend
+   tests, zero Svelte errors (20 existing warnings), and production panel build.
+   Fresh-directory CLI checks identify the built-in supervisor without creating
+   the external directory. Loaded bundled content digest:
+   `464bc62b00112394383a98d88a60db8b99fdfe95a1c91a0bbad55a13eacf8893`.
 
 ## Build and handoff
 
@@ -143,7 +161,7 @@ node scripts/build-release.mjs
 ```
 
 This runs frontend tests/type checks/build, Go race tests, vet and whitespace
-checks; then builds `crv` and `crvcli`, packages the Planner and writes
+checks; then builds `crv` and `crvcli` with the embedded Planner and writes
 `build.json` plus `SHA256SUMS` under a fresh `build/cerveau-0.6.0-alpha-LABRIG-*`
 directory. It verifies the binary's `-version` output without starting any
 services. It never installs artifacts or touches `~/.crv/bin`.
@@ -155,7 +173,8 @@ Browser acceptance can be reproduced with the opt-in
 runtime. No npm dependency is installed implicitly. The preview uses temporary
 data and port 17706, not the operator's 7700 service.
 
-Deployment remains a separate action: inspect active runs, make and verify
-binary/Planner backups, install both matching artifacts, restart only
-`cerveau.service`, verify `/api/build`, health and displayed version, and keep
-the backups available for rollback. Do not switch/reinstall the Brain Core.
+Deployment remains operator-only: inspect active runs, make and verify binary
+backups, install the matching executables, restart only `cerveau.service`, and
+verify `/api/build`, health and displayed version. Keep backups for rollback.
+No separate Planner installation is needed; leave existing installed packs
+untouched. Do not switch/reinstall the Brain Core.

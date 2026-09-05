@@ -80,7 +80,7 @@ func (a *API) runControl(w http.ResponseWriter, r *http.Request, action string) 
 }
 
 func (a *API) Build(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]string{"version": Version, "revision": BuildRevision})
+	writeJSON(w, 200, a.buildInfo())
 }
 
 func (a *API) waitCommand(w http.ResponseWriter, r *http.Request, cmd loop.Command) {

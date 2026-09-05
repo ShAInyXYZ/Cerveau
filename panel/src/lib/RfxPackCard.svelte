@@ -3,6 +3,7 @@
   import { Zap, Play, ChevronDown, ChevronUp, Loader, CircleAlert, Sparkles } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
   import { jpost } from './api';
+  import PackSource from './PackSource.svelte';
 
   // RfxPackCard — one talent pack's cockpit in the RFX dock (docs-private/RFX-UI.md).
   // Chrome is shared and fixed; content is the pack's ui: widget list,
@@ -184,6 +185,7 @@
     {#if open}<ChevronUp size={13} />{:else}<ChevronDown size={13} />{/if}
   </button>
 
+  <PackSource {pack} />
   {#if open}
     <div class="pbody">
       {#each groups as g, gi (gi)}

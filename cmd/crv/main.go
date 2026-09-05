@@ -33,7 +33,15 @@ import (
 func main() {
 	configPath := flag.String("config", config.DefaultPath(), "path to config.json")
 	versionOnly := flag.Bool("version", false, "print build identity without starting services")
+	buildInfoOnly := flag.Bool("build-info", false, "print JSON build identity without loading config or starting services")
 	flag.Parse()
+	if *buildInfoOnly {
+		if err := json.NewEncoder(os.Stdout).Encode(api.BinaryBuildInfo()); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *versionOnly {
 		fmt.Printf("Cerveau %s LABRIG (%s)\n", api.Version, api.BuildRevision)
 		return
@@ -238,7 +246,7 @@ func main() {
 		}
 		_, ok := (*currentReg).Entry(name)
 		return ok
-	})
+	}, rfx.WithBuiltinPlanner())
 	for _, le := range rfxLoader.Errors() {
 		slog.Warn("rfx: manifest rejected", "file", le.Path, "err", le.Err)
 	}

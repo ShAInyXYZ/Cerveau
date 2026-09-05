@@ -89,9 +89,10 @@ func (c *client) cmdRfx(args []string) error {
 }
 
 func rfxList() error {
-	l := rfx.NewLoader(rfxDir(), knownCoreTool)
+	l := rfx.NewLoader(rfxDir(), knownCoreTool, rfx.WithBuiltinPlanner())
 	packDesc := map[string]string{}
-	for _, p := range l.Packs() {
+	packs := l.Packs()
+	for _, p := range packs {
 		packDesc[p.Pack] = p.Description
 	}
 	groups := map[string][]rfx.Reflex{}
@@ -105,6 +106,11 @@ func rfxList() error {
 			order = append(order, g)
 		}
 		groups[g] = append(groups[g], d)
+	}
+	for _, p := range packs {
+		if p.Panel != "" && len(groups[p.Pack]) == 0 {
+			fmt.Printf("\n%s v%s · %s · supervisor\n  %s\n", p.Pack, p.Version, p.Origin, p.Description)
+		}
 	}
 	for _, g := range order {
 		fmt.Printf("\n%s\n", g)
@@ -125,14 +131,14 @@ func rfxList() error {
 	for _, e := range l.Errors() {
 		fmt.Printf("REJECTED %s: %v\n", filepath.Base(e.Path), e.Err)
 	}
-	if len(l.All()) == 0 && len(l.Errors()) == 0 {
+	if len(l.All()) == 0 && len(packs) == 0 && len(l.Errors()) == 0 {
 		fmt.Println("(no reflexes in " + rfxDir() + ")")
 	}
 	return nil
 }
 
 func rfxSetEnabled(name string, enabled bool) error {
-	l := rfx.NewLoader(rfxDir(), knownCoreTool)
+	l := rfx.NewLoader(rfxDir(), knownCoreTool, rfx.WithBuiltinPlanner())
 	if err := l.SetEnabled(name, enabled); err != nil {
 		return err
 	}
@@ -145,7 +151,7 @@ func rfxSetEnabled(name string, enabled bool) error {
 }
 
 func rfxShow(name string) error {
-	l := rfx.NewLoader(rfxDir(), knownCoreTool)
+	l := rfx.NewLoader(rfxDir(), knownCoreTool, rfx.WithBuiltinPlanner())
 	d, ok := l.Get(name)
 	if !ok {
 		return fmt.Errorf("no valid reflex named %q (check 'crvcli rfx list' for rejections)", name)
@@ -212,7 +218,7 @@ func rfxRemove(name string) error {
 	path := filepath.Join(rfxDir(), name+".rfx.yaml")
 	if _, err := os.Stat(path); err != nil {
 		// Pack-aware: resolve through the loader.
-		l := rfx.NewLoader(rfxDir(), knownCoreTool)
+		l := rfx.NewLoader(rfxDir(), knownCoreTool, rfx.WithBuiltinPlanner())
 		d, ok := l.Get(name)
 		if !ok {
 			return fmt.Errorf("no reflex file for %q (check 'crvcli rfx list')", name)
@@ -233,7 +239,7 @@ func rfxTest(target string) error {
 		path = filepath.Join(rfxDir(), target+".rfx.yaml")
 		if _, err := os.Stat(path); err != nil {
 			// Not standalone — resolve through the loader (pack-aware).
-			l := rfx.NewLoader(rfxDir(), knownCoreTool)
+			l := rfx.NewLoader(rfxDir(), knownCoreTool, rfx.WithBuiltinPlanner())
 			d, ok := l.Get(target)
 			if !ok {
 				return fmt.Errorf("no reflex named %q (check 'crvcli rfx list')", target)

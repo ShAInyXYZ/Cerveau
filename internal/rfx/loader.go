@@ -31,17 +31,22 @@ type Loader struct {
 	dir   string
 	known KnownTool
 
-	mu       sync.RWMutex
-	reflexes []Reflex
-	packs    []Pack
-	disabled map[string]bool
-	notices  []string
-	errors   []LoadError
-	scanned  time.Time
+	mu             sync.RWMutex
+	reflexes       []Reflex
+	packs          []Pack
+	disabled       map[string]bool
+	notices        []string
+	errors         []LoadError
+	scanned        time.Time
+	builtinPlanner bool
 }
 
-func NewLoader(dir string, known KnownTool) *Loader {
-	return &Loader{dir: dir, known: known}
+func NewLoader(dir string, known KnownTool, options ...LoaderOption) *Loader {
+	l := &Loader{dir: dir, known: known}
+	for _, option := range options {
+		option(l)
+	}
+	return l
 }
 
 // List returns the valid, ENABLED reflexes — the set that enters the grammar.
@@ -79,7 +84,11 @@ func (l *Loader) Packs() []Pack {
 	l.refresh(false)
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return append([]Pack{}, l.packs...)
+	out := append([]Pack{}, l.packs...)
+	for i := range out {
+		out[i].IgnoredInstalled = append([]IgnoredInstalledPack{}, out[i].IgnoredInstalled...)
+	}
+	return out
 }
 
 // Notices returns non-fatal observations (e.g. a folder without pack.yaml).
@@ -168,6 +177,16 @@ func (l *Loader) refresh(force bool) {
 	l.notices = nil
 	l.errors = nil
 	l.disabled = l.loadStateLocked()
+	// Seed the application-owned UI before scanning: a fresh install with no
+	// external RFX directory still has its exact matching Planner.
+	if l.builtinPlanner {
+		p, err := BuiltinPlanner()
+		if err != nil {
+			l.errors = append(l.errors, LoadError{"builtin:planner/pack.yaml", err})
+		} else {
+			l.packs = append(l.packs, p)
+		}
+	}
 
 	entries, err := os.ReadDir(l.dir)
 	if err != nil {
@@ -183,6 +202,12 @@ func (l *Loader) refresh(force bool) {
 	var pendingPacks []Pack
 	for _, e := range entries {
 		name := e.Name()
+		// Reserve the installed path even when its manifest is malformed or
+		// missing. Never load reflexes smuggled into a shadowed Planner copy.
+		if l.builtinPlanner && name == "planner" {
+			l.ignoreInstalledPlanner(filepath.Join(l.dir, name), "")
+			continue
+		}
 		if !e.IsDir() {
 			if strings.HasSuffix(name, ".rfx.yaml") {
 				files = append(files, candidate{filepath.Join(l.dir, name), ""})
@@ -201,10 +226,16 @@ func (l *Loader) refresh(force bool) {
 			l.errors = append(l.errors, LoadError{packYAML, err})
 			continue
 		}
+		// A renamed directory cannot bypass the built-in identity's ownership.
+		if l.builtinPlanner && p.Pack == "planner" {
+			l.ignoreInstalledPlanner(packDir, p.Version)
+			continue
+		}
 		if err := ValidatePack(p); err != nil {
 			l.errors = append(l.errors, LoadError{packYAML, err})
 			continue
 		}
+		p.Origin = "installed"
 		// Discover the custom panel (RFX-UI tier 2): ui/panel.html, size-capped.
 		if fi, err := os.Stat(filepath.Join(packDir, "ui", "panel.html")); err == nil && !fi.IsDir() {
 			if fi.Size() <= MaxPanelBytes {

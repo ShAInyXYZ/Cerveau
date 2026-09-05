@@ -3,6 +3,7 @@
   import { Zap, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
   import { j, jpost, ApiError } from './api';
+  import PackSource from './PackSource.svelte';
 
   // RfxCustomPanel — RFX-UI tier 2: the pack ships its own ui/panel.html
   // (any HTML/CSS/JS) rendered in a SANDBOXED iframe. Full presentation
@@ -232,6 +233,7 @@
     {#if open}<ChevronUp size={13} />{:else}<ChevronDown size={13} />{/if}
   </button>
 
+  <PackSource {pack} />
   {#if open}
     {#if pendingDanger}
       <div class="danger-strip">

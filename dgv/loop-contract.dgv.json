@@ -17,7 +17,7 @@
       },
       "size": {
         "width": 664,
-        "height": 594
+        "height": 639
       }
     },
     {
@@ -68,7 +68,7 @@
       "kind": "ui",
       "label": "Chat · CLI · RFX",
       "sublabel": "one command and state contract",
-      "note": "Canonical snapshots remain authoritative. Follow-up 1: ErrorChime wired in session store; session/run/event-scoped chime+dismissal. Five red-before/green-after store regressions cover hydration/reload/switch/repeat/reconnect/new run/late responses; 55 Vitest tests pass.",
+      "note": "Canonical snapshots and session/run/event incident chime tested. First-party Planner now embedded in executable; built-in identity wins, installed copies untouched, other RFX remain external. Pack cards and /api/build show origin/digest/precedence/loaded state/ignored copies. Full race+vet, 58 Vitest, 2 packaging tests pass; actual live controls remain follow-up 5.",
       "frame": "surface",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -1756,6 +1756,44 @@
           "field": "note",
           "from": "Follow-up 3 cleanup: remove unreachable filesystem reconciliation helpers. Ke…",
           "to": "Snapshot drives run/plan/report/current errors from one prefix. Follow-up 3 r…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:28:56.875Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Canonical snapshots remain authoritative. Follow-up 1: ErrorChime wired in se…",
+          "to": "Follow-up 4: embed first-party Planner canonical repo bytes with executable; …"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:38:17.104Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 4: embed first-party Planner canonical repo bytes with executable; …",
+          "to": "Canonical snapshots and session/run/event incident chime tested. First-party …"
         },
         {
           "field": "status",

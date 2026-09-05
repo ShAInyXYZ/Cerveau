@@ -22,15 +22,18 @@ type rfxReflexView struct {
 }
 
 type rfxPackView struct {
-	Name        string     `json:"name"`
-	Version     string     `json:"version"`
-	Author      string     `json:"author"`
-	Description string     `json:"description"`
-	Icon        string     `json:"icon,omitempty"`
-	HasPanel    bool       `json:"has_panel,omitempty"`
-	UIOnly      bool       `json:"ui_only,omitempty"`
-	Docs        []string   `json:"docs"`
-	UI          rfx.PackUI `json:"ui,omitempty"`
+	Name             string                     `json:"name"`
+	Version          string                     `json:"version"`
+	Author           string                     `json:"author"`
+	Description      string                     `json:"description"`
+	Icon             string                     `json:"icon,omitempty"`
+	HasPanel         bool                       `json:"has_panel,omitempty"`
+	UIOnly           bool                       `json:"ui_only,omitempty"`
+	Docs             []string                   `json:"docs"`
+	UI               rfx.PackUI                 `json:"ui,omitempty"`
+	Origin           string                     `json:"origin"`
+	ContentSHA256    string                     `json:"content_sha256,omitempty"`
+	IgnoredInstalled []rfx.IgnoredInstalledPack `json:"ignored_installed"`
 }
 
 // ListRfx serves the Settings → RFX section: packs, reflexes with on/OFF
@@ -50,7 +53,11 @@ func (a *API) ListRfx(w http.ResponseWriter, r *http.Request) {
 	}
 	packs := []rfxPackView{}
 	for _, p := range a.rfxLoader.Packs() {
-		packs = append(packs, rfxPackView{p.Pack, p.Version, p.Author, p.Description, p.Icon, p.Panel != "", uiOnly[p.Pack], p.Docs, p.UI})
+		packs = append(packs, rfxPackView{
+			Name: p.Pack, Version: p.Version, Author: p.Author, Description: p.Description,
+			Icon: p.Icon, HasPanel: p.Panel != "", UIOnly: uiOnly[p.Pack], Docs: p.Docs, UI: p.UI,
+			Origin: p.Origin, ContentSHA256: p.ContentSHA256, IgnoredInstalled: p.IgnoredInstalled,
+		})
 	}
 	reflexes := []rfxReflexView{}
 	for _, d := range a.rfxLoader.All() {

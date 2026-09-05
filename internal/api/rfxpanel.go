@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"os"
 	"strings"
 
 	"cerveau/internal/rfx"
@@ -188,7 +187,7 @@ func (a *API) PanelRfx(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("pack")
 	for _, p := range a.rfxLoader.Packs() {
 		if p.Pack == name && p.Panel != "" {
-			data, err := os.ReadFile(p.Panel)
+			data, err := p.ReadPanel()
 			if err != nil || len(data) > rfx.MaxPanelBytes {
 				http.NotFound(w, r)
 				return

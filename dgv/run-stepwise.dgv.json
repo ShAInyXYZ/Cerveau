@@ -35,12 +35,12 @@
       "id": "plan",
       "label": "1 · Plan — once per task",
       "position": {
-        "x": 396,
+        "x": 400,
         "y": 0
       },
       "size": {
-        "width": 1004,
-        "height": 514
+        "width": 348,
+        "height": 985
       }
     },
     {
@@ -48,12 +48,12 @@
       "id": "drive",
       "label": "2 · Drive — the new part: who decides what runs next",
       "position": {
-        "x": 1532,
+        "x": 888,
         "y": 0
       },
       "size": {
-        "width": 680,
-        "height": 743
+        "width": 656,
+        "height": 740
       }
     },
     {
@@ -61,12 +61,12 @@
       "id": "run",
       "label": "3 · Run — one step, start to verdict",
       "position": {
-        "x": 2344,
+        "x": 1684,
         "y": 0
       },
       "size": {
-        "width": 1004,
-        "height": 668
+        "width": 656,
+        "height": 883
       }
     },
     {
@@ -74,12 +74,12 @@
       "id": "record",
       "label": "4 · Record — what makes progress real",
       "position": {
-        "x": -4,
-        "y": 879
+        "x": 2480,
+        "y": 0
       },
       "size": {
-        "width": 1004,
-        "height": 345
+        "width": 348,
+        "height": 729
       }
     },
     {
@@ -87,12 +87,12 @@
       "id": "show",
       "label": "5 · Show",
       "position": {
-        "x": 1132,
-        "y": 879
+        "x": 0,
+        "y": 1125
       },
       "size": {
-        "width": 680,
-        "height": 548
+        "width": 656,
+        "height": 616
       }
     }
   ],
@@ -123,7 +123,7 @@
       "path": "internal/loop/loop.go",
       "position": {
         "x": 444,
-        "y": 173
+        "y": 60
       },
       "note": "Bounded planning requires structured commit_plan with executable criteria; malformed/missing plans suspend, no prose execution fallback. Answer-only uses same runner."
     },
@@ -139,8 +139,8 @@
       "tech": "Go",
       "status": "done",
       "position": {
-        "x": 768,
-        "y": 60
+        "x": 444,
+        "y": 305
       },
       "path": "internal/plan/verify.go"
     },
@@ -154,8 +154,8 @@
       "frame": "plan",
       "status": "done",
       "position": {
-        "x": 1092,
-        "y": 180
+        "x": 444,
+        "y": 775
       },
       "note": "Immutable plan event identity and full plan.state snapshots; latest-plan reducer never inherits older indexed checkpoints."
     },
@@ -171,8 +171,8 @@
       "tech": "Go",
       "status": "done",
       "position": {
-        "x": 1580,
-        "y": 228
+        "x": 1076,
+        "y": 60
       },
       "path": "internal/loop/supervisor.go"
     },
@@ -188,8 +188,8 @@
       "tech": "Go + one model call",
       "status": "done",
       "position": {
-        "x": 1904,
-        "y": 289
+        "x": 1240,
+        "y": 290
       },
       "path": "internal/loop/stepprompt.go"
     },
@@ -205,8 +205,8 @@
       "tech": "Go",
       "status": "done",
       "position": {
-        "x": 1904,
-        "y": 60
+        "x": 932,
+        "y": 403
       }
     },
     {
@@ -221,8 +221,8 @@
       "tech": "Go",
       "status": "done",
       "position": {
-        "x": 2392,
-        "y": 168
+        "x": 1882,
+        "y": 60
       },
       "path": "internal/loop/autopilot.go"
     },
@@ -238,8 +238,8 @@
       "tech": "Go",
       "status": "done",
       "position": {
-        "x": 2716,
-        "y": 60
+        "x": 1728,
+        "y": 410
       },
       "path": "internal/loop/verifyrun.go"
     },
@@ -255,8 +255,8 @@
       "status": "done",
       "path": "internal/tools",
       "position": {
-        "x": 2716,
-        "y": 379
+        "x": 2036,
+        "y": 425
       },
       "note": "Chat and steps share prepareRunRegistry; one matching, registration-error and cached capability contract. Tests cover actual session-scoped skill read/write with distinct global root, original+current plan skills, no completed-task bleed, rejected partial RFX registrations and one-time load evidence. Full race suite and vet pass."
     },
@@ -270,8 +270,8 @@
       "frame": "run",
       "status": "done",
       "position": {
-        "x": 3040,
-        "y": 264
+        "x": 1882,
+        "y": 745
       }
     },
     {
@@ -285,8 +285,8 @@
       "frame": "record",
       "status": "done",
       "position": {
-        "x": 44,
-        "y": 952
+        "x": 2524,
+        "y": 60
       }
     },
     {
@@ -299,8 +299,8 @@
       "frame": "record",
       "status": "done",
       "position": {
-        "x": 368,
-        "y": 988
+        "x": 2524,
+        "y": 290
       }
     },
     {
@@ -321,8 +321,8 @@
       "tech": "Go",
       "status": "done",
       "position": {
-        "x": 692,
-        "y": 939
+        "x": 2524,
+        "y": 448
       },
       "note": "ReducePlan remains sole completion authority, no filesystem-based pass inference. Removed unused reconciliation helpers and corrected inverse test wording. Existing file-presence regressions retained; targeted race tests pass before/after cleanup."
     },
@@ -338,8 +338,8 @@
       "tech": "Svelte 5",
       "status": "done",
       "position": {
-        "x": 1180,
-        "y": 1168
+        "x": 352,
+        "y": 1208
       },
       "path": "panel/src/lib/chat/PlanStrip.svelte"
     },
@@ -350,18 +350,21 @@
       "kind": "ui",
       "label": "RFX Planner panel",
       "sublabel": "ADVANCED surface · calls runStep(), no longer writes prompts",
-      "note": "Repo Planner1.5.0 built withserver-owned whole/selected scope andcanonicalpendingstates. Noautomaticbrowserrestarts. Host+pack not installed; deployment remains open.",
+      "note": "Planner1.5.0 embedded from canonical rfx/planner assets; built-in-wins identity and version/digest/origin/ignored copies visible. Missing/old/equal/new/malformed/renamed/multiple installed copies tested; all untouched, other packs preserved. CLI/server/API wired and packaged atomically without separate archive. Source+automated gates done; real-Core whole/selected acceptance follows.",
       "frame": "show",
       "tech": "HTML in a sandboxed iframe",
-      "status": "wip",
+      "status": "done",
       "position": {
-        "x": 1180,
-        "y": 939
+        "x": 44,
+        "y": 1185
       },
       "path": [
-        "rfx/planner/pack.yaml",
-        "rfx/planner/ui/panel.html",
-        "panel/src/lib/RfxCustomPanel.svelte"
+        "rfx/planner",
+        "internal/rfx/builtin.go",
+        "internal/api/rfxpanel.go",
+        "internal/api/build.go",
+        "panel/src/lib/RfxCustomPanel.svelte",
+        "panel/src/lib/PackSource.svelte"
       ]
     },
     {
@@ -383,8 +386,8 @@
       "tech": "Go net/http",
       "status": "done",
       "position": {
-        "x": 1504,
-        "y": 1048
+        "x": 198,
+        "y": 1505
       },
       "path": "internal/api/api.go"
     }
@@ -1953,6 +1956,44 @@
           "field": "status",
           "from": "wip",
           "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:28:56.880Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Repo Planner1.5.0 built withserver-owned whole/selected scope andcanonicalpen…",
+          "to": "Follow-up 4: canonical rfx/planner embedded into host, built-in wins over all…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:38:17.110Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 4: canonical rfx/planner embedded into host, built-in wins over all…",
+          "to": "Planner1.5.0 embedded from canonical rfx/planner assets; built-in-wins identi…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "rfx/planner/pack.yaml, rfx/planner/ui/panel.html, panel/src/lib/RfxCustomPanel.svelte",
+          "to": "rfx/planner, internal/rfx/builtin.go, internal/api/rfxpanel.go, internal/api/build.go, panel/src/lib/RfxCustomPanel.svelte, panel/src/lib/PackSource.svelte"
         }
       ]
     }
