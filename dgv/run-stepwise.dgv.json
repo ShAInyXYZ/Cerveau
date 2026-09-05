@@ -2,8 +2,8 @@
   "dgv": 1,
   "meta": {
     "title": "Stepwise runs — one step, one run, one verdict",
-    "description": "The plan becomes the execution unit: each step gets its own generated prompt and its own run, verified against that step's own criteria before the next starts. A step that needs earlier work reopens it as rev_n and resumes. The mechanism lives in the CORE and both surfaces drive it — the native strip simply, the RFX planner with every control exposed.",
-    "updated": "2026-09-04",
+    "description": "The plan is the execution unit. Read first, then a FORCED commit_plan with a check per step; the supervisor runs one step per run in the session's workspace, judges it by its own check, records a checkpoint, and only a pass advances. Proven 2026-09-05 on \"improve our car game\": 11 steps, 11 passed, 0 failed, 7 min. Both surfaces drive it through one step-control API.",
+    "updated": "2026-09-05",
     "colorBy": "kind",
     "driftIgnore": [
       "android",
@@ -40,7 +40,7 @@
       },
       "size": {
         "width": 1004,
-        "height": 865
+        "height": 925
       }
     },
     {
@@ -53,7 +53,7 @@
       },
       "size": {
         "width": 680,
-        "height": 908
+        "height": 1043
       }
     },
     {
@@ -66,7 +66,7 @@
       },
       "size": {
         "width": 1004,
-        "height": 712
+        "height": 742
       }
     },
     {
@@ -125,7 +125,7 @@
         "x": 444,
         "y": 246
       },
-      "note": "Rewritten 2026-09-04 after four live failures, each a different bug:\n\n1. commit_plan was registered for discussion only, so every autopilot planning call offered an EMPTY tool list. The model never wrote plans as prose out of habit — it had no tool to call. Fixed in cmd/crv/main.go; the gate now refuses to force an empty offer and says so.\n\n2. \"Improve our car game\" cannot be planned without reading it. The gate offered only commit_plan, and the model reasoned itself into a corner and emitted nothing. It may now read — file_map and glob free, four reads — then the call is FORCED via tool_choice, which vLLM honours with guided decoding. Narrowing the offer alone was toothless: the model called read and glob from memory anyway.\n\n3. The shared SessionContext was overwritten by every chat request. A turn typed in ccar while another session was planning made that session's commit_plan write into ccar. The session id now rides the run's context.\n\n4. A landed plan was pasted into the system prompt as guidance and the SAME turn carried on. It now hands off to runPlanFrom.\n\nLive (improve-ctx): orientation → 3 reads → forced commit in 31 s → 10 steps, each its own file, each with a real check, in the right session."
+      "note": "Rewritten 2026-09-04/05 after seven live failures, each a different bug:\n\n1. commit_plan was registered for discussion only — every autopilot planning call offered an EMPTY tool list. The model never wrote plans as prose out of habit; it had no tool to call.\n2. \"Improve our car game\" cannot be planned without reading it. It may now read — orientation free, four reads — then the call is FORCED via tool_choice (guided decoding). Narrowing the offer alone was toothless.\n3. The shared SessionContext was overwritten by every chat request; a commit from one session landed in another. The id rides the run's context now.\n4. A landed plan was pasted in as guidance and the same turn carried on. It hands off to the supervisor.\n5. The step runner used the global registry; a step wrote into the wrong tree and failed its own check.\n6. An overrun step was marked failed with its check never run. The check decides.\n7. An empty steps array was a legal exit under forced decoding; steps and files are required with minItems 1. And the model needs three tries to write a real check, not two.\n\nFINAL (improve-rejects3, 2026-09-05 00:05): read → forced commit on the FIRST try (11 steps, real checks) → hand-off → 11 checkpoints, every step built in the session workspace and passed its own check, the last an eval on the served page → 11 done, 0 failed, 0 skipped, 7 min 6 s. GET /plan: done."
     },
     {
       "ports": [],
@@ -165,7 +165,7 @@
       "kind": "service",
       "label": "Step supervisor",
       "sublabel": "owns the cursor: which step, which revision, what next",
-      "note": "The piece that does not exist today. It holds the step cursor, starts one run per step, reads each verdict and decides: advance, retry this step, or reopen an earlier one. It never writes code itself — it only decides what the next run is asked to do.\n\nIt is also the natural home for the turn budget: a stall or a loop ends THIS step's run, not the whole task, so the other steps still get their chance.",
+      "note": "The piece that did not exist. It holds the step cursor, starts one run per step, reads each verdict and decides: advance, retry, or reopen an earlier one. It never writes code — it decides what the next run is asked to do.\n\nRebuilt from the event log on every call rather than held in memory, so a panel button, a CLI call and a resumed session all see the same state.\n\nProven live 2026-09-05: eleven advances in a row, each on an observed check, ending in done.",
       "frame": "drive",
       "tech": "Go",
       "status": "done",
@@ -181,8 +181,8 @@
       "id": "promptgen",
       "kind": "module",
       "label": "Step prompt writer",
-      "sublabel": "the prompt for ONE step, carrying its check verbatim",
-      "note": "Assembled from committed facts rather than generated prose, so the prompt cannot drift from the plan it claims to execute. It carries the step, its files, its check quoted verbatim, and — as context — only the steps already VERIFIED. A failed step never appears as ground truth.\n\nThe user's original prompt is used once, to plan, and never re-injected. Re-injecting it into every iteration is what let one run wander across the whole task.",
+      "sublabel": "the prompt for ONE step · its check verbatim · the SOURCE the plan was made from",
+      "note": "Assembled from committed facts rather than generated prose, so the prompt cannot drift from the plan it claims to execute. It carries the step, its files, its check quoted verbatim, only the steps already VERIFIED as context — and, since 2026-09-04, the source the model read while planning.\n\nA step starts with a fresh window. Without the planning reads the model had never seen the file it was told to split: it re-read all 435 lines, which alone spent the four iterations it had, and never reached a write — no writes at all in two attempts (improve-overrun). The reads that informed the plan now ride into every step as a tool-result item, capped at 40k chars, with the instruction not to re-read.\n\nThe user's original prompt is used once, to plan, and never re-injected.",
       "frame": "drive",
       "tech": "Go + one model call",
       "status": "done",
@@ -214,8 +214,8 @@
       "id": "steprun",
       "kind": "worker",
       "label": "Step run",
-      "sublabel": "one step · its own prompt · the SESSION's registry · judged by its check even if it overruns",
-      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose: a step run by a button must obey exactly the same rules as a step run by autopilot, or the surfaces drift apart again.\n\nTwo rules learned live on 2026-09-04:\n\n• It runs in the SESSION's registry, jailed to the session's workspace. It used the global one, which is whatever the panel last pointed the core at: the first hand-off run wrote js/config.js twice, successfully, into another tree, and its own check — which reads the session workspace — found no such file.\n\n• Its CHECK decides, not its exit. The model wrote js/input.js, then kept reading instead of stopping, hit the iteration cap, and the step was marked failed with the check never run. Now an overrun still runs the check; a satisfied check is done however the run ended. Only a user kill skips it — nothing was allowed to finish.",
+      "sublabel": "one step · SESSION registry · up to 10 iterations · judged by its check even if it overruns",
+      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose: a step run by a button must obey exactly the same rules as a step run by autopilot, or the surfaces drift apart again.\n\nThree rules learned live on 2026-09-04:\n\n• It runs in the SESSION's registry, jailed to the session's workspace. It used the global one, which is whatever the panel last pointed the core at: the first hand-off run wrote js/config.js twice, successfully, into another tree, and its own check found no such file.\n\n• Its CHECK decides, not its exit. The model wrote js/input.js, then kept reading instead of stopping, hit the cap, and the step was marked failed with the check never run. An overrun still runs the check; a satisfied check is done. Only a user kill skips it.\n\n• The cap is 10 iterations, up from 4. Four cannot fit \"read the source, then write\", and the loop guards — repeat, idle, error — are what catch a circling step; the cap is only the backstop.",
       "frame": "run",
       "tech": "Go",
       "status": "done",
@@ -1515,6 +1515,76 @@
           "field": "sublabel",
           "from": "run the step's own check · pass / fail, with evidence · fails CLOSED",
           "to": "run the step's own check · pass / fail, with evidence · fails CLOSED · sessio…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T23:55:53.306Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "the prompt for ONE step, carrying its check verbatim",
+          "to": "the prompt for ONE step · its check verbatim · the SOURCE the plan was made from"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-04T23:55:53.306Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "one step · its own prompt · the SESSION's registry · judged by its check even…",
+          "to": "one step · SESSION registry · up to 10 iterations · judged by its check even …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T00:13:40.408Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Rewritten 2026-09-04 after four live failures, each a different bug:\n\n1. comm…",
+          "to": "Rewritten 2026-09-04/05 after seven live failures, each a different bug:\n\n1. …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T00:13:40.408Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "The piece that does not exist today. It holds the step cursor, starts one run…",
+          "to": "The piece that did not exist. It holds the step cursor, starts one run per st…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T00:13:40.408Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "The plan becomes the execution unit: each step gets its own generated prompt …",
+          "to": "The plan is the execution unit. Read first, then a FORCED commit_plan with a …"
         }
       ]
     }
