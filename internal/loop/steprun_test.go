@@ -3,6 +3,8 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -240,5 +242,95 @@ func TestStepThatOverrunsIsStillJudgedByItsCheck(t *testing.T) {
 	}
 	if !strings.Contains(res.Reply, "1 done") {
 		t.Errorf("report should count it done:\n%s", res.Reply)
+	}
+}
+
+// A retry must be told why the last attempt failed. The harness caught a
+// TypeError at the cap and recorded it; the retry's fresh window never saw
+// it and the model edited blind.
+func TestRetryCarriesTheFailedVerdict(t *testing.T) {
+	ws := t.TempDir()
+	var bodies []string
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		calls++
+		choice := map[string]any{"message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"}
+		if calls == 1 { // attempt 1 writes the file WITHOUT the symbol, then stops
+			choice = map[string]any{"message": map[string]any{"role": "assistant", "content": nil, "tool_calls": []map[string]any{{
+				"id": "w", "type": "function", "function": map[string]any{"name": "write", "arguments": `{"path":"a.js","content":"// nothing yet"}`}}}},
+				"finish_reason": "tool_calls"}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{choice}, "usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1}})
+	}))
+	defer srv.Close()
+	eventsPath := filepath.Join(ws, "sessions", "s1", "events.jsonl")
+	os.MkdirAll(filepath.Dir(eventsPath), 0o755)
+	wr, _ := episodic.Open(eventsPath)
+	wr.Append(episodic.Plan, map[string]any{"title": "P", "steps": []map[string]any{{"title": "a", "files": []string{"a.js"},
+		"verify": map[string]any{"kind": "contains", "file": "a.js", "symbol": "export const PHYSICS"}}}})
+	wr.Close()
+	open := func(id string) (*episodic.Writer, error) { return episodic.Open(eventsPath) }
+	reg := tools.NewRegistry(tools.Entry{Tool: tools.NewWrite(ws), RiskTier: tools.RiskSafe})
+	l := New(llm.NewClient(srv.URL), reg, open, func(string) string { return eventsPath }, nil)
+	l.SetWorkspaceFunc(func(string) string { return ws })
+
+	l.RunAutopilot(context.Background(), "s1")
+
+	var retry string
+	for _, b := range bodies {
+		if strings.Contains(b, "FAILED its check") {
+			retry = b
+			break
+		}
+	}
+	if retry == "" {
+		t.Fatal("the retry must be told the previous attempt failed its check")
+	}
+	if !strings.Contains(retry, "export const PHYSICS") || !strings.Contains(retry, "does not contain") {
+		t.Errorf("the retry must carry the check and what was observed")
+	}
+}
+
+// A step that keeps changing the workspace earns more iterations; one that
+// hits the cap while still landing edits must not die at eight.
+func TestStepEarnsIterationsWhileItIsChanging(t *testing.T) {
+	ws := t.TempDir()
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		choice := map[string]any{"message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"}
+		if calls <= 12 { // 12 distinct edits, the last satisfying the check
+			content := fmt.Sprintf("// edit %d", calls)
+			if calls == 12 {
+				content = "export const PHYSICS = {};"
+			}
+			choice = map[string]any{"message": map[string]any{"role": "assistant", "content": nil, "tool_calls": []map[string]any{{
+				"id": "w", "type": "function", "function": map[string]any{"name": "write",
+					"arguments": fmt.Sprintf(`{"path":"a.js","content":%q}`, content)}}}},
+				"finish_reason": "tool_calls"}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{choice}, "usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1}})
+	}))
+	defer srv.Close()
+	eventsPath := filepath.Join(ws, "sessions", "s1", "events.jsonl")
+	os.MkdirAll(filepath.Dir(eventsPath), 0o755)
+	wr, _ := episodic.Open(eventsPath)
+	wr.Append(episodic.Plan, map[string]any{"title": "P", "steps": []map[string]any{{"title": "a", "files": []string{"a.js"},
+		"verify": map[string]any{"kind": "contains", "file": "a.js", "symbol": "export const PHYSICS"}}}})
+	wr.Close()
+	open := func(id string) (*episodic.Writer, error) { return episodic.Open(eventsPath) }
+	reg := tools.NewRegistry(tools.Entry{Tool: tools.NewWrite(ws), RiskTier: tools.RiskSafe})
+	l := New(llm.NewClient(srv.URL), reg, open, func(string) string { return eventsPath }, nil)
+	l.SetWorkspaceFunc(func(string) string { return ws })
+
+	l.RunAutopilot(context.Background(), "s1")
+	st, _ := l.PlanStateOf("s1")
+	if st == nil || st.Steps[0].Status != "passed" {
+		t.Errorf("a step still landing edits past the cap should be extended and finish: %+v", st)
+	}
+	if calls < 13 {
+		t.Errorf("expected the step to be allowed past 8 iterations, model saw %d calls", calls)
 	}
 }

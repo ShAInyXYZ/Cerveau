@@ -315,9 +315,20 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 	// means plan-only; "autopilot" and "always" now reach the steps.
 	level := l.thinkingFor(mode.Name)
 	lastText := ""
-	for i := 1; i <= maxStepIterations; i++ {
+	// Iterations measure effort, not stuckness. A step reading a 566-line
+	// file in chunks and then editing it four times is at the cap before it
+	// has run its own check; the repeat, idle and error guards catch genuine
+	// spinning. Like the chat loop, a step whose workspace is still changing
+	// earns another slice, up to maxIterExtensions.
+	extFP, _ := work.fingerprint()
+	for i := 1; ; i++ {
 		fp, _ := work.fingerprint()
 		g.observeWorkspace(fp)
+		if i > g.maxIter+g.iterExts*g.maxIter && fp != extFP && g.extendIter() {
+			extFP = fp
+			wr.Append(episodic.Note, map[string]string{"kind": "iteration_checkpoint",
+				"text": fmt.Sprintf("step iteration cap reached while the workspace is still changing — extended (%d/%d)", g.iterExts, maxIterExtensions)})
+		}
 		// Same checkpoint-instead-of-death as the chat loop: a step that
 		// builds several files legitimately spends more than one budget slice.
 		if g.tokensExhausted() && g.extendTokens() {
@@ -606,8 +617,16 @@ func stepRunContext(sup *Supervisor, idx int, steer string) string {
 	if c := StepContext(sup); c != "" {
 		parts = append(parts, c)
 	}
-	if st := sup.Steps[idx]; st.Rev > 0 && st.Verdict != nil {
-		parts = append(parts, st.Verdict.Evidence)
+	// The last attempt's verdict, whether this is a retry or a revision. A
+	// retry used to start blind: the harness ran the check at the cap, saw
+	// "Uncaught TypeError: Cannot read properties of undefined (reading 'x')"
+	// 2,128 times in the console, recorded it in the checkpoint — and the
+	// next attempt's fresh window never heard of it. The model re-read its
+	// file, edited blind, and ran out again (NFQ step 4, 2026-09-05).
+	if st := sup.Steps[idx]; st.Verdict != nil && !st.Verdict.Pass {
+		parts = append(parts, "Your previous attempt at this step FAILED its check: "+st.Verdict.Check+
+			"\nWhat was observed: "+clipEvidence(st.Verdict.Evidence)+
+			"\nFix that before anything else, then run the check yourself before you stop.")
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -674,12 +693,6 @@ func clipEvidence(s string) string {
 	}
 	return s
 }
-
-// maxStepIterations bounds one step's run. It was 4, which a step that must
-// read a 435-line file before writing cannot fit. The loop guards — repeat,
-// idle, error — are what catch a step that is circling; the cap is only the
-// backstop, so it can be generous.
-const maxStepIterations = 10
 
 // planningSourcesCap bounds how much read material rides into each step.
 const planningSourcesCap = 40000
