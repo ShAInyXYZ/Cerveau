@@ -66,7 +66,7 @@
       },
       "size": {
         "width": 1004,
-        "height": 742
+        "height": 862
       }
     },
     {
@@ -214,8 +214,8 @@
       "id": "steprun",
       "kind": "worker",
       "label": "Step run",
-      "sublabel": "one step · SESSION registry · up to 10 iterations · judged by its check even if it overruns",
-      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose: a step run by a button must obey exactly the same rules as a step run by autopilot, or the surfaces drift apart again.\n\nThree rules learned live on 2026-09-04:\n\n• It runs in the SESSION's registry, jailed to the session's workspace. It used the global one, which is whatever the panel last pointed the core at: the first hand-off run wrote js/config.js twice, successfully, into another tree, and its own check found no such file.\n\n• Its CHECK decides, not its exit. The model wrote js/input.js, then kept reading instead of stopping, hit the cap, and the step was marked failed with the check never run. An overrun still runs the check; a satisfied check is done. Only a user kill skips it.\n\n• The cap is 10 iterations, up from 4. Four cannot fit \"read the source, then write\", and the loop guards — repeat, idle, error — are what catch a circling step; the cap is only the backstop.",
+      "sublabel": "one step · SESSION registry · THINK level honoured · workspace-aware repeat guard · judged by its check",
+      "note": "The existing agent loop, scoped to one step. Autopilot and a single step share one path (runPlanFrom) on purpose.\n\nRules learned live:\n\n• It runs in the SESSION's registry, jailed to the session's workspace — not the global one, which is whatever the panel last pointed the core at.\n\n• Its CHECK decides, not its exit. An overrun still runs the check; a satisfied check is done. Only a user kill skips it.\n\n• The cap is 10 iterations; the loop guards are what catch a circling step.\n\n• The repeat guard is WORKSPACE-AWARE (2026-09-05). A result identical to an earlier one is a loop only if nothing changed in between. Re-checking a page after an edit and getting the same answer is the model learning the edit did not help — it was being coached as a repeat one call after a write. Six identical probes on an untouched file still trip it, because the fingerprint never moved. That is exactly the NFQ run: the guard was right, and the model had no way to get unstuck because —\n\n• Steps now honour the THINK level. They inherited the client default, off, whatever the knob said: at xhigh the model debugged a keypress that did not register with 154-token replies and zero reasoning. mode \"plan\" still means plan-only; \"autopilot\" and \"always\" reach the steps, with the same overflow step-down as the plan gate.",
       "frame": "run",
       "tech": "Go",
       "status": "done",
@@ -1585,6 +1585,20 @@
           "field": "description",
           "from": "The plan becomes the execution unit: each step gets its own generated prompt …",
           "to": "The plan is the execution unit. Read first, then a FORCED commit_plan with a …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T00:53:48.204Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "one step · SESSION registry · up to 10 iterations · judged by its check even …",
+          "to": "one step · SESSION registry · THINK level honoured · workspace-aware repeat g…"
         }
       ]
     }

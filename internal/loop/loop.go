@@ -392,6 +392,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (*R
 		// be worse than the churn. Say it, and let the model decide.
 		if work != nil {
 			detail, stuck := work.check()
+			g.observeWorkspace(workFP(work))
 			if work.changed {
 				g.progress() // the artifact moved: the only progress that cannot be faked
 			}

@@ -301,8 +301,23 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 	}
 
 	g := newTurnGuard(0)
+	// The guard needs to know when the workspace moves, or a re-check after
+	// an edit that returns the same answer reads as a loop (see guard.go).
+	stepWS := ""
+	if l.workspace != nil {
+		stepWS = l.workspace(sessionID)
+	}
+	work := newWorkTracker(stepWS) // an empty root measures nothing and never blocks
+	// The session's THINK level. Steps used to inherit the client default —
+	// off — whatever the knob said: at xhigh the model debugged a keypress
+	// that did not register with 154-token replies and zero reasoning, and
+	// re-ran the same probe six times (2026-09-05, NFQ). mode "plan" still
+	// means plan-only; "autopilot" and "always" now reach the steps.
+	level := l.thinkingFor(mode.Name)
 	lastText := ""
 	for i := 1; i <= maxStepIterations; i++ {
+		fp, _ := work.fingerprint()
+		g.observeWorkspace(fp)
 		// Same checkpoint-instead-of-death as the chat loop: a step that
 		// builds several files legitimately spends more than one budget slice.
 		if g.tokensExhausted() && g.extendTokens() {
@@ -322,10 +337,19 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 			wr.Append(episodic.Note, map[string]string{"kind": "window",
 				"text": fmt.Sprintf("step window compressed: %d demoted, %d trimmed (%d tok)", rep.Demoted, rep.Trimmed, rep.Tokens)})
 		}
-		reply, usage, err := l.completeWithRetry(ctx, wr, msgs, stepReg.Specs(mode.Name), "", mode.ProseCap)
+		reply, usage, err := l.completeWithRetry(llm.WithThinking(ctx, level), wr, msgs, stepReg.Specs(mode.Name), "", mode.ProseCap)
 		g.addTokens(usage.AnswerTokens())
 		if err != nil {
 			return "", err
+		}
+		// Reasoning that overran its budget leaves no answer to act on. Same
+		// graded fallback as the plan gate: step down and try the call again.
+		if reply.Truncated() && level != llm.ThinkingOff {
+			next := llm.StepDown(level)
+			wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
+				"text": fmt.Sprintf("step thinking at %s ran past its budget (%d reasoning tokens) — retrying at %s", level, usage.ReasoningTokens, next)})
+			level = next
+			continue
 		}
 		if len(reply.ToolCalls) == 0 {
 			return reply.Content, nil

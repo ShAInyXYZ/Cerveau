@@ -21,6 +21,10 @@ const (
 )
 
 type turnGuard struct {
+	// fp is the workspace fingerprint at the last observeWorkspace; seenAt is
+	// the fingerprint under which each signature's count was accumulated.
+	fp          uint64
+	seenAt      map[[20]byte]uint64
 	maxIter     int
 	deadline    time.Time
 	maxTokens   int
@@ -93,6 +97,7 @@ func newTurnGuardBudget(maxIter int, budget time.Duration) *turnGuard {
 		deadline:    time.Now().Add(budget),
 		maxTokens:   maxTurnTokens,
 		repeatLimit: loopDetectRepeat,
+		seenAt:      map[[20]byte]uint64{},
 		perToolErrs: map[string]int{},
 		seen:        map[[20]byte]int{},
 		sameOut:     map[[20]byte]int{},
@@ -209,6 +214,24 @@ func normalize(s string) string {
 	return digits.ReplaceAllString(strings.Join(strings.Fields(s), " "), "#")
 }
 
+// observeWorkspace tells the guard what the workspace looks like now. A result
+// identical to an earlier one is only evidence of a LOOP if nothing changed in
+// between. Re-checking a page after an edit and getting the same answer is the
+// model learning that the edit did not help — normal work, and it was being
+// coached as a repeat one call after a write (2026-09-05, NFQ). The genuine loop
+// on that same run — six identical probes on an untouched file — still trips,
+// because the fingerprint never moved.
+func (g *turnGuard) observeWorkspace(fp uint64) { g.fp = fp }
+
+// freshen resets a signature's count when the workspace has moved since it was
+// last counted, so the count only ever spans an unchanged tree.
+func (g *turnGuard) freshen(sig [20]byte) {
+	if at, ok := g.seenAt[sig]; !ok || at != g.fp {
+		g.seen[sig] = 0
+		g.seenAt[sig] = g.fp
+	}
+}
+
 func (g *turnGuard) sig(name string, args json.RawMessage, result string) [20]byte {
 	buf := append([]byte(name), []byte(normalize(string(args)))...)
 	buf = append(buf, 0)
@@ -222,7 +245,9 @@ func (g *turnGuard) sig(name string, args json.RawMessage, result string) [20]by
 // restarts the idle clock. A failure, or the same output again, is standing
 // still — and standing still is what the idle guard is for.
 func (g *turnGuard) seenBefore(name string, args json.RawMessage, result string) bool {
-	return g.seen[g.sig(name, args, result)] > 0
+	sig := g.sig(name, args, result)
+	g.freshen(sig)
+	return g.seen[sig] > 0
 }
 
 // sawText watches the model's own words. A reply repeated verbatim is the
@@ -294,6 +319,7 @@ const (
 // once the result is known.
 func (g *turnGuard) repeatedResult(name string, args json.RawMessage, result string) (string, bool) {
 	sig := g.sig(name, args, result)
+	g.freshen(sig)
 	g.seen[sig]++
 	if g.seen[sig] >= g.repeatLimit {
 		return fmt.Sprintf("same tool call with identical result repeated %d times (%s) — no progress", g.seen[sig], name), true
@@ -306,5 +332,6 @@ func (g *turnGuard) repeatedResult(name string, args json.RawMessage, result str
 // coach the model out of the loop instead of only killing it afterwards.
 func (g *turnGuard) repeatingResult(name string, args json.RawMessage, result string) bool {
 	sig := g.sig(name, args, result)
+	g.freshen(sig)
 	return g.seen[sig] >= 2 && g.seen[sig] < g.repeatLimit
 }

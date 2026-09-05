@@ -480,3 +480,33 @@ func TestPlanFromSelfClosingSteps(t *testing.T) {
 		t.Fatalf("attributes lost: %+v", p.Steps)
 	}
 }
+
+// A result identical to an earlier one is only a repeat if the workspace did
+// not change in between. Re-checking after an edit and getting the same answer
+// is the model learning the edit did not help; six identical probes on an
+// untouched file is a loop. The guard must tell them apart.
+func TestRepeatGuardResetsWhenTheWorkspaceMoves(t *testing.T) {
+	g := newTurnGuard(0)
+	args := json.RawMessage(`{"eval":"probe"}`)
+
+	// edit, check, edit, check, edit, check — same answer every time
+	for fp := uint64(1); fp <= 3; fp++ {
+		g.observeWorkspace(fp)
+		if _, tripped := g.repeatedResult("check_page", args, "same"); tripped {
+			t.Fatalf("a re-check after an edit must never trip the loop guard (fp %d)", fp)
+		}
+		if g.repeatingResult("check_page", args, "same") {
+			t.Fatalf("a re-check after an edit must not be coached as a repeat (fp %d)", fp)
+		}
+	}
+
+	// now nothing changes: the same probe three times IS a loop
+	g.observeWorkspace(3)
+	var tripped bool
+	for i := 0; i < 3; i++ {
+		_, tripped = g.repeatedResult("check_page", args, "same")
+	}
+	if !tripped {
+		t.Fatal("three identical probes on an unchanged workspace must trip the guard")
+	}
+}
