@@ -208,10 +208,10 @@ func (g *turnGuard) toolOK(name string) {
 // timestamps, byte counts. The four bash calls of the 2026-09-04 loop differed
 // ONLY in `.crv-eval-3314114930.html` vs `.crv-eval-2207781145.html`, so an
 // exact hash saw four different calls and never tripped.
-var digits = regexp.MustCompile(`\d+`)
+var digits = regexp.MustCompile(`(\.crv-eval-)\d+(\.html)`)
 
 func normalize(s string) string {
-	return digits.ReplaceAllString(strings.Join(strings.Fields(s), " "), "#")
+	return digits.ReplaceAllString(strings.Join(strings.Fields(s), " "), "${1}#${2}")
 }
 
 // observeWorkspace tells the guard what the workspace looks like now. A result

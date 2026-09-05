@@ -7,6 +7,7 @@
   import PairDialog from './PairDialog.svelte';
   import logo from './logo.svg?raw'; // inline so it inherits currentColor
   import DotMatrix from './DotMatrix.svelte';
+  import { matrixVersion } from './version';
 
   let {
     health, windowReport,
@@ -24,18 +25,13 @@
   // this device does not match the width/pointer queries reliably.
   const coarse = typeof matchMedia === 'function'
     && matchMedia('(pointer: coarse)').matches;
-  const revDot = coarse ? 0.7 : 1.4;
-  const revGap = coarse ? 0.65 : 1.3;
+  const revDot = coarse ? 0.45 : 0.9;
+  const revGap = coarse ? 0.4 : 0.8;
 
   const components = $derived(health?.components ?? []);
   let pairOpen = $state(false);
-  // version comes from the core (/api/health system.version, e.g. "0.3.0-alpha")
-  // — hardcoding it here is how the header stayed on V0.2 for a whole release.
-  const rev = $derived.by(() => {
-    const v = health?.system?.version ?? '';
-    const m = v.match(/^(\d+)\.(\d+)/);
-    return m ? `V${m[1]}.${m[2]}` : 'V0.3';
-  });
+  // Health identifies the running harness, not the inference model or a mock.
+  const rev = $derived(matrixVersion(health?.system?.version));
 </script>
 
 <header class="bar">
@@ -47,7 +43,7 @@
 
   <div class="spacer"></div>
 
-  {#if windowReport}
+  {#if windowReport?.budget > 0}
     <div class="ctx" use:tooltip={`context ${windowReport.tokens}/${windowReport.budget}`}>
       <span class="label">CTX</span>
       <Meter value={windowReport.tokens} max={windowReport.budget} zone={windowReport.zone} />
@@ -115,7 +111,7 @@
   .brand .logo :global(svg) { width: 22px; height: 22px; display: block; }
   .brand .word { letter-spacing: .3em; }
 
-  /* V0.2 — a bare LED dot-matrix readout, stadium-scoreboard style */
+  /* Running release — LED dot-matrix readout. */
   .brand .rev { display: inline-flex; align-items: center; margin-left: 4px; }
 
   .spacer { flex: 1; }

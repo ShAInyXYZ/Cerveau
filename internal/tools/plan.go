@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"cerveau/internal/episodic"
 	cplan "cerveau/internal/plan"
@@ -37,8 +38,7 @@ func (t *CommitPlan) Name() string { return "commit_plan" }
 
 func (t *CommitPlan) Description() string {
 	return "Commit the plan so it appears as a tracked plan card and Autopilot can execute it step by step. " +
-		"EASIEST: pass your whole plan as markdown in the `markdown` field (## headings, numbered list, or checkboxes " +
-		"— they become steps automatically). BETTER: pass structured steps, because each one can then carry a " +
+		"Pass structured steps; every step must carry a " +
 		"`verify` — the check that proves the step done, which is what lets Autopilot run and confirm one step " +
 		"at a time instead of guessing from which files exist. A verify must be able to FAIL: a check_page eval, " +
 		"a command's exit code, or a file that must contain a named symbol. \"The file exists\" is not a check. " +
@@ -120,8 +120,11 @@ func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string,
 	// over the plan as it naturally wrote it, and demanding structured verifies
 	// through it would put the easy path out of reach. Those steps fall back to
 	// the old disk reconciliation, which is now honest about its limits.
-	if plan.Markdown == "" {
+	{
 		for i, st := range plan.Steps {
+			if strings.TrimSpace(st.Title) == "" || len(st.Files) == 0 {
+				return "", fmt.Errorf("step %d needs a title and declared files", i+1)
+			}
 			v, err := cplan.UnmarshalVerify(st.Verify)
 			if err != nil {
 				return "", fmt.Errorf("step %d (%s): %w", i+1, st.Title, err)

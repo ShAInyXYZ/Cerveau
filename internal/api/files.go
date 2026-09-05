@@ -49,7 +49,8 @@ func (a *API) ProbeFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Paths []string `json:"paths"`
+		Paths     []string `json:"paths"`
+		SessionID string   `json:"session_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "paths required"})
@@ -58,8 +59,17 @@ func (a *API) ProbeFiles(w http.ResponseWriter, r *http.Request) {
 	if len(body.Paths) > 200 {
 		body.Paths = body.Paths[:200]
 	}
+	ws := a.ConfigSnapshot().Workspace
+	if body.SessionID != "" {
+		m, err := a.sess.Get(body.SessionID)
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": "session not found"})
+			return
+		}
+		ws = m.Workspace
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"workspace": a.cfg.Workspace,
-		"files":     probeFiles(a.cfg.Workspace, body.Paths),
+		"workspace": ws,
+		"files":     probeFiles(ws, body.Paths),
 	})
 }

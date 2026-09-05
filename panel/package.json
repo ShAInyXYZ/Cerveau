@@ -1,7 +1,7 @@
 {
   "name": "cerveau-panel",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.6.0-alpha",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "@fontsource-variable/manrope": "^5.3.0",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "22.20.1",
     "svelte": "^5.56.7",
     "svelte-check": "^4.7.6",
     "typescript": "5.9",

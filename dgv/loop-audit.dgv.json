@@ -1,0 +1,1702 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "Loop audit — baseline findings / 0.6 fix evidence",
+    "description": "Historical 510df03 audit findings; fixes now in uncommitted 0.6 LABRIG source, not installed. Original probes remain baseline fixtures. See docs/release-0.6-LABRIG.md for tests and limits. Installed Planner cutover remains explicitly open.",
+    "updated": "2026-09-05",
+    "colorBy": "kind"
+  },
+  "frames": [
+    {
+      "tone": "cyan",
+      "id": "ui",
+      "label": "ChatUI · displayed and requested state",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 996,
+        "height": 820
+      }
+    },
+    {
+      "tone": "amber",
+      "id": "runtime",
+      "label": "Go · execution and control",
+      "position": {
+        "x": 1136,
+        "y": 0
+      },
+      "size": {
+        "width": 1644,
+        "height": 868
+      }
+    },
+    {
+      "tone": "violet",
+      "id": "state",
+      "label": "Go · plans, evidence and projections",
+      "position": {
+        "x": 0,
+        "y": 1008
+      },
+      "size": {
+        "width": 672,
+        "height": 683
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "chat",
+      "kind": "ui",
+      "label": "Chat and composer",
+      "sublabel": "send · steer · pause · kill",
+      "frame": "ui",
+      "path": [
+        "panel/src/lib/chat/Chat.svelte",
+        "panel/src/lib/chat/Composer.svelte"
+      ],
+      "position": {
+        "x": 44,
+        "y": 212
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "settings",
+      "kind": "ui",
+      "label": "Model controls",
+      "sublabel": "mode · THINK · sampling",
+      "frame": "ui",
+      "path": [
+        "panel/src/lib/Settings.svelte",
+        "panel/src/lib/chat/ThinkingKnob.svelte",
+        "panel/src/lib/chat/SamplingKnob.svelte"
+      ],
+      "position": {
+        "x": 44,
+        "y": 336
+      },
+      "note": "L14 baseline fixed: shared acknowledged future defaults, serialized persistence, immutable accepted-run settings, effective-call logging, corrected actual-level fallback. Active-run policy/session override features not delivered.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "store",
+      "kind": "module",
+      "label": "Session store",
+      "sublabel": "global view state · polling · SSE",
+      "frame": "ui",
+      "path": "panel/src/lib/stores/session.svelte.ts",
+      "position": {
+        "x": 368,
+        "y": 152
+      },
+      "note": "L08/L09 fixed in 0.6 source: one-prefix snapshots, all selected sessions observed, generation guards, retained disconnected state and no autoarchive. Actual API desktop/mobile reload/offline checks pass.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "strip",
+      "kind": "ui",
+      "label": "Native plan strip",
+      "sublabel": "report-based progress",
+      "frame": "ui",
+      "path": "panel/src/lib/chat/PlanStrip.svelte",
+      "position": {
+        "x": 692,
+        "y": 304
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rfxui",
+      "kind": "bridge",
+      "label": "RFX panel bridge",
+      "sublabel": "session · runStep · turn",
+      "frame": "ui",
+      "path": "panel/src/lib/RfxCustomPanel.svelte",
+      "position": {
+        "x": 368,
+        "y": 640
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "errors",
+      "kind": "ui",
+      "label": "Error cards",
+      "sublabel": "session-wide error history",
+      "frame": "ui",
+      "path": "panel/src/lib/chat/ErrorCards.svelte",
+      "position": {
+        "x": 692,
+        "y": 60
+      },
+      "note": "L10/L11 baseline symptoms fixed: typed rejected POSTs retain input; one current-run failure, historical retry/background events do not reappear as fresh cards. Formal incident event service remains roadmap.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "api",
+      "kind": "api",
+      "label": "Execution API",
+      "sublabel": "chat · autopilot · plan/step",
+      "frame": "runtime",
+      "path": "internal/api/api.go",
+      "position": {
+        "x": 1180,
+        "y": 272
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "ownership",
+      "kind": "module",
+      "label": "Run handles",
+      "sublabel": "per-session map · controls",
+      "frame": "runtime",
+      "path": "internal/loop/run.go",
+      "position": {
+        "x": 2152,
+        "y": 60
+      },
+      "note": "L01 fixed in 0.6 source: atomic session/workspace/process leases, compare-release and detached admission. command/runcontrol/snapshot tests.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "turn",
+      "kind": "module",
+      "label": "Conversation / planning loop",
+      "sublabel": "Run · gate · handoff",
+      "frame": "runtime",
+      "path": "internal/loop/loop.go",
+      "position": {
+        "x": 1504,
+        "y": 432
+      },
+      "note": "L13 fixed: user command boundary recorded before resume; completed plan no longer disables new planning; invalid planning suspends. Answer-only intent remains heuristic.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "step",
+      "kind": "module",
+      "label": "Supervised step loop",
+      "sublabel": "runPlanFrom · runStep",
+      "frame": "runtime",
+      "path": "internal/loop/autopilot.go",
+      "position": {
+        "x": 1828,
+        "y": 222
+      },
+      "note": "L02/L06/L16 fixed in 0.6 source: shared control boundaries; nil checks unverified/blocked; fresh sources, uncached verification, structured revisions. Lifecycle, verifyrun, selected and supervisor tests.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "registry",
+      "kind": "module",
+      "label": "Tool registry",
+      "sublabel": "workspace · guard · dispatch",
+      "frame": "runtime",
+      "path": [
+        "internal/tools/registry.go",
+        "cmd/crv/main.go"
+      ],
+      "position": {
+        "x": 2152,
+        "y": 305
+      },
+      "note": "L12 fixed: overlays retain session workspace/guards, common offered/argument/mode dispatch, scoped manual RFX, indexing hooks. Added post-remediation validation and confined backups.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "llm",
+      "kind": "module",
+      "label": "Model request adapter",
+      "sublabel": "thinking · sampling · completion",
+      "frame": "runtime",
+      "path": "internal/llm",
+      "position": {
+        "x": 2152,
+        "y": 534
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "model",
+      "kind": "model",
+      "label": "Brain Core",
+      "sublabel": "existing serving configuration",
+      "frame": "runtime",
+      "position": {
+        "x": 2476,
+        "y": 534
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "supervisor",
+      "kind": "module",
+      "label": "Supervisor and recovery",
+      "sublabel": "cursor · retries · revisions",
+      "frame": "state",
+      "path": [
+        "internal/loop/supervisor.go",
+        "internal/loop/steprun.go"
+      ],
+      "position": {
+        "x": 44,
+        "y": 1481
+      },
+      "note": "L03/L04 fixed: plan-bound snapshots restore attempts, blocked state, pair counts and revision cursor. Prefix/replay and selected tests.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "verify",
+      "kind": "module",
+      "label": "Verification",
+      "sublabel": "eval · command · contains",
+      "frame": "state",
+      "path": [
+        "internal/loop/verifyrun.go",
+        "internal/plan/verify.go"
+      ],
+      "position": {
+        "x": 44,
+        "y": 1267
+      },
+      "note": "L05 fixed: invalidate before correction; revalidate affected dependents after successful target. Tests distinguish pre/post edit observations.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "events",
+      "kind": "storage",
+      "label": "events.jsonl",
+      "sublabel": "append-only session evidence",
+      "frame": "state",
+      "position": {
+        "x": 368,
+        "y": 1264
+      },
+      "note": "L17 baseline fixed: explicit terminal run vs plan outcome, final call usage, verification start/result evidence and shared runner boundaries. Fully normalized attempt identities remain roadmap.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "projection",
+      "kind": "module",
+      "label": "State / report projections",
+      "sublabel": "Fold · BuildReportAt · PlanStateOf",
+      "frame": "state",
+      "path": [
+        "internal/episodic/episodic.go",
+        "internal/loop/report.go"
+      ],
+      "position": {
+        "x": 44,
+        "y": 1068
+      },
+      "note": "L07 fixed: same-prefix reducer drives report and plan. Existing files never promote pending steps.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "window",
+      "kind": "module",
+      "label": "Context packer",
+      "sublabel": "demote · trim · resume brief",
+      "frame": "runtime",
+      "path": "internal/window/window.go",
+      "position": {
+        "x": 2152,
+        "y": 658
+      },
+      "note": "L15 fixed: recount after packing, preserve tool pairs, unknown interrupted outcomes and final request admission. Window lifecycle and process-crash tests.",
+      "status": "done"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "planner",
+      "kind": "ui",
+      "label": "Installed RFX Planner",
+      "sublabel": "unversioned external pack",
+      "note": "L18 code fixed and bundled Planner 1.5.0 versioned: canonical pending wins, whole/selected server commands, no polling restart. Installed ~/.crv pack remains unchanged; resolve deployment gate only after matching host+pack installation.",
+      "frame": "ui",
+      "position": {
+        "x": 44,
+        "y": 580
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "issue",
+          "title": "L18 · installed Planner overrides core pending state",
+          "note": "Installed pack fold marks file-present steps done; core pending does not override it. Whole-plan branch calls runStep(-1) once. Handover identifies pack as unversioned.",
+          "fix": "Version/compatibility-test pack; exhaustive reducer projection; distinct continue_plan and run_step commands.",
+          "by": "agent",
+          "at": "2026-09-05T02:54:11.422Z"
+        }
+      ],
+      "status": "wip"
+    }
+  ],
+  "edges": [
+    {
+      "kind": "control",
+      "source": "chat",
+      "target": "store",
+      "label": "send and control actions",
+      "id": "chat-store"
+    },
+    {
+      "kind": "sync",
+      "source": "settings",
+      "target": "api",
+      "protocol": "http",
+      "label": "global thinking and sampling settings",
+      "id": "settings-api"
+    },
+    {
+      "kind": "sync",
+      "source": "store",
+      "target": "api",
+      "protocol": "http",
+      "label": "chat request and independent polls",
+      "id": "store-api"
+    },
+    {
+      "kind": "sync",
+      "source": "rfxui",
+      "target": "api",
+      "protocol": "http",
+      "label": "turn or explicit plan step",
+      "id": "rfxui-api"
+    },
+    {
+      "kind": "control",
+      "source": "api",
+      "target": "turn",
+      "label": "chat: Run",
+      "id": "api-turn"
+    },
+    {
+      "kind": "control",
+      "source": "api",
+      "target": "step",
+      "label": "autopilot or RunStep",
+      "id": "api-step"
+    },
+    {
+      "kind": "control",
+      "source": "api",
+      "target": "ownership",
+      "label": "Pause / Steer / Kill",
+      "id": "api-ownership"
+    },
+    {
+      "kind": "control",
+      "source": "turn",
+      "target": "ownership",
+      "label": "register handle",
+      "id": "turn-ownership"
+    },
+    {
+      "kind": "control",
+      "source": "step",
+      "target": "ownership",
+      "label": "register another handle",
+      "id": "step-ownership"
+    },
+    {
+      "kind": "control",
+      "source": "turn",
+      "target": "step",
+      "label": "plan handoff",
+      "id": "turn-step"
+    },
+    {
+      "kind": "sync",
+      "source": "turn",
+      "target": "registry",
+      "label": "prepared session registry",
+      "id": "turn-registry"
+    },
+    {
+      "kind": "sync",
+      "source": "step",
+      "target": "registry",
+      "label": "base workspace registry",
+      "id": "step-registry"
+    },
+    {
+      "kind": "sync",
+      "source": "turn",
+      "target": "llm",
+      "label": "complete with retry",
+      "id": "turn-llm"
+    },
+    {
+      "kind": "sync",
+      "source": "step",
+      "target": "llm",
+      "label": "complete with retry",
+      "id": "step-llm"
+    },
+    {
+      "kind": "sync",
+      "source": "llm",
+      "target": "model",
+      "protocol": "http",
+      "label": "OpenAI-compatible request",
+      "id": "llm-model"
+    },
+    {
+      "kind": "sync",
+      "source": "step",
+      "target": "supervisor",
+      "label": "Record verdict and decision",
+      "id": "step-supervisor"
+    },
+    {
+      "kind": "sync",
+      "source": "step",
+      "target": "verify",
+      "label": "check after run; nil bypass",
+      "id": "step-verify"
+    },
+    {
+      "kind": "sync",
+      "source": "verify",
+      "target": "registry",
+      "label": "bash / check_page; contains reads directly",
+      "id": "verify-registry"
+    },
+    {
+      "kind": "data",
+      "source": "turn",
+      "target": "events",
+      "protocol": "fs",
+      "label": "append turn events",
+      "id": "turn-events"
+    },
+    {
+      "kind": "data",
+      "source": "step",
+      "target": "events",
+      "protocol": "fs",
+      "label": "append checkpoints and report",
+      "id": "step-events"
+    },
+    {
+      "kind": "data",
+      "source": "supervisor",
+      "target": "events",
+      "protocol": "fs",
+      "label": "restore indexed checkpoints",
+      "id": "supervisor-events"
+    },
+    {
+      "kind": "data",
+      "source": "projection",
+      "target": "events",
+      "protocol": "fs",
+      "label": "independent replay projections",
+      "id": "projection-events"
+    },
+    {
+      "kind": "sync",
+      "source": "api",
+      "target": "projection",
+      "label": "GET state / report / plan",
+      "id": "api-projection"
+    },
+    {
+      "kind": "sync",
+      "source": "store",
+      "target": "strip",
+      "label": "report snapshot",
+      "id": "store-strip"
+    },
+    {
+      "kind": "sync",
+      "source": "store",
+      "target": "errors",
+      "label": "last session errors",
+      "id": "store-errors"
+    },
+    {
+      "kind": "sync",
+      "source": "planner",
+      "target": "rfxui",
+      "protocol": "postMessage",
+      "label": "plan / session / runStep",
+      "id": "planner-rfxui"
+    },
+    {
+      "kind": "sync",
+      "source": "turn",
+      "target": "window",
+      "label": "replay and compress",
+      "id": "turn-window"
+    },
+    {
+      "kind": "sync",
+      "source": "step",
+      "target": "window",
+      "label": "local items and compress",
+      "id": "step-window"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "ui",
+      "op": "add",
+      "label": "ChatUI · displayed and requested state"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "runtime",
+      "op": "add",
+      "label": "Go · execution and control"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "state",
+      "op": "add",
+      "label": "Go · plans, evidence and projections"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "chat",
+      "op": "add",
+      "kind": "ui",
+      "label": "Chat and composer"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "settings",
+      "op": "add",
+      "kind": "ui",
+      "label": "Model controls"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store",
+      "op": "add",
+      "kind": "module",
+      "label": "Session store"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "add",
+      "kind": "ui",
+      "label": "Native plan strip"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rfxui",
+      "op": "add",
+      "kind": "bridge",
+      "label": "RFX panel bridge"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "errors",
+      "op": "add",
+      "kind": "ui",
+      "label": "Error cards"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "api",
+      "op": "add",
+      "kind": "api",
+      "label": "Execution API"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "ownership",
+      "op": "add",
+      "kind": "module",
+      "label": "Run handles"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "turn",
+      "op": "add",
+      "kind": "module",
+      "label": "Conversation / planning loop"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "add",
+      "kind": "module",
+      "label": "Supervised step loop"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "registry",
+      "op": "add",
+      "kind": "module",
+      "label": "Tool registry"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "llm",
+      "op": "add",
+      "kind": "module",
+      "label": "Model request adapter"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "model",
+      "op": "add",
+      "kind": "model",
+      "label": "Brain Core"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "add",
+      "kind": "module",
+      "label": "Supervisor and recovery"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "add",
+      "kind": "module",
+      "label": "Verification"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "events",
+      "op": "add",
+      "kind": "storage",
+      "label": "events.jsonl"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "node",
+      "id": "projection",
+      "op": "add",
+      "kind": "module",
+      "label": "State / report projections"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "chat-store",
+      "op": "add",
+      "kind": "control",
+      "label": "chat → store"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "settings-api",
+      "op": "add",
+      "kind": "sync",
+      "label": "settings → api"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "store-api",
+      "op": "add",
+      "kind": "sync",
+      "label": "store → api"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rfxui-api",
+      "op": "add",
+      "kind": "sync",
+      "label": "rfxui → api"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-turn",
+      "op": "add",
+      "kind": "control",
+      "label": "api → turn"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-step",
+      "op": "add",
+      "kind": "control",
+      "label": "api → step"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-ownership",
+      "op": "add",
+      "kind": "control",
+      "label": "api → ownership"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "turn-ownership",
+      "op": "add",
+      "kind": "control",
+      "label": "turn → ownership"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "step-ownership",
+      "op": "add",
+      "kind": "control",
+      "label": "step → ownership"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "turn-step",
+      "op": "add",
+      "kind": "control",
+      "label": "turn → step"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "turn-registry",
+      "op": "add",
+      "kind": "sync",
+      "label": "turn → registry"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "step-registry",
+      "op": "add",
+      "kind": "sync",
+      "label": "step → registry"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "turn-llm",
+      "op": "add",
+      "kind": "sync",
+      "label": "turn → llm"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "step-llm",
+      "op": "add",
+      "kind": "sync",
+      "label": "step → llm"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "llm-model",
+      "op": "add",
+      "kind": "sync",
+      "label": "llm → model"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "step-supervisor",
+      "op": "add",
+      "kind": "sync",
+      "label": "step → supervisor"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "step-verify",
+      "op": "add",
+      "kind": "sync",
+      "label": "step → verify"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "verify-registry",
+      "op": "add",
+      "kind": "sync",
+      "label": "verify → registry"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "turn-events",
+      "op": "add",
+      "kind": "data",
+      "label": "turn → events"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "step-events",
+      "op": "add",
+      "kind": "data",
+      "label": "step → events"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-events",
+      "op": "add",
+      "kind": "data",
+      "label": "supervisor → events"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "projection-events",
+      "op": "add",
+      "kind": "data",
+      "label": "projection → events"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-projection",
+      "op": "add",
+      "kind": "sync",
+      "label": "api → projection"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "store-strip",
+      "op": "add",
+      "kind": "sync",
+      "label": "store → strip"
+    },
+    {
+      "at": "2026-09-05T02:25:44.536Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "store-errors",
+      "op": "add",
+      "kind": "sync",
+      "label": "store → errors"
+    },
+    {
+      "at": "2026-09-05T02:25:44.538Z",
+      "by": "agent",
+      "type": "node",
+      "id": "ownership",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L01 · overlapping runs lose control ownership"
+      }
+    },
+    {
+      "at": "2026-09-05T02:25:44.539Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L02 · Pause and Steer are acknowledged but ignored"
+      }
+    },
+    {
+      "at": "2026-09-05T02:25:44.541Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L03 · old plan checkpoints mark new steps passed"
+      }
+    },
+    {
+      "at": "2026-09-05T02:25:44.542Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "flag",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L04 · restart loses blocked and revision decisions"
+      }
+    },
+    {
+      "at": "2026-09-05T02:25:44.543Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L05 · downstream checks run before the edit"
+      }
+    },
+    {
+      "at": "2026-09-05T02:25:44.544Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "flag",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L06 · no declared check still earns a pass"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.407Z",
+      "by": "agent",
+      "type": "node",
+      "id": "window",
+      "op": "add",
+      "kind": "module",
+      "label": "Context packer"
+    },
+    {
+      "at": "2026-09-05T02:54:11.407Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "add",
+      "kind": "ui",
+      "label": "Installed RFX Planner"
+    },
+    {
+      "at": "2026-09-05T02:54:11.407Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "planner-rfxui",
+      "op": "add",
+      "kind": "sync",
+      "label": "planner → rfxui"
+    },
+    {
+      "at": "2026-09-05T02:54:11.407Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "turn-window",
+      "op": "add",
+      "kind": "sync",
+      "label": "turn → window"
+    },
+    {
+      "at": "2026-09-05T02:54:11.407Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "step-window",
+      "op": "add",
+      "kind": "sync",
+      "label": "step → window"
+    },
+    {
+      "at": "2026-09-05T02:54:11.407Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "Evidence-backed review of commit 510df03, 2026-09-05. Flags describe current …",
+          "to": "Audit of runtime source at 510df03, unchanged by handover-only b570da2. 18 is…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T02:54:11.410Z",
+      "by": "agent",
+      "type": "node",
+      "id": "projection",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L07 · disk presence manufactures completion"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.411Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L08 · observers miss active state and first plan"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.412Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store",
+      "op": "flag",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L09 · asynchronous state crosses sessions"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.413Z",
+      "by": "agent",
+      "type": "node",
+      "id": "errors",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L10 · swallowed HTTP failure becomes success"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.414Z",
+      "by": "agent",
+      "type": "node",
+      "id": "errors",
+      "op": "flag",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L11 · errors have no incident lifecycle"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.415Z",
+      "by": "agent",
+      "type": "node",
+      "id": "registry",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L12 · capability and dispatch paths diverge"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.417Z",
+      "by": "agent",
+      "type": "node",
+      "id": "turn",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L13 · plan gate and resume bypass lifecycle"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.418Z",
+      "by": "agent",
+      "type": "node",
+      "id": "settings",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L14 · displayed settings are not effective run policy"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.419Z",
+      "by": "agent",
+      "type": "node",
+      "id": "window",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L15 · context packing breaks counts and tool pairs"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.420Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "flag",
+      "flag": {
+        "id": "f3",
+        "kind": "issue",
+        "title": "L16 · stale sources and unsafe result caching"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.421Z",
+      "by": "agent",
+      "type": "node",
+      "id": "events",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L17 · lifecycle outcomes and evidence incomplete"
+      }
+    },
+    {
+      "at": "2026-09-05T02:54:11.422Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L18 · installed Planner overrides core pending state"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "settings",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L14 baseline fixed: shared acknowledged future defaults, serialized persisten…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L08/L09 fixed in 0.6 source: one-prefix snapshots, all selected sessions obse…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "errors",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L10/L11 baseline symptoms fixed: typed rejected POSTs retain input; one curre…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "ownership",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L01 fixed in 0.6 source: atomic session/workspace/process leases, compare-rel…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "turn",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L13 fixed: user command boundary recorded before resume; completed plan no lo…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L02/L06/L16 fixed in 0.6 source: shared control boundaries; nil checks unveri…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "registry",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L12 fixed: overlays retain session workspace/guards, common offered/argument/…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L03/L04 fixed: plan-bound snapshots restore attempts, blocked state, pair cou…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L05 fixed: invalidate before correction; revalidate affected dependents after…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "events",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L17 baseline fixed: explicit terminal run vs plan outcome, final call usage, …"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "projection",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L07 fixed: same-prefix reducer drives report and plan. Existing files never p…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "window",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "L15 fixed: recount after packing, preserve tool pairs, unknown interrupted ou…"
+        },
+        {
+          "field": "status",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Inspected /home/shiny/.crv/rfx/planner/ui/panel.html after handover. SHA256 6…",
+          "to": "L18 code fixed and bundled Planner 1.5.0 versioned: canonical pending wins, w…"
+        },
+        {
+          "field": "status",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.178Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "title",
+          "from": "Loop audit — current behavior and open issues",
+          "to": "Loop audit — baseline findings / 0.6 fix evidence"
+        },
+        {
+          "field": "description",
+          "from": "Audit of runtime source at 510df03, unchanged by handover-only b570da2. 18 is…",
+          "to": "Historical 510df03 audit findings; fixes now in uncommitted 0.6 LABRIG source…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.187Z",
+      "by": "agent",
+      "type": "node",
+      "id": "ownership",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L01 · overlapping runs lose control ownership"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.192Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L08 · observers miss active state and first plan"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.198Z",
+      "by": "agent",
+      "type": "node",
+      "id": "store",
+      "op": "resolve",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L09 · asynchronous state crosses sessions"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.203Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L02 · Pause and Steer are acknowledged but ignored"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.207Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "resolve",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L06 · no declared check still earns a pass"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.211Z",
+      "by": "agent",
+      "type": "node",
+      "id": "step",
+      "op": "resolve",
+      "flag": {
+        "id": "f3",
+        "kind": "issue",
+        "title": "L16 · stale sources and unsafe result caching"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.214Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L03 · old plan checkpoints mark new steps passed"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.217Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "resolve",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L04 · restart loses blocked and revision decisions"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.220Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L05 · downstream checks run before the edit"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.222Z",
+      "by": "agent",
+      "type": "node",
+      "id": "projection",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L07 · disk presence manufactures completion"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.225Z",
+      "by": "agent",
+      "type": "node",
+      "id": "errors",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L10 · swallowed HTTP failure becomes success"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.228Z",
+      "by": "agent",
+      "type": "node",
+      "id": "errors",
+      "op": "resolve",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "L11 · errors have no incident lifecycle"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.232Z",
+      "by": "agent",
+      "type": "node",
+      "id": "registry",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L12 · capability and dispatch paths diverge"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.235Z",
+      "by": "agent",
+      "type": "node",
+      "id": "turn",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L13 · plan gate and resume bypass lifecycle"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.238Z",
+      "by": "agent",
+      "type": "node",
+      "id": "settings",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L14 · displayed settings are not effective run policy"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.242Z",
+      "by": "agent",
+      "type": "node",
+      "id": "window",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L15 · context packing breaks counts and tool pairs"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.245Z",
+      "by": "agent",
+      "type": "node",
+      "id": "events",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "L17 · lifecycle outcomes and evidence incomplete"
+      }
+    }
+  ]
+}

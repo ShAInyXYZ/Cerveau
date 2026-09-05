@@ -31,7 +31,7 @@ func TestBuildReport(t *testing.T) {
 	if len(rep.Steps) != 3 {
 		t.Fatalf("steps = %+v", rep.Steps)
 	}
-	if rep.Steps[0].Status != "done" || rep.Steps[0].Summary != "all good" {
+	if rep.Steps[0].Status != "unverified" || rep.Steps[0].Summary != "all good" {
 		t.Fatalf("step a = %+v", rep.Steps[0])
 	}
 	if rep.Steps[1].Status != "failed" || rep.Steps[1].Summary != "boom" {
@@ -40,10 +40,10 @@ func TestBuildReport(t *testing.T) {
 	if rep.Steps[2].Status != "pending" {
 		t.Fatalf("step c = %+v", rep.Steps[2])
 	}
-	if rep.Done != 1 || rep.Failed != 1 || rep.Skipped != 0 {
+	if rep.Done != 0 || rep.Failed != 1 || rep.Skipped != 2 {
 		t.Fatalf("counts = %d/%d/%d", rep.Done, rep.Failed, rep.Skipped)
 	}
-	if !rep.Handback {
+	if rep.Handback {
 		t.Fatal("handback not detected")
 	}
 }
@@ -75,13 +75,13 @@ func TestReportReconcilesWithDisk(t *testing.T) {
 	if rep == nil {
 		t.Fatal("no report")
 	}
-	if rep.Steps[0].Status != "done" {
-		t.Fatalf("step with all files present should be done, got %q", rep.Steps[0].Status)
+	if rep.Steps[0].Status != "pending" {
+		t.Fatalf("file existence must not mark a step done, got %q", rep.Steps[0].Status)
 	}
 	if rep.Steps[1].Status == "done" {
 		t.Fatalf("step with missing files must not be done, got %q", rep.Steps[1].Status)
 	}
-	if rep.Done != 1 {
+	if rep.Done != 0 {
 		t.Fatalf("done count = %d, want 1", rep.Done)
 	}
 }
@@ -138,7 +138,7 @@ func TestOwnFilesStillReconcileFromDisk(t *testing.T) {
 			{"title":"Animation","files":["animate.js"]}]}`),
 	}}
 	rep := BuildReportAt(events, ws)
-	if rep.Steps[0].Status != "done" || rep.Steps[1].Status != "done" {
+	if rep.Steps[0].Status != "pending" || rep.Steps[1].Status != "pending" {
 		t.Fatalf("own-file steps should reconcile: %+v", rep.Steps)
 	}
 	if rep.Steps[2].Status != "pending" {
@@ -165,10 +165,10 @@ func TestCheckpointIndexBeatsTitleMatching(t *testing.T) {
 	if rep.Steps[0].Status == "done" {
 		t.Errorf("step 1 has no checkpoint and must not inherit step 2's: %+v", rep.Steps[0])
 	}
-	if rep.Steps[1].Status != "done" {
+	if rep.Steps[1].Status != "unverified" {
 		t.Errorf("step 2 owns the checkpoint: %+v", rep.Steps[1])
 	}
-	if rep.Done != 1 {
+	if rep.Done != 0 {
 		t.Errorf("done = %d, want 1", rep.Done)
 	}
 }

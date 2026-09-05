@@ -59,7 +59,11 @@ func TestRevisionReopensEarlierStepAndResumes(t *testing.T) {
 	}
 	// step 3 shares index.html with step 1, and step 4 has not passed yet,
 	// so only genuinely-passed downstream steps are re-verified
-	s.Record(0, pass(), -1)
+	d = s.Record(0, pass(), -1)
+	if len(d.Reverify) != 1 || d.Reverify[0] != 1 {
+		t.Fatalf("must reverify all previously passed downstream steps: %+v", d)
+	}
+	s.Record(1, pass(), -1)
 	if s.Next() != 2 {
 		t.Fatalf("after the revision passes, resume where we left off, got %d", s.Next())
 	}
@@ -108,6 +112,10 @@ func TestReverifyOnlyDownstreamSharingAFile(t *testing.T) {
 	}
 	// step 3 shares car.js and had passed → must be re-checked.
 	// step 1 is EARLIER, so it is not downstream and is untouched.
+	if len(d.Reverify) != 0 {
+		t.Fatal("reverify happened before target correction")
+	}
+	d = s.Record(1, pass(), -1)
 	if len(d.Reverify) != 1 || d.Reverify[0] != 2 {
 		t.Fatalf("want only step 3 re-verified, got %v", d.Reverify)
 	}

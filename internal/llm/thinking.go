@@ -70,6 +70,8 @@ func ValidThinking(level string) bool {
 
 // SetThinking sets the session default level. Invalid input means off.
 func (c *Client) SetThinking(level string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if !ValidThinking(level) {
 		level = ThinkingOff
 	}
@@ -77,6 +79,8 @@ func (c *Client) SetThinking(level string) {
 }
 
 func (c *Client) ThinkingLevel() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if c.thinking == "" {
 		return ThinkingOff
 	}

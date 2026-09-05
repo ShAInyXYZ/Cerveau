@@ -65,6 +65,9 @@ func (t *skillTool) Execute(ctx context.Context, args json.RawMessage) (string, 
 		}
 	}
 	runArgs, _ := json.Marshal(map[string]string{"command": cmd})
+	if reg := RegistryFrom(ctx); reg != nil {
+		return reg.ExecuteMode(ctx, "bash", runArgs, ModeOf(ctx))
+	}
 	return t.bash.Execute(ctx, runArgs)
 }
 
@@ -74,6 +77,7 @@ func (r *Registry) WithSessionTools(ts []Tool) *Registry {
 		guard:     r.guard,
 		remediate: r.remediate,
 		postExec:  r.postExec,
+		workspace: r.workspace,
 	}
 	for k, e := range r.entries {
 		cp.entries[k] = e
@@ -85,4 +89,8 @@ func (r *Registry) WithSessionTools(ts []Tool) *Registry {
 		cp.entries[t.Name()] = Entry{Tool: t, RiskTier: RiskDangerous, IngressCap: 8000, RetryClass: "transient"}
 	}
 	return cp
+}
+
+func (r *Registry) WithSkills(defs []skills.SkillTool) *Registry {
+	return r.WithSessionTools(SkillTools(defs, r.workspace, r.guard))
 }

@@ -1,4 +1,5 @@
 <script>
+ import { sessionStore } from './stores/session.svelte.ts';
   import { Zap, Play, ChevronDown, ChevronUp, Loader, CircleAlert, Sparkles } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
   import { jpost } from './api';
@@ -82,7 +83,7 @@
   async function runStatus() {
     if (!statusW || document.hidden) return;
     try {
-      const res = await jpost('/api/rfx/run', { name: statusW.run, args: {} });
+      const res = await jpost('/api/rfx/run', { session_id: sessionStore.activeId, name: statusW.run, args: {} });
       if (res.ok) {
         status = { rows: extractRows(res.output ?? '', statusW.rows), age: 0, error: '', output: res.output ?? '' };
       } else {
@@ -131,7 +132,7 @@
     }
     running = w.label;
     try {
-      const res = await jpost('/api/rfx/run', { name: target.name, args, confirmed });
+      const res = await jpost('/api/rfx/run', { session_id: sessionStore.activeId, name: target.name, args, confirmed });
       lastRun = {
         label: w.label,
         output: (res.output ?? '') + (!res.ok && res.error ? (res.output ? '\n' : '') + res.error : ''),

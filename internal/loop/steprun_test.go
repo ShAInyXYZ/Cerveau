@@ -58,17 +58,17 @@ func TestRunStepRunsOnlyThatStep(t *testing.T) {
 	l, _, done := stepRunFixture(t)
 	defer done()
 
-	if _, err := l.RunStep(context.Background(), "s1", StepRunRequest{Step: 1}); err != nil {
+	if _, err := l.RunStep(context.Background(), "s1", StepRunRequest{Step: 0}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := l.PlanStateOf("s1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Steps[1].Status != "passed" {
+	if st.Steps[0].Status != "passed" {
 		t.Errorf("the requested step should have run: %+v", st.Steps[1])
 	}
-	if st.Steps[0].Status == "passed" {
+	if st.Steps[1].Status == "passed" {
 		t.Errorf("step 1 was not asked for and must not have run: %+v", st.Steps[0])
 	}
 }

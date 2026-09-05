@@ -3,6 +3,7 @@
   import AttachKnob from '../AttachKnob.svelte';
   import WorkspacePath from '../WorkspacePath.svelte';
   import PlanStrip from './PlanStrip.svelte';
+ import RunStatus from './RunStatus.svelte';
   import SamplingKnob from './SamplingKnob.svelte';
   import ThinkingKnob from './ThinkingKnob.svelte';
   import { tooltip } from '../../kit/tooltip.js';
@@ -20,12 +21,12 @@
   $effect(() => { sessionStore.mode = mode; });
   $effect(() => { mode = sessionStore.mode; });
 
-  function submit(): void {
+  async function submit(): Promise<void> {
     const t = draft.trim();
     if (!t) return;
-    draft = '';
-    if (running) void sessionStore.steer(t);
-    else void sessionStore.send(t);
+    const sid=sessionStore.activeId;
+    const ok=running?await sessionStore.steer(t):await sessionStore.send(t);
+    if(ok && sid===sessionStore.activeId && draft.trim()===t)draft='';
   }
 
   const placeholder = $derived(
@@ -42,11 +43,12 @@
     <div class="wsline">
       <span class="wsleft"><ThinkingKnob /></span>
       {#if !sessionStore.activeIsInstant}
-        <WorkspacePath workspace={healthStore.workspace}
+        <WorkspacePath workspace={sessionStore.workspace}
           onChanged={(ws: string) => sessionStore.onWorkspaceChanged(ws)} />
       {/if}
     </div>
 
+    <RunStatus />
     <PlanStrip />
 
     <div class="dockrow">
@@ -63,7 +65,7 @@
         ></textarea>
         <SamplingKnob />
         {#if running}<span class="steerbadge label">STEER</span>{/if}
-        <button class="send" class:steer={running} disabled={!draft.trim()} onclick={submit}
+        <button class="send" class:steer={running} disabled={!draft.trim() || sessionStore.submitting} onclick={submit}
           aria-label={running ? 'steer the running turn' : 'send message'}
           use:tooltip={running ? 'steer' : 'send'}>
           <ArrowUp size={17} strokeWidth={2.5} />
@@ -138,7 +140,7 @@
   @media (max-width: 640px) {
     .dockzone { padding: 0 10px 10px; }
     /* input gets the full width; the ws chip aligns to the edge */
-    .wsline { margin-right: 0; }
+    .wsline { margin-right: 0; flex-wrap: wrap; gap: 6px; }
   }
   .wsleft { margin-right: auto; }
 </style>

@@ -27,6 +27,8 @@ const (
 	Err          EventType = "error"
 	Interrupt    EventType = "interrupt"
 	Aborted      EventType = "aborted"
+	RunState     EventType = "run.state"
+	PlanState    EventType = "plan.state"
 )
 
 type Event struct {
@@ -37,10 +39,26 @@ type Event struct {
 }
 
 type Writer struct {
-	mu   sync.Mutex
-	f    *os.File
-	path string
-	seq  int
+	mu        sync.Mutex
+	f         *os.File
+	path      string
+	seq       int
+	base      *Writer
+	scope     map[string]any
+	appendErr error
+}
+
+// Scoped shares the serialized writer while attaching immutable run identity.
+// Background jobs retain the unscoped writer and cannot borrow a foreground run.
+func (w *Writer) Scoped(fields map[string]any) *Writer { return &Writer{base: w, scope: fields} }
+
+func (w *Writer) Error() error {
+	if w.base != nil {
+		return w.base.Error()
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.appendErr
 }
 
 func Open(path string) (*Writer, error) {
@@ -59,6 +77,23 @@ func Open(path string) (*Writer, error) {
 }
 
 func (w *Writer) Append(t EventType, payload any) (Event, error) {
+	if w.base != nil {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return Event{}, err
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return Event{}, err
+		}
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		for k, v := range w.scope {
+			fields[k] = v
+		}
+		return w.base.Append(t, fields)
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return Event{}, fmt.Errorf("marshal payload: %w", err)
@@ -80,9 +115,11 @@ func (w *Writer) Append(t EventType, payload any) (Event, error) {
 	line = append(line, '\n')
 	if _, err := w.f.Write(line); err != nil {
 		w.seq--
+		w.appendErr = err
 		return Event{}, fmt.Errorf("append: %w", err)
 	}
 	if err := w.f.Sync(); err != nil {
+		w.appendErr = err
 		return Event{}, fmt.Errorf("fsync: %w", err)
 	}
 	return ev, nil

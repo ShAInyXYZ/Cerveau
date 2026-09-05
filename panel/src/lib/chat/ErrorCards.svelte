@@ -9,8 +9,8 @@
       const what = (e.what ?? '').trim();
       const why = (e.why ?? e.detail ?? '').toLowerCase();
       if (!what) return false;
-      if (/retrying/i.test(what)) return false;
-      if (/context canceled|canceled|cancelled/.test(why)) return false;
+
+
       return true;
     });
     return real.length ? real[real.length - 1] : null;
@@ -40,7 +40,7 @@
       {#if lastUserText}
         <!-- A guard stop kept the history: sending the prompt again CONTINUES the
              work. Calling that "retry" read as "try the failed thing again". -->
-        <Button size="sm" variant="primary" onclick={() => sessionStore.retry(lastUserText)}>{e.class === 'guard' ? 'continue' : 'retry'}</Button>
+        <Button size="sm" variant="primary" disabled={sessionStore.running} onclick={() => sessionStore.retry(lastUserText)}>{sessionStore.plan ? 'Retry unfinished step' : 'Retry message'}</Button>
       {/if}
       <Button size="sm" variant="ghost" onclick={() => sessionStore.dismissAllErrors()}>dismiss</Button>
     {/snippet}

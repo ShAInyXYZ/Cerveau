@@ -25,13 +25,13 @@ func TestCommitPlanRejectsCostumeVerify(t *testing.T) {
 		ok   bool
 	}{
 		{"no verify at all", `{"title":"P","steps":[{"title":"a","files":["x.js"]}]}`, false},
-		{"existence in a costume", `{"title":"P","steps":[{"title":"a","verify":{"kind":"command","command":"test -f x.js"}}]}`, false},
-		{"contains without a symbol", `{"title":"P","steps":[{"title":"a","verify":{"kind":"contains","file":"x.js"}}]}`, false},
-		{"a real command", `{"title":"P","steps":[{"title":"a","verify":{"kind":"command","command":"node --check x.js"}}]}`, true},
-		{"a real contains", `{"title":"P","steps":[{"title":"a","verify":{"kind":"contains","file":"x.js","symbol":"buildFan"}}]}`, true},
-		{"a real eval", `{"title":"P","steps":[{"title":"a","verify":{"kind":"eval","expr":"!!document.querySelector('canvas')","path":"i.html"}}]}`, true},
+		{"existence in a costume", `{"title":"P","steps":[{"title":"a","files":["x.js"],"verify":{"kind":"command","command":"test -f x.js"}}]}`, false},
+		{"contains without a symbol", `{"title":"P","steps":[{"title":"a","files":["x.js"],"verify":{"kind":"contains","file":"x.js"}}]}`, false},
+		{"a real command", `{"title":"P","steps":[{"title":"a","files":["x.js"],"verify":{"kind":"command","command":"node --check x.js"}}]}`, true},
+		{"a real contains", `{"title":"P","steps":[{"title":"a","files":["x.js"],"verify":{"kind":"contains","file":"x.js","symbol":"buildFan"}}]}`, true},
+		{"a real eval", `{"title":"P","steps":[{"title":"a","files":["x.js"],"verify":{"kind":"eval","expr":"!!document.querySelector('canvas')","path":"i.html"}}]}`, true},
 		// the markdown path stays open for small models
-		{"markdown is exempt", `{"markdown":"## Scene setup\nbuild the shell\n\n## Car model\nboxes"}`, true},
+		{"markdown is a draft", `{"markdown":"## Scene setup\nbuild the shell\n\n## Car model\nboxes"}`, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

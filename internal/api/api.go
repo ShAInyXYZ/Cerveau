@@ -28,9 +28,12 @@ import (
 )
 
 // Version is the running app version, surfaced in /health.
-const Version = "0.5.0-alpha"
+const Version = "0.6.0-alpha"
+
+var BuildRevision = "development"
 
 type API struct {
+	cfgMu      sync.RWMutex
 	cfg        *config.Config
 	configPath string
 	sess       session.Store
@@ -57,6 +60,9 @@ type API struct {
 }
 
 type pendingQuestion struct {
+	ID       string   `json:"id"`
+	RunID    string   `json:"run_id"`
+	Answered bool     `json:"-"`
 	Question string   `json:"question"`
 	Options  []string `json:"options"`
 	ch       chan string
@@ -74,20 +80,20 @@ func New(cfg *config.Config, sess session.Store) *API {
 }
 
 // SetConfigPath lets SetRemoteToken persist pairing to disk.
-func (a *API) SetConfigPath(p string) { a.configPath = p }
+func (a *API) SetConfigPath(p string) {
+	a.cfgMu.Lock()
+	defer a.cfgMu.Unlock()
+	a.configPath = p
+}
 
 func (a *API) SetLoop(l *loop.Loop) { a.chat = l }
 
 // RemoteToken is the gate's bearer secret (empty = unpaired localhost mode).
-func (a *API) RemoteToken() string { return a.cfg.RemoteAccessToken }
+func (a *API) RemoteToken() string { return a.ConfigSnapshot().RemoteAccessToken }
 
 // SetRemoteToken persists a freshly minted pairing token into the config.
 func (a *API) SetRemoteToken(token string) error {
-	a.cfg.RemoteAccessToken = token
-	if a.configPath == "" {
-		return fmt.Errorf("config path unknown")
-	}
-	return config.Save(a.configPath, a.cfg)
+	return a.updateConfig(func(next *config.Config) { next.RemoteAccessToken = token }, nil, true)
 }
 
 func (a *API) SetSessionContext(sctx *tools.SessionContext) { a.sctx = sctx }
@@ -108,17 +114,18 @@ func (a *API) PickWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "workspace change not wired"})
 		return
 	}
-	path, err := pickDirectory(a.cfg.Workspace)
+	path, err := pickDirectory(a.ConfigSnapshot().Workspace)
 	if err != nil {
 		// user cancelled or no picker available — not an error worth alarming on
 		writeJSON(w, http.StatusOK, map[string]any{"cancelled": true})
 		return
 	}
-	if err := a.wsChange(path); err != nil {
+	workspace, err := a.changeWorkspace(path)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"workspace": a.cfg.Workspace})
+	writeJSON(w, http.StatusOK, map[string]string{"workspace": workspace})
 }
 
 func (a *API) ChangeWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -133,11 +140,12 @@ func (a *API) ChangeWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path required"})
 		return
 	}
-	if err := a.wsChange(body.Path); err != nil {
+	workspace, err := a.changeWorkspace(body.Path)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "workspace": a.cfg.Workspace})
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true", "workspace": workspace})
 }
 
 func (a *API) ListSkills(w http.ResponseWriter, r *http.Request) {
@@ -184,25 +192,26 @@ type ComponentStatus struct {
 }
 
 func (a *API) Health(w http.ResponseWriter, r *http.Request) {
-	model := a.ping("model", a.cfg.Endpoints.Model, "/health")
+	cfg := a.ConfigSnapshot()
+	model := a.ping("model", cfg.Endpoints.Model, "/health")
 	if model.OK {
-		model.Info = a.probeModelName(a.cfg.Endpoints.Model)
+		model.Info = a.probeModelName(cfg.Endpoints.Model)
 		if a.ctxSync != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			a.ctxSync(ctx)
 			cancel()
 		}
 	}
-	embedder := a.ping("embedder", a.cfg.Endpoints.Embedder, "/health")
+	embedder := a.ping("embedder", cfg.Endpoints.Embedder, "/health")
 	if embedder.OK {
-		embedder.Info = a.probeModelName(a.cfg.Endpoints.Embedder)
+		embedder.Info = a.probeModelName(cfg.Endpoints.Embedder)
 	}
-	ts := a.ping("typesense", a.cfg.Endpoints.Typesense, "/health")
+	ts := a.ping("typesense", cfg.Endpoints.Typesense, "/health")
 	if ts.OK {
-		ts.Info = a.probeTypesenseVersion(a.cfg.Endpoints.Typesense)
+		ts.Info = a.probeTypesenseVersion(cfg.Endpoints.Typesense)
 	}
 
-	ws := a.cfg.Workspace
+	ws := cfg.Workspace
 	if abs, err := filepath.Abs(ws); err == nil {
 		ws = abs
 	}
@@ -215,7 +224,7 @@ func (a *API) Health(w http.ResponseWriter, r *http.Request) {
 	// show an attach button only when the model can use the attachment.
 	var modalities map[string]bool
 	if model.OK {
-		modalities = a.probeModalities(a.cfg.Endpoints.Model)
+		modalities = a.probeModalities(cfg.Endpoints.Model)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"components": []ComponentStatus{model, embedder, ts},
@@ -229,8 +238,8 @@ func (a *API) Health(w http.ResponseWriter, r *http.Request) {
 			"version":   Version,
 			"model_ctx": a.contextWindow(),
 			"uptime":    up,
-			"typesense": map[string]any{"managed": a.cfg.TypesenseManaged},
-			"sessions":  a.cfg.SessionsDir,
+			"typesense": map[string]any{"managed": cfg.TypesenseManaged},
+			"sessions":  cfg.SessionsDir,
 		},
 	})
 }
@@ -314,7 +323,7 @@ func (a *API) probeTypesenseVersion(base string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/debug", nil)
-	req.Header.Set("X-TYPESENSE-API-KEY", a.cfg.TypesenseKey)
+	req.Header.Set("X-TYPESENSE-API-KEY", a.ConfigSnapshot().TypesenseKey)
 	resp, err := a.http.Do(req)
 	if err != nil {
 		return ""
@@ -548,13 +557,27 @@ func (a *API) AppendEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SessionState(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	events, err := episodic.Replay(a.sess.EventsPath(id))
+	p, err := a.sessionProjection(r.PathValue("id"))
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, episodic.Fold(events))
+	raw, _ := json.Marshal(episodic.Fold(p.Events))
+	var state map[string]any
+	_ = json.Unmarshal(raw, &state)
+	state["run"], state["plan_state"], state["report"] = p.Run, p.Plan, p.Report
+	state["running"], state["cursor"], state["events"] = p.Running, p.Cursor, p.Events
+	state["errors"] = projectErrors(p.Events, p.Run)
+	a.qmu.Lock()
+	var question any
+	if q := a.questions[r.PathValue("id")]; q != nil && !q.Answered && p.Run != nil && q.RunID == p.Run.ID {
+		// Marshal while locked: broker may settle the question immediately after.
+		data, _ := json.Marshal(q)
+		_ = json.Unmarshal(data, &question)
+	}
+	a.qmu.Unlock()
+	state["question"] = question
+	writeJSON(w, 200, state)
 }
 
 func (a *API) writer(id string) (*episodic.Writer, error) {
@@ -587,9 +610,7 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 	// A turn HOLDS the idle clock rather than merely resetting it: a long
 	// generation (or an unattended workflow) must not be parked out from
 	// under itself mid-run.
-	if a.idle != nil {
-		defer a.idle.Hold()()
-	}
+
 	var body struct {
 		Text string `json:"text"`
 		Mode string `json:"mode"`
@@ -605,104 +626,54 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text required"})
 		return
 	}
-	// A supervised plan step is a build task: it gets the long budget in the
-	// loop guard AND a matching HTTP ceiling (the 5m handler timeout would
-	// otherwise kill it first).
-	// The loop guard now measures IDLE time, so a productive turn has no
-	// fixed duration. The HTTP ceiling is only a backstop against a wedged
-	// request — it must be generous enough never to cut live work short.
-	httpBudget := 30 * time.Minute
-	if body.Step {
-		httpBudget = 2 * time.Hour
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), httpBudget)
-	defer cancel()
-	if body.Step {
-		ctx = loop.WithLongTurn(ctx)
-	}
-	ctx = loop.WithSampling(ctx, body.Sampling)
-	if a.sctx != nil {
-		a.sctx.SessionID = id
-		a.sctx.LastEvtID = ""
-		if events, err := episodic.Replay(a.sess.EventsPath(id)); err == nil && len(events) > 0 {
-			a.sctx.LastEvtID = events[len(events)-1].ID
-		}
-	}
-	res, err := a.chat.Run(ctx, id, body.Text, body.Mode)
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, res)
+	a.waitCommand(w, r, loop.Command{Kind: "chat", Text: body.Text, Mode: body.Mode, Sampling: body.Sampling})
 }
 
 func (a *API) Autopilot(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
 	if a.chat == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "loop not wired"})
 		return
 	}
-	// Autopilot is the unattended case the idle timer must never interrupt.
-	if a.idle != nil {
-		defer a.idle.Hold()()
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
-	defer cancel()
-	res, err := a.chat.RunAutopilot(ctx, id)
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, res)
+	a.waitCommand(w, r, loop.Command{Kind: "continue"})
 }
 
 func (a *API) SessionReport(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	events, err := episodic.Replay(a.sess.EventsPath(id))
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+	p, err := a.sessionProjection(r.PathValue("id"))
+	if err != nil || p.Report == nil {
+		writeJSON(w, 404, map[string]string{"error": "no plan in this session"})
 		return
 	}
-	rep := loop.BuildReportAt(events, a.cfg.Workspace)
-	if rep == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no plan in this session"})
-		return
-	}
-	writeJSON(w, http.StatusOK, rep)
+	writeJSON(w, 200, p.Report)
 }
-
 func (a *API) SessionErrors(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	events, err := episodic.Replay(a.sess.EventsPath(id))
+	p, err := a.sessionProjection(r.PathValue("id"))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
-	cards := []map[string]any{}
-	for _, ev := range events {
-		if ev.Type == episodic.Err {
-			cards = append(cards, normalizeErrorCard(ev.Payload))
-		}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"errors": cards})
+	writeJSON(w, 200, map[string]any{"errors": projectErrors(p.Events, p.Run)})
 }
 
 func (a *API) QuestionBroker() tools.QuestionBroker {
 	return func(ctx context.Context, sessionID, question string, options []string) (string, error) {
-		pq := &pendingQuestion{Question: question, Options: options, ch: make(chan string, 1)}
+		loop.SetWaiting(ctx, true)
+		defer loop.SetWaiting(ctx, false)
+		pq := &pendingQuestion{ID: fmt.Sprintf("%d", time.Now().UnixNano()), RunID: loop.RunID(ctx), Question: question, Options: options, ch: make(chan string, 1)}
 		a.qmu.Lock()
 		a.questions[sessionID] = pq
 		a.qmu.Unlock()
 		defer func() {
 			a.qmu.Lock()
-			delete(a.questions, sessionID)
+			if a.questions[sessionID] == pq {
+				delete(a.questions, sessionID)
+			}
 			a.qmu.Unlock()
 		}()
 		select {
 		case ans := <-pq.ch:
 			return ans, nil
 		case <-ctx.Done():
-			return "no answer — decide yourself and note the assumption", nil
+			return "", ctx.Err()
 		}
 	}
 }
@@ -716,73 +687,56 @@ func (a *API) PendingQuestion(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"question": nil})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"question": pq.Question, "options": pq.Options})
+	writeJSON(w, http.StatusOK, map[string]any{"id": pq.ID, "run_id": pq.RunID, "question": pq.Question, "options": pq.Options})
 }
 
 func (a *API) Answer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var body struct {
-		Answer string `json:"answer"`
+		Answer     string `json:"answer"`
+		QuestionID string `json:"question_id"`
+		RunID      string `json:"run_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Answer == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "answer required"})
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Answer == "" || body.QuestionID == "" || body.RunID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "answer, question_id and run_id required"})
 		return
 	}
-	a.qmu.Lock()
-	pq := a.questions[id]
-	a.qmu.Unlock()
-	if pq == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no pending question"})
+	if a.chat == nil {
+		writeJSON(w, 503, map[string]string{"error": "loop not wired"})
 		return
 	}
-	select {
-	case pq.ch <- body.Answer:
-	default:
+	err := a.chat.WithRun(id, body.RunID, func() error {
+		a.qmu.Lock()
+		defer a.qmu.Unlock()
+		pq := a.questions[id]
+		if pq == nil || pq.Answered || body.QuestionID != pq.ID || body.RunID != pq.RunID {
+			return fmt.Errorf("question changed or already answered")
+		}
+		select {
+		case pq.ch <- body.Answer:
+			pq.Answered = true
+			return nil
+		default:
+			return fmt.Errorf("answer already delivered")
+		}
+	})
+	if err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "delivered"})
 }
 
 func (a *API) Steer(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	var body struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text required"})
-		return
-	}
-	wr, err := a.writer(id)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
-		return
-	}
-	if _, err := wr.Append(episodic.MsgUser, map[string]any{"text": body.Text, "steer": true}); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	if a.chat != nil && a.chat.Steer(id) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "steered — re-thinking now"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "recorded (no active run)"})
+	a.runControl(w, r, "steer")
 }
 
 func (a *API) Pause(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if a.chat != nil && a.chat.Pause(id) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "paused"})
-		return
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active run"})
+	a.runControl(w, r, "pause")
 }
 
 func (a *API) Kill(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if a.chat != nil && a.chat.Kill(id) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "killed"})
-		return
-	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active run"})
+	a.runControl(w, r, "kill")
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -836,7 +790,7 @@ func (a *API) contextWindow() int {
 			return n
 		}
 	}
-	return a.cfg.ModelCtx
+	return a.ConfigSnapshot().ModelCtx
 }
 
 // RunPlanStep runs ONE step of the committed plan and verifies it.
@@ -849,28 +803,21 @@ func (a *API) contextWindow() int {
 // panel used to post "do step 3 only, then stop and report" as an ordinary
 // turn, so nothing bound the run to step 3 and nothing verified it.
 func (a *API) RunPlanStep(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
 	var body struct {
-		Step     *int `json:"step"`
-		Revision bool `json:"revision"`
+		Step     *int   `json:"step"`
+		Revision bool   `json:"revision"`
+		PlanID   string `json:"plan_event_id"`
+		Reason   string `json:"reason"`
 	}
-	// An empty body is legitimate: "run the next step".
-	_ = json.NewDecoder(r.Body).Decode(&body)
-	req := loop.StepRunRequest{Step: -1, Revision: body.Revision}
-	if body.Step != nil {
-		req.Step = *body.Step
-	}
-	if a.idle != nil {
-		defer a.idle.Hold()()
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
-	defer cancel()
-	res, err := a.chat.RunStep(ctx, id, req)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeJSON(w, 400, map[string]string{"error": "invalid step request"})
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	step := -1
+	if body.Step != nil {
+		step = *body.Step
+	}
+	a.waitCommand(w, r, loop.Command{Kind: "step", Step: step, Revision: body.Revision, PlanID: body.PlanID, Reason: body.Reason})
 }
 
 // PlanStateHandler reports the plan and what is known about each step, without

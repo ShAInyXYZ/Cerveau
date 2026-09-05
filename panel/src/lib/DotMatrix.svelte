@@ -3,7 +3,7 @@
   // string as a grid of dots: lit dots in the accent, unlit dots faint — like a
   // real LED display. SVG so it stays crisp at any size and recolors via tokens.
   let {
-    text = 'V0.4',
+    text = '...',
     dot = 2.4,          // dot radius
     gap = 2.2,          // gap between dot centers beyond the diameter
     lit = 'var(--accent)',
@@ -12,6 +12,10 @@
 
   // 5x7 glyphs, rows top→bottom, each row a 5-char bitmask string.
   const G = {
+    'A': ['01110','10001','10001','11111','10001','10001','10001'],
+    'L': ['10000','10000','10000','10000','10000','10000','11111'],
+    'P': ['11110','10001','10001','11110','10000','10000','10000'],
+    'H': ['10001','10001','10001','11111','10001','10001','10001'],
     'V': ['10001','10001','10001','10001','01010','01010','00100'],
     '0': ['01110','10001','10011','10101','11001','10001','01110'],
     '1': ['00100','01100','00100','00100','00100','00100','01110'],
@@ -55,7 +59,7 @@
   });
 
   const width = $derived.by(() => (dots.length ? Math.max(...dots.map((d) => d.x)) + dot : 0));
-  const height = ROWS * step - gap;
+  const height = $derived(ROWS * step - gap);
 </script>
 
 <svg class="matrix" width={width} height={height} viewBox="0 0 {width} {height}" role="img" aria-label={text}>

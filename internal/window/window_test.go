@@ -110,7 +110,7 @@ func TestPointerTextReferencesEvent(t *testing.T) {
 // are often far larger than its text content (whole-file writes), and
 // ignoring them let the manager believe a 33k request fit in a 32k budget.
 func TestToolCallArgsAreCounted(t *testing.T) {
-	big := strings.Repeat("x", 40000) // ~10k tokens of arguments
+	big := `{"content":"` + strings.Repeat("x", 40000) + `"}` // ~10k tokens of arguments
 	items := []Item{
 		{Msg: llm.Message{Role: "system", Content: "sys"}, Kind: "system"},
 		{Msg: llm.Message{

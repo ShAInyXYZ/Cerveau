@@ -1,0 +1,7 @@
+{
+  "Replace": {
+    "internal/loop/zz_audit_contract_test.go": "docs/loop-audit-probes/loop_test.go.txt",
+    "internal/window/zz_audit_contract_test.go": "docs/loop-audit-probes/window_test.go.txt",
+    "internal/tools/zz_audit_contract_test.go": "docs/loop-audit-probes/tools_test.go.txt"
+  }
+}

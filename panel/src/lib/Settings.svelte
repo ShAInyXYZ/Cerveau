@@ -2,6 +2,7 @@
   import { Volume2, VolumeX, Play, Zap, RefreshCw } from 'lucide-svelte';
   import { play, isMuted, setMuted, getVolume, setVolume, getSoundVolume, setSoundVolume, available } from './sound.js';
   import { j, jpost, jput } from './api';
+ import { settingsStore } from './stores/settings.svelte.ts';
   import { tooltip } from '../kit/tooltip.js';
   import EngineMark from './engines/EngineMark.svelte';
   import { Segmented } from '../kit/index.js';
@@ -185,7 +186,7 @@
   // ── sampling: the SESSION DEFAULT. A single turn can override it from the
   // chat bar; this is the value everything else uses. No restart — temperature
   // is a per-request field.
-  let sampling = $state({ active: 'strict', presets: [] });
+  const sampling=$derived(settingsStore.sampling);
   const SAMPLING_TIP = {
     default:  'No temperature or top_p sent — the model uses its own generation config (Qwen3.8-27B: temperature 1.0, top_p 0.95, top_k 20).',
     strict:   'temperature 0.2, no top_p. The measured default — every good benchmark run this project has produced used it. Best for code.',
@@ -193,21 +194,12 @@
     creative: 'temperature 0.7, top_p 0.9. Widest spread, for when there is no single correct answer. Not benchmarked here.'
   };
 
-  async function loadSampling() {
-    try { sampling = await j('/api/sampling'); } catch { /* older core */ }
-  }
-  loadSampling();
-
-  async function setSampling(name) {
-    if (name === sampling.active) return;
-    sampling = { ...sampling, active: name };          // optimistic: it is instant
-    try { await jpost('/api/sampling', { name }); } catch { await loadSampling(); }
-  }
-
+  void settingsStore.load();
+ const setSampling=(name)=>settingsStore.setSampling(name);
   // ── thinking: which turns reason before answering, and how hard ──
   // A per-call template argument, like sampling: changes apply to the next
   // model call, no restart. Chat stays direct; a build gets to think.
-  let thinking = $state({ mode: 'plan', effort: 'low', modes: [], efforts: [] });
+  const thinking=$derived(settingsStore.thinking);
   // The turn-mode knob on the chat bar also has an "autopilot". Same word,
   // different setting; a build ran with thinking limited to the planning
   // call while the user believed it was thinking everywhere (2026-09-05).
@@ -226,15 +218,7 @@
     medium: 'Longer reasoning. In testing one planning step thought for 13k tokens.',
     xhigh: 'The model\'s default: validate assumptions, weigh alternatives. Thousands of tokens per call.'
   };
-  async function loadThinking() {
-    try { const t = await j('/api/thinking'); if (t?.modes) thinking = t; } catch { /* older core */ }
-  }
-  loadThinking();
-  async function setThinking(patch) {
-    const next = { ...thinking, ...patch };
-    thinking = next;                                    // optimistic: it is instant
-    try { await jpost('/api/thinking', { mode: next.mode, effort: next.effort }); } catch { await loadThinking(); }
-  }
+  const setThinking=(patch)=>settingsStore.setThinking(patch);
 
   async function copyStart(cmd) {
     try { await navigator.clipboard.writeText(cmd); copied = cmd; setTimeout(() => (copied = ''), 1600); }
@@ -407,10 +391,11 @@
         </p>
       {/if}
 
+      {#if settingsStore.error}<p role="alert">{settingsStore.error}</p>{/if}
       {#if sampling.presets?.length}
         <div class="samp">
           <div class="samp-head">
-            <span class="samp-label">Sampling</span>
+            <span class="samp-label">Sampling · all future runs</span>
             <span class="samp-hint">applies to every turn · changes instantly</span>
           </div>
           <!-- kit/Segmented, not a local copy: it carries role="tablist" and
@@ -426,7 +411,7 @@
       {#if thinking.modes?.length}
         <div class="samp">
           <div class="samp-head">
-            <span class="samp-label">Thinking</span>
+            <span class="samp-label">Thinking · all future runs</span>
             <span class="samp-hint">reason before answering · applies to the next call · costs time, not context</span>
           </div>
           <div class="think-rows">

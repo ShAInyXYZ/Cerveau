@@ -1,4 +1,5 @@
 <script>
+ import { sessionStore } from './stores/session.svelte.ts';
   import { Play, Zap } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
   import { j, jpost } from './api';
@@ -74,7 +75,7 @@
     }
     runs[r.name] = { state: 'run', output: '' };
     try {
-      const res = await jpost('/api/rfx/run', { name: r.name, args: a, confirmed });
+      const res = await jpost('/api/rfx/run', { session_id: sessionStore.activeId, name: r.name, args: a, confirmed });
       runs[r.name] = res.ok ? { state: 'ok', output: res.output || '(no output)' }
                             : { state: 'err', output: (res.output ? res.output + '\n' : '') + res.error };
     } catch (e) {

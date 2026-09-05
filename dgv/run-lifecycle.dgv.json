@@ -1,0 +1,1146 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "0.6 LABRIG — run lifecycle",
+    "description": "Implemented in 0.6 working-tree source, not deployed. Run ownership/control, selected scopes, interruption and revision ordering covered by unit/HTTP/child-process tests. Real-API browser checks use a scripted model; separate real-Core smoke passed. docs/release-0.6-LABRIG.md.",
+    "updated": "2026-09-05",
+    "colorBy": "kind"
+  },
+  "frames": [
+    {
+      "tone": "cyan",
+      "id": "lifecycle",
+      "label": "1 · Run ownership and controls",
+      "note": "Steer/settings commands retain run status, record requested/applied and rebuild next safe model call. Cancel applies from every nonterminal state; selected edges shown.",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1320,
+        "height": 564
+      }
+    },
+    {
+      "tone": "amber",
+      "id": "revision",
+      "label": "2 · Revision subflow — still Running",
+      "note": "Invalidate → correction → target check → dependent checks. Do not reverify before the edit. Uses the same common runner and controls.",
+      "position": {
+        "x": 1460,
+        "y": 0
+      },
+      "size": {
+        "width": 1320,
+        "height": 300
+      }
+    },
+    {
+      "tone": "violet",
+      "id": "outcomes",
+      "label": "3 · Inactive / terminal outcomes",
+      "note": "Suspended is resumable; completed/failed/cancelled terminal for this run ID. Interrupted is restart recovery requiring reconciliation. New retry run has explicit lineage.",
+      "position": {
+        "x": 0,
+        "y": 704
+      },
+      "size": {
+        "width": 1320,
+        "height": 788
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "accepted",
+      "kind": "module",
+      "label": "Accepted",
+      "sublabel": "durable admission + run ID",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "lifecycle",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 44,
+        "y": 182
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "running",
+      "kind": "module",
+      "label": "Running",
+      "sublabel": "planning / model / tool / verify",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "lifecycle",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 368,
+        "y": 182
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "waiting",
+      "kind": "module",
+      "label": "Waiting for user",
+      "sublabel": "question ID + supported answers",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "lifecycle",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 692,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "pausereq",
+      "kind": "module",
+      "label": "Pause requested",
+      "sublabel": "settle current effect",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "lifecycle",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 692,
+        "y": 324
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "paused",
+      "kind": "module",
+      "label": "Paused",
+      "sublabel": "no calls executing",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "lifecycle",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1016,
+        "y": 258
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "suspended",
+      "kind": "module",
+      "label": "Suspended / action required",
+      "sublabel": "planning / budget / check blocked",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "outcomes",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 368,
+        "y": 1252
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "cancelreq",
+      "kind": "module",
+      "label": "Cancellation requested",
+      "sublabel": "settle or mark unknown",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "outcomes",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 692,
+        "y": 1252
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "cancelled",
+      "kind": "module",
+      "label": "Cancelled",
+      "sublabel": "files retained; worker stopped",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "outcomes",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1016,
+        "y": 1252
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "completed",
+      "kind": "module",
+      "label": "Requested unit completed",
+      "sublabel": "step success ≠ whole plan complete",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "outcomes",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 44,
+        "y": 764
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "failed",
+      "kind": "module",
+      "label": "Failed",
+      "sublabel": "terminal actionable incident",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "outcomes",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 44,
+        "y": 1008
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "interrupted",
+      "kind": "module",
+      "label": "Interrupted / unknown effects",
+      "sublabel": "restart recovery boundary",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "outcomes",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 44,
+        "y": 1252
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "invalidate",
+      "kind": "module",
+      "label": "Open revision",
+      "sublabel": "target + reason + stale dependents",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "revision",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1504,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "correct",
+      "kind": "module",
+      "label": "Correct target",
+      "sublabel": "current sources + revision reason",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "revision",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1828,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "targetcheck",
+      "kind": "module",
+      "label": "Verify target",
+      "sublabel": "criterion at new version",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "revision",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 2152,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "dependentcheck",
+      "kind": "module",
+      "label": "Reverify dependents",
+      "sublabel": "dependency order after target pass",
+      "note": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopilot,selected,snapshot}; tests in matching *_test.go, HTTP control integration and crash_process_test.go. This is source/test status, not production installation.",
+      "frame": "revision",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 2476,
+        "y": 60
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "control",
+      "source": "accepted",
+      "target": "running",
+      "label": "start common worker",
+      "id": "accepted-running"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "waiting",
+      "label": "question opened",
+      "id": "running-waiting"
+    },
+    {
+      "kind": "control",
+      "source": "waiting",
+      "target": "running",
+      "label": "answer accepted",
+      "id": "waiting-running"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "pausereq",
+      "label": "pause command accepted",
+      "id": "running-pausereq"
+    },
+    {
+      "kind": "control",
+      "source": "pausereq",
+      "target": "paused",
+      "label": "active call settled",
+      "id": "pausereq-paused"
+    },
+    {
+      "kind": "control",
+      "source": "paused",
+      "target": "running",
+      "label": "resume acknowledged",
+      "id": "paused-running"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "suspended",
+      "label": "bounded recovery exhausted / plan blocked",
+      "id": "running-suspended"
+    },
+    {
+      "kind": "control",
+      "source": "suspended",
+      "target": "running",
+      "label": "explicit resume / repair; revalidate",
+      "id": "suspended-running"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "cancelreq",
+      "label": "cancel accepted",
+      "id": "running-cancelreq"
+    },
+    {
+      "kind": "control",
+      "source": "paused",
+      "target": "cancelreq",
+      "label": "cancel while paused",
+      "id": "paused-cancelreq"
+    },
+    {
+      "kind": "control",
+      "source": "waiting",
+      "target": "cancelreq",
+      "label": "cancel while waiting",
+      "id": "waiting-cancelreq"
+    },
+    {
+      "kind": "control",
+      "source": "suspended",
+      "target": "cancelreq",
+      "label": "cancel suspended work",
+      "id": "suspended-cancelreq"
+    },
+    {
+      "kind": "control",
+      "source": "cancelreq",
+      "target": "cancelled",
+      "label": "worker stopped; effects recorded",
+      "id": "cancelreq-cancelled"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "completed",
+      "label": "requested unit and its check complete",
+      "id": "running-completed"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "failed",
+      "label": "unrecoverable terminal failure",
+      "id": "running-failed"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "interrupted",
+      "label": "process restart / missing call result",
+      "id": "running-interrupted"
+    },
+    {
+      "kind": "control",
+      "source": "interrupted",
+      "target": "suspended",
+      "label": "reconcile before resuming",
+      "id": "interrupted-suspended"
+    },
+    {
+      "kind": "control",
+      "source": "running",
+      "target": "invalidate",
+      "label": "structured revision request",
+      "id": "running-invalidate"
+    },
+    {
+      "kind": "control",
+      "source": "invalidate",
+      "target": "correct",
+      "label": "new target revision; old evidence stale",
+      "id": "invalidate-correct"
+    },
+    {
+      "kind": "control",
+      "source": "correct",
+      "target": "targetcheck",
+      "label": "correction settled",
+      "id": "correct-targetcheck"
+    },
+    {
+      "kind": "control",
+      "source": "targetcheck",
+      "target": "dependentcheck",
+      "label": "target check passed",
+      "id": "targetcheck-dependentcheck"
+    },
+    {
+      "kind": "control",
+      "source": "targetcheck",
+      "target": "suspended",
+      "label": "target cannot pass under policy",
+      "id": "targetcheck-suspended"
+    },
+    {
+      "kind": "control",
+      "source": "dependentcheck",
+      "target": "running",
+      "label": "fresh evidence / explicit repair queue",
+      "id": "dependentcheck-running"
+    },
+    {
+      "kind": "control",
+      "source": "dependentcheck",
+      "target": "suspended",
+      "label": "dependency repair needs decision",
+      "id": "dependentcheck-suspended"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "lifecycle",
+      "op": "add",
+      "label": "1 · Run ownership and controls"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "revision",
+      "op": "add",
+      "label": "2 · Revision subflow — still Running"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "outcomes",
+      "op": "add",
+      "label": "3 · Inactive / terminal outcomes"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "accepted",
+      "op": "add",
+      "kind": "module",
+      "label": "Accepted"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "running",
+      "op": "add",
+      "kind": "module",
+      "label": "Running"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "waiting",
+      "op": "add",
+      "kind": "module",
+      "label": "Waiting for user"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "pausereq",
+      "op": "add",
+      "kind": "module",
+      "label": "Pause requested"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "paused",
+      "op": "add",
+      "kind": "module",
+      "label": "Paused"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "suspended",
+      "op": "add",
+      "kind": "module",
+      "label": "Suspended / action required"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cancelreq",
+      "op": "add",
+      "kind": "module",
+      "label": "Cancellation requested"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cancelled",
+      "op": "add",
+      "kind": "module",
+      "label": "Cancelled"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "completed",
+      "op": "add",
+      "kind": "module",
+      "label": "Requested unit completed"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "failed",
+      "op": "add",
+      "kind": "module",
+      "label": "Failed"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "interrupted",
+      "op": "add",
+      "kind": "module",
+      "label": "Interrupted / unknown effects"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "invalidate",
+      "op": "add",
+      "kind": "module",
+      "label": "Open revision"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "correct",
+      "op": "add",
+      "kind": "module",
+      "label": "Correct target"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "targetcheck",
+      "op": "add",
+      "kind": "module",
+      "label": "Verify target"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dependentcheck",
+      "op": "add",
+      "kind": "module",
+      "label": "Reverify dependents"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "accepted-running",
+      "op": "add",
+      "kind": "control",
+      "label": "accepted → running"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-waiting",
+      "op": "add",
+      "kind": "control",
+      "label": "running → waiting"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "waiting-running",
+      "op": "add",
+      "kind": "control",
+      "label": "waiting → running"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-pausereq",
+      "op": "add",
+      "kind": "control",
+      "label": "running → pausereq"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "pausereq-paused",
+      "op": "add",
+      "kind": "control",
+      "label": "pausereq → paused"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "paused-running",
+      "op": "add",
+      "kind": "control",
+      "label": "paused → running"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-suspended",
+      "op": "add",
+      "kind": "control",
+      "label": "running → suspended"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "suspended-running",
+      "op": "add",
+      "kind": "control",
+      "label": "suspended → running"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-cancelreq",
+      "op": "add",
+      "kind": "control",
+      "label": "running → cancelreq"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "paused-cancelreq",
+      "op": "add",
+      "kind": "control",
+      "label": "paused → cancelreq"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "waiting-cancelreq",
+      "op": "add",
+      "kind": "control",
+      "label": "waiting → cancelreq"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "suspended-cancelreq",
+      "op": "add",
+      "kind": "control",
+      "label": "suspended → cancelreq"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "cancelreq-cancelled",
+      "op": "add",
+      "kind": "control",
+      "label": "cancelreq → cancelled"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-completed",
+      "op": "add",
+      "kind": "control",
+      "label": "running → completed"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-failed",
+      "op": "add",
+      "kind": "control",
+      "label": "running → failed"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-interrupted",
+      "op": "add",
+      "kind": "control",
+      "label": "running → interrupted"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "interrupted-suspended",
+      "op": "add",
+      "kind": "control",
+      "label": "interrupted → suspended"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "running-invalidate",
+      "op": "add",
+      "kind": "control",
+      "label": "running → invalidate"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "invalidate-correct",
+      "op": "add",
+      "kind": "control",
+      "label": "invalidate → correct"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "correct-targetcheck",
+      "op": "add",
+      "kind": "control",
+      "label": "correct → targetcheck"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "targetcheck-dependentcheck",
+      "op": "add",
+      "kind": "control",
+      "label": "targetcheck → dependentcheck"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "targetcheck-suspended",
+      "op": "add",
+      "kind": "control",
+      "label": "targetcheck → suspended"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "dependentcheck-running",
+      "op": "add",
+      "kind": "control",
+      "label": "dependentcheck → running"
+    },
+    {
+      "at": "2026-09-05T02:57:07.762Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "dependentcheck-suspended",
+      "op": "add",
+      "kind": "control",
+      "label": "dependentcheck → suspended"
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "accepted",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Command deduplicated; session ownersh…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "running",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Phase is a separate field; publish ch…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "waiting",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Pending question is durable and scope…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "pausereq",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Cancel in-flight model; stop scheduli…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "paused",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Preserve cursor and settled results. …",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "suspended",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. No active calls; cursor and evidence …",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cancelreq",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Request interrupt/process termination…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cancelled",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Neutral outcome. Do not claim rollbac…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "completed",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. One step can complete while plan rema…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "failed",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Exhausted model/operation retries or …",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "interrupted",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Unfinished started call at process re…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "invalidate",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Persist target revision and attempt/p…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "correct",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Run through the common dispatcher; pr…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "targetcheck",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Failed target check retries boundedly…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dependentcheck",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED lifecycle, not implementation. Every affected stale verdict is repla…",
+          "to": "0.6 implementation evidence: internal/loop/{run,runcontrol,supervisor,autopil…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.825Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "title",
+          "from": "Proposed run lifecycle — truthful controls and revision order",
+          "to": "0.6 LABRIG — run lifecycle"
+        },
+        {
+          "field": "description",
+          "from": "Design, not implemented. Run status and active phase are separate. Revision f…",
+          "to": "Implemented in 0.6 working-tree source, not deployed. Run ownership/control, …"
+        }
+      ]
+    }
+  ]
+}

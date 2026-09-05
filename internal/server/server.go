@@ -10,6 +10,7 @@ import (
 func New(addr string, a *api.API) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", a.Health)
+	mux.HandleFunc("GET /api/build", a.Build)
 	mux.HandleFunc("GET /api/cores", a.ListCores)
 	mux.HandleFunc("GET /api/sampling", a.GetSampling)
 	mux.HandleFunc("POST /api/sampling", a.SetSampling)
@@ -44,6 +45,8 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("GET /api/sessions/{id}/usage", a.SessionUsage)
 	mux.HandleFunc("POST /api/sessions/{id}/rewind", a.Rewind)
 	mux.HandleFunc("POST /api/sessions/{id}/chat", a.Chat)
+	mux.HandleFunc("POST /api/sessions/{id}/commands", a.Command)
+	mux.HandleFunc("POST /api/sessions/{id}/resume", a.Resume)
 	mux.HandleFunc("POST /api/sessions/{id}/autopilot", a.Autopilot)
 	mux.HandleFunc("POST /api/sessions/{id}/steer", a.Steer)
 	mux.HandleFunc("POST /api/sessions/{id}/pause", a.Pause)

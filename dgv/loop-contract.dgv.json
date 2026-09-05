@@ -1,0 +1,1640 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "0.6 LABRIG — loop contract and release gates",
+    "description": "0.6.0-alpha LABRIG working-tree implementation, build-only; installed 0.5 service unchanged. Immediate gates implemented and tested, broader design extensions remain explicit. Evidence and limitations: docs/release-0.6-LABRIG.md. Existing inference configuration unchanged.",
+    "updated": "2026-09-05",
+    "colorBy": "kind"
+  },
+  "frames": [
+    {
+      "tone": "cyan",
+      "id": "surface",
+      "label": "1 · Every surface sees the same state",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 672,
+        "height": 559
+      }
+    },
+    {
+      "tone": "amber",
+      "id": "control",
+      "label": "2 · Accept and own one run",
+      "position": {
+        "x": 812,
+        "y": 0
+      },
+      "size": {
+        "width": 996,
+        "height": 300
+      }
+    },
+    {
+      "tone": "green",
+      "id": "execution",
+      "label": "3 · Execute / verify under one policy",
+      "position": {
+        "x": 0,
+        "y": 699
+      },
+      "size": {
+        "width": 1968,
+        "height": 601
+      }
+    },
+    {
+      "tone": "violet",
+      "id": "evidence",
+      "label": "4 · Record once, replay everywhere",
+      "position": {
+        "x": 0,
+        "y": 1440
+      },
+      "size": {
+        "width": 1644,
+        "height": 285
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "surfaces",
+      "kind": "ui",
+      "label": "Chat · CLI · RFX",
+      "sublabel": "one command and state contract",
+      "note": "Chat observes all selected sessions via canonical snapshots. CLI HTTP requests use detached commands. RFX whole/selected/next use server execution; bundled Planner 1.5.0 not installed yet. Tests: session.test.ts, rfx-plan.test.ts, runcontrol_test.go.",
+      "frame": "surface",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 368,
+        "y": 304
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "controls",
+      "kind": "ui",
+      "label": "Settings and controls",
+      "sublabel": "requested → applied / rejected",
+      "note": "Run controls require run_id/control_id/control_version; questions require run_id/question_id. Future defaults acknowledged and persisted, active settings frozen. No active-run policy update UI. Tests: runcontrol_test.go, settings_test.go.",
+      "frame": "surface",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 368,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "commands",
+      "kind": "api",
+      "label": "Command service",
+      "sublabel": "typed targets · idempotency keys",
+      "note": "Detached accepted worker, persisted start/control dedup, stale target rejection; selected scope validated including dependencies. Tests: command_test.go, runcontrol_test.go, selected_test.go.",
+      "frame": "control",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 856,
+        "y": 68
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "admission",
+      "kind": "module",
+      "label": "Run ownership",
+      "sublabel": "session lock + workspace write lease",
+      "note": "Session plus canonical workspace ownership, process file leases, compare-and-release; paused leases retained. All modes conservatively reserve workspace. No queue. Tests: command/runcontrol/snapshot.",
+      "frame": "control",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1180,
+        "y": 68
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "policy",
+      "kind": "module",
+      "label": "Run policy snapshot",
+      "sublabel": "capabilities · settings · budgets",
+      "note": "Run-local workspace/capabilities/thinking/sampling; actual call settings and budgets journaled. Shared config persistence serialized. Session overrides and active-run updates are outside delivered scope.",
+      "frame": "control",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1504,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "planner",
+      "kind": "module",
+      "label": "Task and plan compiler",
+      "sublabel": "answer-only or validated build",
+      "note": "Structured commit_plan criteria; bounded planning failure suspends rather than free execution; new task after completed plan plans again. Legacy unchecked plans remain unverified. Answer-only classification remains heuristic.",
+      "frame": "execution",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 44,
+        "y": 891
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "supervisor",
+      "kind": "module",
+      "label": "Plan supervisor",
+      "sublabel": "cursor · retries · revisions",
+      "note": "Plan-bound persisted snapshots: retries/revisions/pairs/reverify ordering survive replay. Sequential dependencies, selected-scope limits; out-of-scope revision suspends. Tests: supervisor/steprun/selected/lifecycle.",
+      "frame": "execution",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 368,
+        "y": 891
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "runner",
+      "kind": "worker",
+      "label": "Common runner",
+      "sublabel": "one model / tool / verify loop",
+      "note": "Shared boundaries and dispatch for chat, plan, verification, nested/manual RFX. Model cancellation plus safe tool boundaries; real-Core isolated write/read smoke passed. No exactly-once external-effects promise.",
+      "frame": "execution",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 692,
+        "y": 891
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "context",
+      "kind": "module",
+      "label": "Per-run context builder",
+      "sublabel": "pinned brief · atomic tool groups",
+      "note": "Atomic tool-call/result packing, pinned brief/current step, recount and schema/output reservation. Missing results become unknown. Window tests plus child-process crash-after-effect test.",
+      "frame": "execution",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1016,
+        "y": 1075
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "dispatcher",
+      "kind": "module",
+      "label": "Tool dispatcher",
+      "sublabel": "validate → authorize → journal → act",
+      "note": "Offered-set, object JSON, mode/guard, session registry enforced; trusted internal null/noargs preserved. Rewritten arguments rechecked; backups confined with os.Root. Generic JSON-Schema validation remains future work.",
+      "frame": "execution",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1340,
+        "y": 825
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "verify",
+      "kind": "module",
+      "label": "Versioned verification",
+      "sublabel": "check + evidence + workspace version",
+      "note": "Declared check start/result, raw tool evidence, workspace fingerprint; exact eval boolean including Chromium source suffix; missing checks never pass; downstream revalidation follows edits. Tests: verifyrun/supervisor/selected.",
+      "frame": "execution",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1016,
+        "y": 759
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "workspace",
+      "kind": "storage",
+      "label": "Session workspace services",
+      "sublabel": "artifacts · versions · code index",
+      "note": "Canonical session workspace registries and indexing hooks; cache removed and step source reread. Sequential dependency invalidation, not a new filesystem ACL or complete external-input version model.",
+      "frame": "execution",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1664,
+        "y": 833
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "core",
+      "kind": "model",
+      "label": "Existing Brain Core",
+      "sublabel": "serving configuration unchanged",
+      "note": "Existing dependency, not a proposed serving change. Audit tests used fake models. No inference tuning is part of this design.",
+      "frame": "execution",
+      "status": "done",
+      "position": {
+        "x": 1340,
+        "y": 1083
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "journal",
+      "kind": "storage",
+      "label": "Durable session event log",
+      "sublabel": "seq · run/plan/step/attempt/call IDs",
+      "note": "Serialized fsynced run/plan/call/verify records with sticky persistence failure. Interrupted crash outcomes tested. Fully normalized attempt/event envelope is a future extension.",
+      "frame": "evidence",
+      "status": "wip",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 692,
+        "y": 1500
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "reducer",
+      "kind": "module",
+      "label": "Canonical state reducer",
+      "sublabel": "live state = replay at every prefix",
+      "note": "Snapshot from one journal prefix drives run/plan/report/events/current errors. Unowned unfinished run is interrupted; external process leases remain active. Prefix and subprocess-crash tests pass.",
+      "frame": "evidence",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1016,
+        "y": 1500
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "readapi",
+      "kind": "api",
+      "label": "Snapshot + event stream",
+      "sublabel": "cursor resume · gap detection",
+      "note": "Single-prefix /state includes events,cursor,run,plan,report,errors. SSE IDs resume after cursor; UI deduplicates and resnapshots on invalidation/reconnect with 2s fallback. Real Go API desktop/mobile browser tests; no incremental UI reducer.",
+      "frame": "surface",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 44,
+        "y": 178
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "incidents",
+      "kind": "module",
+      "label": "Incident projection",
+      "sublabel": "retry · blocked · failed · resolved",
+      "note": "0.6 current-run actionable projection, retry Notes, background warnings; history retained. Formal persisted incident.opened/resolved families remain future work, not claimed implemented.",
+      "frame": "evidence",
+      "status": "wip",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 1340,
+        "y": 1500
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "background",
+      "kind": "worker",
+      "label": "Background jobs",
+      "sublabel": "memory / index status separate",
+      "note": "Optional distillation failures are background Notes; no successful foreground run converted to a current error card.",
+      "frame": "evidence",
+      "status": "done",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 44,
+        "y": 1515
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "writer",
+      "kind": "service",
+      "label": "Single session event writer",
+      "sublabel": "serialize · validate · fsync",
+      "note": "API writer cache serializes run-scoped appends; persistence stops new effects. Not a universal event-transition validator/migration of every legacy append path.",
+      "frame": "evidence",
+      "status": "wip",
+      "path": "docs/loop-contract-2026-09-05.md",
+      "position": {
+        "x": 368,
+        "y": 1508
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "sync",
+      "source": "surfaces",
+      "target": "commands",
+      "protocol": "http",
+      "label": "typed task / run command",
+      "id": "surfaces-commands"
+    },
+    {
+      "kind": "sync",
+      "source": "controls",
+      "target": "commands",
+      "protocol": "http",
+      "label": "targeted control / policy update",
+      "id": "controls-commands"
+    },
+    {
+      "kind": "control",
+      "source": "commands",
+      "target": "admission",
+      "label": "validate and reserve",
+      "id": "commands-admission"
+    },
+    {
+      "kind": "control",
+      "source": "admission",
+      "target": "policy",
+      "label": "freeze effective run policy",
+      "id": "admission-policy"
+    },
+    {
+      "kind": "control",
+      "source": "policy",
+      "target": "planner",
+      "label": "brief + planning capabilities",
+      "id": "policy-planner"
+    },
+    {
+      "kind": "control",
+      "source": "planner",
+      "target": "supervisor",
+      "label": "validated plan or answer-only unit",
+      "id": "planner-supervisor"
+    },
+    {
+      "kind": "control",
+      "source": "supervisor",
+      "target": "runner",
+      "label": "next eligible unit and attempt",
+      "id": "supervisor-runner"
+    },
+    {
+      "kind": "sync",
+      "source": "runner",
+      "target": "context",
+      "label": "versioned active intent",
+      "id": "runner-context"
+    },
+    {
+      "kind": "sync",
+      "source": "context",
+      "target": "core",
+      "protocol": "http",
+      "label": "fit-checked model request",
+      "id": "context-core"
+    },
+    {
+      "kind": "sync",
+      "source": "runner",
+      "target": "dispatcher",
+      "label": "validated offered tool call",
+      "id": "runner-dispatcher"
+    },
+    {
+      "kind": "data",
+      "source": "dispatcher",
+      "target": "workspace",
+      "label": "authorized mutation / observation",
+      "id": "dispatcher-workspace"
+    },
+    {
+      "kind": "sync",
+      "source": "runner",
+      "target": "verify",
+      "label": "execution settled; declared check",
+      "id": "runner-verify"
+    },
+    {
+      "kind": "sync",
+      "source": "verify",
+      "target": "dispatcher",
+      "label": "verification capability subset",
+      "id": "verify-dispatcher"
+    },
+    {
+      "kind": "data",
+      "source": "journal",
+      "target": "reducer",
+      "label": "ordered durable transitions",
+      "id": "journal-reducer"
+    },
+    {
+      "kind": "data",
+      "source": "reducer",
+      "target": "supervisor",
+      "label": "canonical cursor and evidence",
+      "id": "reducer-supervisor"
+    },
+    {
+      "kind": "data",
+      "source": "reducer",
+      "target": "readapi",
+      "label": "versioned snapshot + updates",
+      "id": "reducer-readapi"
+    },
+    {
+      "kind": "data",
+      "source": "reducer",
+      "target": "incidents",
+      "label": "scoped incident lifecycle",
+      "id": "reducer-incidents"
+    },
+    {
+      "kind": "data",
+      "source": "incidents",
+      "target": "readapi",
+      "label": "current actionable incidents",
+      "id": "incidents-readapi"
+    },
+    {
+      "kind": "data",
+      "source": "readapi",
+      "target": "surfaces",
+      "protocol": "sse",
+      "label": "snapshot and resumable stream",
+      "id": "readapi-surfaces"
+    },
+    {
+      "kind": "data",
+      "source": "readapi",
+      "target": "controls",
+      "protocol": "sse",
+      "label": "confirmed state + allowed actions",
+      "id": "readapi-controls"
+    },
+    {
+      "kind": "async",
+      "source": "runner",
+      "target": "background",
+      "label": "separate post-run job",
+      "id": "runner-background"
+    },
+    {
+      "kind": "sync",
+      "source": "verify",
+      "target": "writer",
+      "label": "submit scoped transition",
+      "id": "verify-writer"
+    },
+    {
+      "kind": "sync",
+      "source": "commands",
+      "target": "writer",
+      "label": "submit scoped transition",
+      "id": "commands-writer"
+    },
+    {
+      "kind": "sync",
+      "source": "runner",
+      "target": "writer",
+      "label": "submit scoped transition",
+      "id": "runner-writer"
+    },
+    {
+      "kind": "sync",
+      "source": "supervisor",
+      "target": "writer",
+      "label": "submit scoped transition",
+      "id": "supervisor-writer"
+    },
+    {
+      "kind": "sync",
+      "source": "background",
+      "target": "writer",
+      "label": "submit scoped transition",
+      "id": "background-writer"
+    },
+    {
+      "kind": "data",
+      "source": "writer",
+      "target": "journal",
+      "protocol": "fs",
+      "label": "single durable append owner",
+      "id": "writer-journal"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "surface",
+      "op": "add",
+      "label": "1 · Every surface sees the same state"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "control",
+      "op": "add",
+      "label": "2 · Accept and own one run"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "execution",
+      "op": "add",
+      "label": "3 · Execute / verify under one policy"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "evidence",
+      "op": "add",
+      "label": "4 · Record once, replay everywhere"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "add",
+      "kind": "ui",
+      "label": "Chat · CLI · RFX"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "controls",
+      "op": "add",
+      "kind": "ui",
+      "label": "Settings and controls"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "commands",
+      "op": "add",
+      "kind": "api",
+      "label": "Command service"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "admission",
+      "op": "add",
+      "kind": "module",
+      "label": "Run ownership"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "policy",
+      "op": "add",
+      "kind": "module",
+      "label": "Run policy snapshot"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "add",
+      "kind": "module",
+      "label": "Task and plan compiler"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "add",
+      "kind": "module",
+      "label": "Plan supervisor"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "add",
+      "kind": "worker",
+      "label": "Common runner"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "add",
+      "kind": "module",
+      "label": "Per-run context builder"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "add",
+      "kind": "module",
+      "label": "Tool dispatcher"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "add",
+      "kind": "module",
+      "label": "Versioned verification"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "workspace",
+      "op": "add",
+      "kind": "storage",
+      "label": "Session workspace services"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "core",
+      "op": "add",
+      "kind": "model",
+      "label": "Existing Brain Core"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "journal",
+      "op": "add",
+      "kind": "storage",
+      "label": "Durable session event log"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "reducer",
+      "op": "add",
+      "kind": "module",
+      "label": "Canonical state reducer"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "add",
+      "kind": "api",
+      "label": "Snapshot + event stream"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "incidents",
+      "op": "add",
+      "kind": "module",
+      "label": "Incident projection"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "node",
+      "id": "background",
+      "op": "add",
+      "kind": "worker",
+      "label": "Background jobs"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "surfaces-commands",
+      "op": "add",
+      "kind": "sync",
+      "label": "surfaces → commands"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "controls-commands",
+      "op": "add",
+      "kind": "sync",
+      "label": "controls → commands"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "commands-admission",
+      "op": "add",
+      "kind": "control",
+      "label": "commands → admission"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "admission-policy",
+      "op": "add",
+      "kind": "control",
+      "label": "admission → policy"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "policy-planner",
+      "op": "add",
+      "kind": "control",
+      "label": "policy → planner"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "planner-supervisor",
+      "op": "add",
+      "kind": "control",
+      "label": "planner → supervisor"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-runner",
+      "op": "add",
+      "kind": "control",
+      "label": "supervisor → runner"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runner-context",
+      "op": "add",
+      "kind": "sync",
+      "label": "runner → context"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "context-core",
+      "op": "add",
+      "kind": "sync",
+      "label": "context → core"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runner-dispatcher",
+      "op": "add",
+      "kind": "sync",
+      "label": "runner → dispatcher"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "dispatcher-workspace",
+      "op": "add",
+      "kind": "sync",
+      "label": "dispatcher → workspace"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runner-verify",
+      "op": "add",
+      "kind": "sync",
+      "label": "runner → verify"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "verify-dispatcher",
+      "op": "add",
+      "kind": "sync",
+      "label": "verify → dispatcher"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "verify-journal",
+      "op": "add",
+      "kind": "data",
+      "label": "verify → journal"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "commands-journal",
+      "op": "add",
+      "kind": "data",
+      "label": "commands → journal"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runner-journal",
+      "op": "add",
+      "kind": "data",
+      "label": "runner → journal"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-journal",
+      "op": "add",
+      "kind": "data",
+      "label": "supervisor → journal"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "journal-reducer",
+      "op": "add",
+      "kind": "data",
+      "label": "journal → reducer"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "reducer-supervisor",
+      "op": "add",
+      "kind": "data",
+      "label": "reducer → supervisor"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "reducer-readapi",
+      "op": "add",
+      "kind": "data",
+      "label": "reducer → readapi"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "reducer-incidents",
+      "op": "add",
+      "kind": "data",
+      "label": "reducer → incidents"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "incidents-readapi",
+      "op": "add",
+      "kind": "data",
+      "label": "incidents → readapi"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "readapi-surfaces",
+      "op": "add",
+      "kind": "data",
+      "label": "readapi → surfaces"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "readapi-controls",
+      "op": "add",
+      "kind": "data",
+      "label": "readapi → controls"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runner-background",
+      "op": "add",
+      "kind": "async",
+      "label": "runner → background"
+    },
+    {
+      "at": "2026-09-05T02:55:58.865Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "background-journal",
+      "op": "add",
+      "kind": "data",
+      "label": "background → journal"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "node",
+      "id": "writer",
+      "op": "add",
+      "kind": "service",
+      "label": "Single session event writer"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "verify-journal",
+      "op": "remove",
+      "kind": "data",
+      "label": "verify → journal"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "commands-journal",
+      "op": "remove",
+      "kind": "data",
+      "label": "commands → journal"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runner-journal",
+      "op": "remove",
+      "kind": "data",
+      "label": "runner → journal"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-journal",
+      "op": "remove",
+      "kind": "data",
+      "label": "supervisor → journal"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "background-journal",
+      "op": "remove",
+      "kind": "data",
+      "label": "background → journal"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "verify-writer",
+      "op": "add",
+      "kind": "sync",
+      "label": "verify → writer"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "commands-writer",
+      "op": "add",
+      "kind": "sync",
+      "label": "commands → writer"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runner-writer",
+      "op": "add",
+      "kind": "sync",
+      "label": "runner → writer"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-writer",
+      "op": "add",
+      "kind": "sync",
+      "label": "supervisor → writer"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "background-writer",
+      "op": "add",
+      "kind": "sync",
+      "label": "background → writer"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "writer-journal",
+      "op": "add",
+      "kind": "data",
+      "label": "writer → journal"
+    },
+    {
+      "at": "2026-09-05T02:58:27.732Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "dispatcher-workspace",
+      "op": "change",
+      "fields": [
+        {
+          "field": "kind",
+          "from": "sync",
+          "to": "data"
+        },
+        {
+          "field": "label",
+          "from": "authorized side effect / observation",
+          "to": "authorized mutation / observation"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T04:46:29.823Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Every selected session observed regardless of init…",
+          "to": "0.6 gate: Planner selected execution is one server command; matrix displays a…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T04:46:29.823Z",
+      "by": "agent",
+      "type": "node",
+      "id": "commands",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. start_task / continue_plan / run_step / revise_ste…",
+          "to": "0.6 gate: stale controls must match run_id + control_version; control_id retr…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T04:46:29.823Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Enforce offered/phase set, mode, JSON/schema, appr…",
+          "to": "Regression: trusted internal null/no-args shorthand must coexist with strict …"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T04:46:29.823Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Record check start/full result; no file-presence p…",
+          "to": "Regression: valid check_page boolean carries Chromium source metadata; parse …"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T04:46:29.823Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Read snapshot at seq N then replay/subscribe after…",
+          "to": "0.6 gate: state, plan/report, events and incidents reduced from one journal p…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T04:46:29.823Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "title",
+          "from": "Proposed loop contract — one owner, one state",
+          "to": "0.6 LABRIG — loop contract and release gates"
+        },
+        {
+          "field": "description",
+          "from": "DESIGN FOR REVIEW — NOT IMPLEMENTED. Resolves audit L01–L18 through shared co…",
+          "to": "0.6.0-alpha LABRIG implementation in progress, not deployed. Run-specific ide…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:00:18.655Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Release gate: remediation and backup boundary escapes"
+      }
+    },
+    {
+      "at": "2026-09-05T05:00:18.661Z",
+      "by": "agent",
+      "type": "node",
+      "id": "core",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Harness adapter: upstream error shape hid the real cause"
+      }
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "0.6 gate: Planner selected execution is one server command; matrix displays a…",
+          "to": "Chat observes all selected sessions via canonical snapshots. CLI HTTP request…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "controls",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Scope settings to global/session/next-run/current-…",
+          "to": "Run controls require run_id/control_id/control_version; questions require run…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "commands",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "0.6 gate: stale controls must match run_id + control_version; control_id retr…",
+          "to": "Detached accepted worker, persisted start/control dedup, stale target rejecti…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "admission",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Atomic admission; duplicate request returns origin…",
+          "to": "Session plus canonical workspace ownership, process file leases, compare-and-…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "policy",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Immutable scoped registry including approved skill…",
+          "to": "Run-local workspace/capabilities/thinking/sampling; actual call settings and …"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Immutable task brief; stable plan and step IDs; de…",
+          "to": "Structured commit_plan criteria; bounded planning failure suspends rather tha…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Consumes canonical reduced state. Persist all atte…",
+          "to": "Plan-bound persisted snapshots: retries/revisions/pairs/reverify ordering sur…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Chat and steps share execution, controls and limit…",
+          "to": "Shared boundaries and dispatch for chat, plan, verification, nested/manual RF…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Versioned sources; no shared mutable resume closur…",
+          "to": "Atomic tool-call/result packing, pinned brief/current step, recount and schem…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Regression: trusted internal null/no-args shorthand must coexist with strict …",
+          "to": "Offered-set, object JSON, mode/guard, session registry enforced; trusted inte…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Regression: valid check_page boolean carries Chromium source metadata; parse …",
+          "to": "Declared check start/result, raw tool evidence, workspace fingerprint; exact …"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "workspace",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Canonical path and write ownership; writes invalid…",
+          "to": "Canonical session workspace registries and indexing hooks; cache removed and …"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "journal",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Single serialized writer; accepted command persist…",
+          "to": "Serialized fsynced run/plan/call/verify records with sticky persistence failu…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "reducer",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. One deterministic state model for worker, restart,…",
+          "to": "Snapshot from one journal prefix drives run/plan/report/events/current errors…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "0.6 gate: state, plan/report, events and incidents reduced from one journal p…",
+          "to": "Single-prefix /state includes events,cursor,run,plan,report,errors. SSE IDs r…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "incidents",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Run/attempt scoped identity and actions; transient…",
+          "to": "0.6 current-run actionable projection, retry Notes, background warnings; hist…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "background",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED, not implemented. Separate job IDs and warnings; memory failure cann…",
+          "to": "Optional distillation failures are background Notes; no successful foreground…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "node",
+      "id": "writer",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "PROPOSED. Every producer submits to this owner; no parallel direct log writer…",
+          "to": "API writer cache serializes run-scoped appends; persistence stops new effects…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:06:52.339Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "0.6.0-alpha LABRIG implementation in progress, not deployed. Run-specific ide…",
+          "to": "0.6.0-alpha LABRIG working-tree implementation, build-only; installed 0.5 ser…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:08:49.248Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Release gate: remediation and backup boundary escapes"
+      }
+    },
+    {
+      "at": "2026-09-05T05:08:49.251Z",
+      "by": "agent",
+      "type": "node",
+      "id": "core",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Harness adapter: upstream error shape hid the real cause"
+      }
+    }
+  ]
+}

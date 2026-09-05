@@ -76,11 +76,8 @@ func TestCommitPlanFromMarkdown(t *testing.T) {
 	cp := NewCommitPlan(open, &SessionContext{SessionID: "s1"})
 
 	out, err := cp.Execute(context.Background(), json.RawMessage(`{"markdown":"# Chess\n## Engine\nBuild `+"`"+`src/engine.ts`+"`"+`\n## Renderer\nBuild the board\n"}`))
-	if err != nil {
-		t.Fatalf("markdown plan should commit: %v", err)
-	}
-	if !strings.Contains(out, "2 steps") {
-		t.Errorf("should commit 2 parsed steps: %q", out)
+	if err == nil {
+		t.Fatalf("markdown without checks must remain a draft, got %q", out)
 	}
 }
 

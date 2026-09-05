@@ -1,10 +1,11 @@
 package window
 
 import (
-	"context"
-	"fmt"
-
 	"cerveau/internal/llm"
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
 )
 
 const (
@@ -18,28 +19,20 @@ type Item struct {
 	EvtID string
 	Kind  string
 }
-
 type Report struct {
-	Tokens  int    `json:"tokens"`
-	Budget  int    `json:"budget"`
-	Zone    string `json:"zone"`
-	Demoted int    `json:"demoted"`
-	Trimmed int    `json:"trimmed"`
-	// Compacted counts turns folded into a compaction marker. Surfaced to the
-	// UI so a user can SEE the session lost history — silently forgetting is
-	// indistinguishable from the model ignoring what it was told.
-	Compacted int `json:"compacted"`
+	Tokens    int    `json:"tokens"`
+	Budget    int    `json:"budget"`
+	Zone      string `json:"zone"`
+	Demoted   int    `json:"demoted"`
+	Trimmed   int    `json:"trimmed"`
+	Compacted int    `json:"compacted"`
 }
-
 type Manager struct {
-	budget      int
-	reserve     int
-	keepLast    int
-	counter     Counter
-	resumeBrief func(dropped int) string
-	// probed is set once the Core has told us its real window; until then
-	// budget is the configured fallback.
-	probed bool
+	mu                        sync.Mutex
+	budget, reserve, keepLast int
+	counter                   Counter
+	resumeBrief               func(int) string
+	probed                    bool
 }
 
 func NewManager(budget, reserve int, counter Counter) *Manager {
@@ -51,32 +44,12 @@ func NewManager(budget, reserve int, counter Counter) *Manager {
 	}
 	return &Manager{budget: budget, reserve: reserve, keepLast: 6, counter: counter}
 }
-
-// usable is the point where shedding starts. 0.75 leaves a quarter of the
-// window as headroom for the reply plus the gap between our token counter and
-// the engine's tokenizer (~8% measured against vLLM).
-//
-// It was 0.6, tuned when the window was 32K. At 96K that shed context with
-// 40K still unused — the packer was throwing away history the model could
-// have had.
-func (m *Manager) usable() int { return int(float64(m.budget-m.reserve) * 0.75) }
-
-// Budget is the window the packer is currently working against.
-func (m *Manager) Budget() int { return m.budget }
-
-// Sync asks the Core for its window now, if it has not answered yet. Health
-// calls it once the Core has already answered a ping, so the panel shows the
-// Core's real window (262k for the BF16 profile) instead of the config
-// fallback until the first turn. It never wakes anything: the caller only
-// invokes it when the Core is already up.
+func (m *Manager) usable() int              { return int(float64(m.budget-m.reserve) * 0.75) }
+func (m *Manager) Budget() int              { m.mu.Lock(); defer m.mu.Unlock(); return m.budget }
 func (m *Manager) Sync(ctx context.Context) { m.syncBudget(ctx) }
-
-// syncBudget replaces the configured window with the Core's own, the first
-// time the Core answers. Done here rather than at startup because startup
-// must not wake a parked Core — Build only runs when a turn is about to hit
-// it anyway. A Core that cannot be asked (llama.cpp behind a proxy, a
-// remote endpoint) leaves the configured number in place.
 func (m *Manager) syncBudget(ctx context.Context) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.probed {
 		return
 	}
@@ -90,126 +63,170 @@ func (m *Manager) syncBudget(ctx context.Context) {
 		m.probed = true
 	}
 }
-
+func (m *Manager) SetResumeBrief(f func(int) string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.resumeBrief = f
+}
 func (m *Manager) Build(ctx context.Context, items []Item) ([]llm.Message, Report) {
+	m.mu.Lock()
+	brief := m.resumeBrief
+	m.mu.Unlock()
+	return m.BuildWithBrief(ctx, items, brief)
+}
+func (m *Manager) BuildWithBrief(ctx context.Context, items []Item, brief func(int) string) ([]llm.Message, Report) {
 	m.syncBudget(ctx)
-	rep := Report{Budget: m.budget, Zone: ZoneGreen}
-	counts := make([]int, len(items))
-	total := 0
-	for i, it := range items {
-		// Tool-call ARGUMENTS are part of the request too, and for a
-		// whole-file write they dwarf the assistant's text (which is often
-		// empty). Counting only Content let a 33k request look like 1k and
-		// sail past the budget into "exceeds the available context size".
-		n := m.counter.Count(ctx, it.Msg.Content) + 4
-		for _, tc := range it.Msg.ToolCalls {
-			n += m.counter.Count(ctx, tc.Function.Arguments) + m.counter.Count(ctx, tc.Function.Name)
+	m.mu.Lock()
+	budget, reserve, keep, counter := m.budget, m.reserve, m.keepLast, m.counter
+	m.mu.Unlock()
+	rep := Report{Budget: budget, Zone: ZoneGreen}
+	usable := int(float64(budget-reserve) * .75)
+	out := RepairToolGroups(items)
+	count := func(msg llm.Message) int {
+		n := counter.Count(ctx, msg.Content) + 4
+		for _, tc := range msg.ToolCalls {
+			n += counter.Count(ctx, tc.Function.Arguments) + counter.Count(ctx, tc.Function.Name)
 		}
-		counts[i] = n
-		total += n
+		return n
 	}
-	rep.Tokens = total
-	usable := m.usable()
-	out := make([]Item, len(items))
-	copy(out, items)
-
-	if total > usable {
+	total := func() int {
+		n := 0
+		for _, it := range out {
+			if it.Kind != "dropped" {
+				n += count(it.Msg)
+			}
+		}
+		return n
+	}
+	if total() > usable {
 		rep.Zone = ZoneYellow
 		for i := range out {
-			if total <= usable {
+			if total() <= usable {
 				break
 			}
 			if out[i].Kind == "tool" && out[i].EvtID != "" {
-				out[i].Msg.Content = pointerText(out[i].EvtID)
-				total -= counts[i] - m.counter.Count(ctx, out[i].Msg.Content)
-				rep.Demoted++
-				continue
+				replacement := pointerText(out[i].EvtID)
+				if counter.Count(ctx, replacement) < counter.Count(ctx, out[i].Msg.Content) {
+					out[i].Msg.Content = replacement
+					rep.Demoted++
+				}
 			}
-			// A replayed assistant turn whose tool call carried a huge payload
-			// (a whole-file write) is history: the model does not need the
-			// arguments again, only that the call happened. Stub them.
 			if out[i].Kind == "assistant" && len(out[i].Msg.ToolCalls) > 0 {
-				before := counts[i]
-				calls := make([]llm.ToolCall, len(out[i].Msg.ToolCalls))
-				copy(calls, out[i].Msg.ToolCalls)
-				shrunk := false
+				calls := append([]llm.ToolCall(nil), out[i].Msg.ToolCalls...)
+				changed := false
 				for j := range calls {
-					if m.counter.Count(ctx, calls[j].Function.Arguments) > 200 {
-						calls[j].Function.Arguments = `{"_elided":"arguments dropped from the window — see the episodic log"}`
-						shrunk = true
+					if counter.Count(ctx, calls[j].Function.Arguments) > 200 {
+						calls[j].Function.Arguments = `{"_elided":"historical arguments in episodic log"}`
+						changed = true
 					}
 				}
-				if shrunk {
+				if changed {
 					out[i].Msg.ToolCalls = calls
-					after := m.counter.Count(ctx, out[i].Msg.Content) + 4
-					for _, tc := range calls {
-						after += m.counter.Count(ctx, tc.Function.Arguments) + m.counter.Count(ctx, tc.Function.Name)
-					}
-					total -= before - after
 					rep.Demoted++
 				}
 			}
 		}
 	}
-	if total > usable {
+	if total() > usable {
 		rep.Zone = ZoneRed
-		cut := len(out) - m.keepLast
 		lastCut := -1
-		for i := 0; i < cut; i++ {
-			if out[i].Kind == "system" {
+		// Remove entire assistant/tool-result groups, never an individual half.
+		for i := 0; i < len(out)-keep; i++ {
+			if out[i].Kind == "system" || out[i].Kind == "pinned" || out[i].Kind == "dropped" {
 				continue
 			}
-			total -= counts[i]
-			out[i].Kind = "dropped"
-			rep.Trimmed++
-			lastCut = i
-			if total <= usable {
+			end := i + 1
+			if len(out[i].Msg.ToolCalls) > 0 {
+				for end < len(out) && out[end].Msg.Role == "tool" {
+					end++
+				}
+			}
+			for j := i; j < end; j++ {
+				out[j].Kind = "dropped"
+				rep.Trimmed++
+				lastCut = j
+			}
+			if total() <= usable {
 				break
 			}
+			i = end - 1
 		}
-		// Leave a MARKER where the history was. Dropping turns silently makes
-		// the model believe the session began later than it did: it re-asks
-		// settled questions and re-does finished work, with no way to tell that
-		// anything is missing. The marker costs a few tokens and tells it
-		// exactly what happened and where the detail still lives.
 		if lastCut >= 0 {
-			out[lastCut].Kind = "compaction"
 			body := ""
-			if m.resumeBrief != nil {
-				body = m.resumeBrief(rep.Trimmed)
+			if brief != nil {
+				body = brief(rep.Trimmed)
 			}
 			if body == "" {
-				body = fmt.Sprintf("[%d earlier turns were compacted out of this window to stay "+
-					"under the context limit. They are NOT lost — the full episodic log is on disk, "+
-					"and files you already wrote are still in the workspace. If you need something "+
-					"from before this point, re-read the files rather than assuming it never "+
-					"happened.]", rep.Trimmed)
+				body = fmt.Sprintf("[%d earlier messages compacted. Full observations remain in the episodic log. Re-read current files when needed; do not replay side effects blindly.]", rep.Trimmed)
 			}
-			out[lastCut].Msg = llm.Message{Role: "user", Content: body}
-			total += m.counter.Count(ctx, out[lastCut].Msg.Content) + 4
+			out[lastCut] = Item{Msg: llm.Message{Role: "user", Content: body}, Kind: "compaction"}
 			rep.Compacted = rep.Trimmed
 		}
 	}
 	msgs := []llm.Message{}
 	for _, it := range out {
-		if it.Kind == "dropped" {
-			continue
+		if it.Kind != "dropped" {
+			msgs = append(msgs, it.Msg)
 		}
-		msgs = append(msgs, it.Msg)
 	}
-	rep.Tokens = total
+	rep.Tokens = total()
 	return msgs, rep
 }
 
-func pointerText(evtID string) string {
-	return fmt.Sprintf("[raw tool output demoted — full content at %s in the episodic log; re-run the tool if needed]", evtID)
+// RepairToolGroups makes interruption-safe replay. Missing outcomes are explicit,
+// never silently invented successes; orphaned old results are not sent to the model.
+func RepairToolGroups(items []Item) []Item {
+	out := []Item{}
+	for i := 0; i < len(items); i++ {
+		it := items[i]
+		if it.Msg.Role == "tool" && it.Msg.ToolCallID != "" {
+			continue
+		}
+		if len(it.Msg.ToolCalls) == 0 {
+			out = append(out, it)
+			continue
+		}
+		it.Msg.ToolCalls = append([]llm.ToolCall(nil), it.Msg.ToolCalls...)
+		for k := range it.Msg.ToolCalls {
+			if !json.Valid([]byte(it.Msg.ToolCalls[k].Function.Arguments)) {
+				it.Msg.ToolCalls[k].Function.Arguments = "{}"
+			}
+		}
+		out = append(out, it)
+		results := map[string]Item{}
+		j := i + 1
+		for j < len(items) && items[j].Msg.Role == "tool" {
+			results[items[j].Msg.ToolCallID] = items[j]
+			j++
+		}
+		for _, tc := range it.Msg.ToolCalls {
+			if r, ok := results[tc.ID]; ok {
+				out = append(out, r)
+			} else {
+				out = append(out, Item{Kind: "tool", Msg: llm.Message{Role: "tool", ToolCallID: tc.ID, Content: "Outcome not recorded: this call was interrupted or not executed. Inspect current state before repeating any side effect."}})
+			}
+		}
+		i = j - 1
+	}
+	return out
 }
 
-// SetResumeBrief supplies the text that REPLACES dropped history. Without it
-// the packer leaves a generic "turns were removed" note, which tells the model
-// that it lost context but not how to carry on — and the one thing it cannot
-// recover by reading the workspace is what it was asked to do.
-//
-// A func, not a string: the brief must be built at compaction time, when the
-// number of dropped turns and the files on disk are known.
-func (m *Manager) SetResumeBrief(f func(dropped int) string) { m.resumeBrief = f }
+// Admit checks the ACTUAL serialized request envelope and effective generation
+// reservation, after compaction. Approximate tokenizer counts retain 10% headroom.
+func (m *Manager) Admit(ctx context.Context, msgs []llm.Message, specs []llm.ToolSpec, reserve int) error {
+	raw, err := json.Marshal(struct {
+		Messages []llm.Message  `json:"messages"`
+		Tools    []llm.ToolSpec `json:"tools"`
+	}{msgs, specs})
+	if err != nil {
+		return err
+	}
+	n := m.counter.Count(ctx, string(raw))
+	if n+n/10+reserve > m.Budget() {
+		return fmt.Errorf("context blocked: request estimate %d + reply reserve %d exceeds safe capacity %d; shorten context or reduce effort", n, reserve, m.Budget())
+	}
+	return nil
+}
+func pointerText(id string) string {
+	return fmt.Sprintf("[raw tool output demoted — full content at %s in the episodic log; re-run the tool if needed]", id)
+}

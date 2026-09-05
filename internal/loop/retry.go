@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -65,23 +66,71 @@ func llmFix(class string) string {
 }
 
 func (l *Loop) completeWithRetry(ctx context.Context, wr *episodic.Writer, messages []llm.Message, specs []llm.ToolSpec, grammar string, proseCap int) (llm.Message, llm.Usage, error) {
+	h := handleOf(ctx)
 	var lastErr error
 	for attempt := 0; attempt <= 2; attempt++ {
+		if h != nil {
+			if err := h.boundary(ctx); err != nil {
+				return llm.Message{}, llm.Usage{}, err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return llm.Message{}, llm.Usage{}, err
+		}
 		if attempt > 0 {
-			wr.Append(episodic.Err, errorCard(
-				ErrClassTransient,
-				"model call failed — retrying",
-				lastErr.Error(),
-				strings.Repeat("·", attempt),
-				llmFix(ErrClassTransient),
-			))
+			wr.Append(episodic.Note, map[string]any{"kind": "retry_wait", "attempt": attempt + 1, "text": "Model request failed; retrying", "detail": lastErr.Error()})
+			if h != nil {
+				_ = h.publish("running", "retry_wait", "", fmt.Sprintf("model retry %d/3", attempt+1))
+			}
 			select {
 			case <-ctx.Done():
 				return llm.Message{}, llm.Usage{}, ctx.Err()
 			case <-time.After(time.Duration(attempt) * 1500 * time.Millisecond):
 			}
 		}
-		msg, usage, err := l.llm.CompleteWith(ctx, messages, specs, grammar, proseCap, samplingOf(ctx))
+		callCtx, cancel := context.WithCancel(ctx)
+		if h != nil {
+			h.setInFlight(cancel)
+			h.mu.Lock()
+			h.state.Calls++
+			h.mu.Unlock()
+			if err := h.publish("running", "model_call", "", ""); err != nil {
+				cancel()
+				h.setInFlight(nil)
+				return llm.Message{}, llm.Usage{}, err
+			}
+		}
+		budget := llm.BudgetFor(llm.ThinkingOf(ctx))
+		if b := llm.ThinkingBudgetOf(ctx); b > 0 {
+			budget = b
+		}
+		if l.win != nil {
+			if err := l.win.Admit(callCtx, messages, specs, proseCap+budget); err != nil {
+				cancel()
+				if h != nil {
+					h.setInFlight(nil)
+				}
+				return llm.Message{}, llm.Usage{}, err
+			}
+		}
+		wr.Append(episodic.Note, map[string]any{"kind": "model_started", "thinking": llm.ThinkingOf(ctx), "reasoning_budget": budget, "output_budget": proseCap, "sampling": samplingOf(ctx), "attempt": attempt + 1})
+		if err := wr.Error(); err != nil {
+			cancel()
+			if h != nil {
+				h.setInFlight(nil)
+			}
+			return llm.Message{}, llm.Usage{}, err
+		}
+		msg, usage, err := l.llm.CompleteWith(callCtx, messages, specs, grammar, proseCap, samplingOf(ctx))
+		cancel()
+		if h != nil {
+			h.setInFlight(nil)
+		}
+		wr.Append(episodic.Note, map[string]any{"kind": "model_finished", "ok": err == nil, "usage": usage})
+		if h != nil && (h.paused.Load() || h.steered.Load()) && !h.killed.Load() {
+			wr.Append(episodic.Aborted, map[string]string{"phase": "model_call", "reason": "user control"})
+			return llm.Message{}, usage, errControl
+		}
 		if err == nil {
 			return msg, usage, nil
 		}

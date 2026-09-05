@@ -4,7 +4,7 @@
   <!-- VERSION PILL — bump this on every release. It lives here, not in
        banner.svg, because a version baked into the SVG goes stale silently. -->
   <p>
-    <img src="https://img.shields.io/badge/v0.5.0--alpha-%22Cores%22-C0304A?style=for-the-badge&labelColor=000000" alt="v0.5.0-alpha Cores"/>
+    <img src="https://img.shields.io/badge/v0.6.0--alpha-LABRIG-C0304A?style=for-the-badge&labelColor=000000" alt="v0.6.0-alpha LABRIG"/>
   </p>
 
   <p><strong>A local-first agentic coding harness — built from scratch to squeeze every drop out of the hardware you already own.</strong></p>
@@ -26,6 +26,89 @@
 ---
 
 ## 📌 Patch notes
+
+### 🔬 v0.6.0-alpha — "LABRIG" · 2026-09-05
+
+<p>
+  <img src="https://img.shields.io/badge/lab_rig-4×_RTX_3090-C0304A?style=flat-square&labelColor=17140F" alt="four RTX 3090 lab rig"/>
+  <img src="https://img.shields.io/badge/cores-BF16_·_W8A16_%2B_MTP-E88BA0?style=flat-square&labelColor=17140F" alt="BF16 and W8A16 plus MTP profiles"/>
+  <img src="https://img.shields.io/badge/runs-stepwise_%2B_verified-C0304A?style=flat-square&labelColor=17140F" alt="stepwise runs with verification"/>
+</p>
+
+**Cerveau is now being developed against real lab-rig work.** LABRIG brings
+the multi-GPU experiments into installable Core profiles, and rebuilds the
+run lifecycle so the browser can report what the worker is actually doing.
+The single-card setup remains supported.
+
+**The lab rig**
+
+- **Unquantized weights across four GPUs.** Qwen3.8-27B has been tested with
+  **BF16 weights and TP=4 across 4× RTX 3090s**. Here, unquantized means
+  16-bit BF16 weights — **not FP32**. A separate **W8A16 + MTP** profile
+  uses quantized weights and speculative decoding; the two configurations
+  are distinct, not interchangeable benchmark results.
+- **Profiles carry the configuration.** Installable BF16 and W8A16 TP=4
+  profiles define the serving ports, systemd units, KV format and model
+  window. Engine settings expose per-profile overrides and embedder
+  placement; the BF16 profile places the embedder on the RTX 3060.
+  The idle watchdog parks the loaded Core, and socket activation wakes it
+  for the next request. See [Core profiles](deploy/profiles/README.md).
+- **Engine patches are documented dependencies.** The rig's patched vLLM,
+  including the prefix-cache/recurrent-state correction, has an
+  [application and verification record](deploy/profiles/ENGINE-PATCHES.md).
+  Rebuilding that environment requires reapplying and checking its patches;
+  this harness release does not silently upgrade or retune the Core.
+
+**The loop owns the work**
+
+- **One owner per session and workspace.** The server accepts an identified
+  run before execution. Retrying the same command does not start it twice,
+  and closing the browser does not cancel it. Pause retains ownership;
+  pause, resume, stop and steer target a specific run and control version,
+  so a delayed click cannot change its replacement.
+- **A plan needs a check, not just a checkbox.** Executable steps declare an
+  `eval`, `command` or `contains` criterion. The supervisor records attempts
+  and verdicts; file existence and prose claiming completion cannot mark a
+  step passed. Older unchecked steps remain unverified. Revisions invalidate
+  downstream results and require fresh checks after the correction.
+- **Tools and context keep their boundaries.** Model calls are checked
+  against the offered tools and JSON arguments; nested reflexes retain the
+  session workspace, mode and guards. Replayed tool-call/result groups stay
+  together, missing results remain unknown, and request admission includes
+  tool schemas and output headroom. A re-check executes again rather than
+  reusing an old success after the files change.
+- **Thinking follows an explicit policy.** Off, low, medium and xhigh effort
+  can be scoped to planning, every autopilot step or every turn, with bounded
+  reasoning and overflow step-down. The harness probes the Core's serving
+  window. Sampling includes a `default` preset that leaves the model's
+  generation settings alone; effective settings are captured when a run starts.
+
+**A panel that follows the server**
+
+- **Run state, plan state and evidence share a journal snapshot.** The chat
+  strip and Planner use the server's step states. The UI distinguishes
+  working, waiting for an answer, pause requested, paused and stopping;
+  historical failures stay inspectable without becoming fresh error cards
+  on every refresh. Rejected submissions retain the draft, and changing
+  sessions cannot apply an old response to the new view.
+- **The matrix/status readout identifies the 0.6 alpha build.** Build
+  metadata also exposes its source revision. Thinking and sampling controls
+  share acknowledged settings, with future-run defaults separated from the
+  active run's captured values. Per-reply working logs remain available
+  after completion.
+- **The work since 0.5 is included.** Per-session token usage records,
+  copy/edit-and-resend, sanitized Markdown and inline-code fixes, bundled
+  fonts, a collapsible project rail, Android welcome/reachability polish,
+  `crv pair`, and a paired-device list with last-seen and revocation.
+  Security changes include resolved-address SSRF checks, cross-origin
+  mutation rejection, required download checksums and tighter token-file
+  permissions. These remain a safety floor, not an OS sandbox.
+
+**Alpha validation is separate from the rig experiments.** Earlier BF16/W8A16
+rig work and recorded prefix-cache checks are historical evidence, not a new
+throughput, thermal or full-model benchmark for this build. See the
+[0.6 LABRIG release record](docs/release-0.6-LABRIG.md) for this build's tests,
+remaining limitations and installation status.
 
 ### 🧠 v0.5 — "Cores" · 2026-08-19
 
@@ -334,7 +417,7 @@ Modern MoE models (Qwen3-A3B, Mixtral-class) are *made* for hybrid hardware:
 only a few experts fire per token, so the hot path (attention, KV cache) lives
 in VRAM while the bulk expert weights stream from ordinary system RAM.
 
-The reference rig — one RTX 3090 (24 GB) + 16-core CPU + 128 GB DDR5 — runs a
+The original reference rig — one RTX 3090 (24 GB) + 16-core CPU + 128 GB DDR5 — runs a
 **35B-parameter MoE at 73–107 tok/s with a full 32K context and up to 8K tokens
 of output per call**. The same box, with the naive "everything the GPU can't
 hold goes to CPU" defaults, ran at **0.9 tok/s**. That gap is pure
@@ -358,6 +441,11 @@ The all-in-VRAM configs people benchmark hit 110–140 tok/s — by giving the m
 the *entire* GPU and a cramped context. Cerveau's split means your 64–128 GB of
 RAM becomes model capacity, and your GPU stays *yours*: the `shared` profile
 runs the 35B agent **and** leaves 12 GB for whatever else you stack.
+
+LABRIG adds a separate **4× RTX 3090 TP=4** setup for Qwen3.8-27B, with
+unquantized BF16 and W8A16 + MTP Core profiles. Those configurations are
+documented in [Core profiles](deploy/profiles/README.md); the single-card
+MoE numbers above are not measurements of the four-GPU rig.
 
 ### 📼 A context window treated like the scarce resource it is
 
@@ -439,7 +527,7 @@ hardware do serious agentic work.
 |---|---|
 | **Go** | 1.25+ |
 | **Node** | 20+ (build the panel once) |
-| **llama.cpp** | a `llama-server` build + a GGUF model |
+| **Brain Core** | llama.cpp + a GGUF model, or an OpenAI-compatible vLLM Core |
 | **Python** | 3.10+ — optional, only for the embedder sidecar |
 
 **Platform:** Linux (x86-64 / ARM64) today. macOS is close (core + syscalls work; the system monitor and folder picker need platform shims). A **Windows version is planned** — see the roadmap.
@@ -474,9 +562,10 @@ Open **http://localhost:7700**. Optionally start hybrid vector recall:
 python3 sidecars/nemotron_embed.py   # OpenAI-compatible /v1/embeddings on :8081
 ```
 
-> **Reasoning models:** Cerveau sends `enable_thinking: false` on every request —
-> otherwise a thinking model burns its whole token budget inside `<think>` and
-> returns nothing.
+> **Reasoning models:** configure thinking scope and effort in the panel.
+> Cerveau budgets reasoning separately from the answer and steps effort down
+> on overflow. The active run keeps its captured settings; changing the
+> defaults applies to future runs.
 
 ## The three modes
 
@@ -514,7 +603,7 @@ file edits you ask for.
 ## Architecture
 
 ```
-  Svelte panel ──HTTP──▶ Go core ──OpenAI API──▶ llama.cpp (your hardware)
+  Svelte panel ──HTTP──▶ Go core ──OpenAI API──▶ Brain Core (llama.cpp / vLLM)
    (go:embed)             │
                           ├─▶ events.jsonl        episodic — source of truth
                           ├─▶ Typesense (managed) recall index + semantic facts
@@ -556,11 +645,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Status
 
-**v0.1 — early, and daily-driven.** Cerveau builds real projects end to end
-(scaffold → build → read its own errors → fix), and every number in this README
-was measured, not estimated. It is still a young codebase: expect rough edges. Known limitations are
-stated where they exist (e.g. per-session tool jailing is not yet enforced for
-instant sessions) rather than papered over.
+**v0.6.0-alpha — LABRIG, early and daily-driven.** Cerveau is developed on
+single-card workstations and a four-GPU lab rig. Historical measurements keep
+their original hardware and configuration context; they are not performance
+promises for this release. The loop and UI changes have a separate
+[validation and limitations record](docs/release-0.6-LABRIG.md). It is still
+an alpha: expect rough edges, and inspect verification evidence before
+trusting a generated project's completion claim.
 
 ## License
 

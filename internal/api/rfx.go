@@ -113,6 +113,7 @@ func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		SessionID string          `json:"session_id"`
 		Name      string          `json:"name"`
 		Args      json.RawMessage `json:"args"`
 		Confirmed bool            `json:"confirmed"` // an explicit UI confirm click
@@ -133,7 +134,11 @@ func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
 	if a.idle != nil {
 		defer a.idle.Hold()()
 	}
-	out, err := a.chat.RunReflex(ctx, body.Name, body.Args)
+	if _, err := a.writer(body.SessionID); err != nil {
+		writeJSON(w, 400, map[string]string{"error": "valid session_id required"})
+		return
+	}
+	out, err := a.chat.RunReflexFor(ctx, body.SessionID, body.Name, body.Args)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "output": out, "error": err.Error()})
 		return

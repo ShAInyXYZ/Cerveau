@@ -31,6 +31,7 @@ type Config struct {
 	// "always") and how hard (the model's reasoning_effort: low, medium,
 	// xhigh). Chat stays snappy; a build gets to think. Changed live from
 	// Settings, persisted here.
+	Sampling       string    `json:"sampling,omitempty"`
 	ThinkingMode   string    `json:"thinking_mode,omitempty"`
 	ThinkingEffort string    `json:"thinking_effort,omitempty"`
 	Endpoints      Endpoints `json:"endpoints"`

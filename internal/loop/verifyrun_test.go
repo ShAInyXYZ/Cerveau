@@ -81,6 +81,48 @@ func TestVerifyCommandExitCode(t *testing.T) {
 	}
 }
 
+func TestVerifyEvalAcceptsOnlyExactBooleanEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		out  string
+		pass bool
+	}{
+		{"bare true", "eval result: true", true},
+		{"quoted true", `eval result: "true"`, true},
+		{"chromium file source", `eval result: true", source: file:///w/index.html (17)`, true},
+		{"chromium http source", `eval result: true", source: http://localhost:8000/index.html (117)`, true},
+		{"surrounding whitespace", " \teval result: true \r\nno console errors", true},
+		{"false", `eval result: false`, false},
+		{"quoted false", `eval result: "false"`, false},
+		{"false with source", `eval result: false", source: file:///w/index.html (17)`, false},
+		{"truthy prefix", `eval result: truegarbage`, false},
+		{"truthy prefix with source", `eval result: truegarbage", source: file:///w/index.html (17)`, false},
+		{"trailing prose", `eval result: true but actually false`, false},
+		{"malformed source suffix", `eval result: true", source: unknown`, false},
+		{"source with trailing garbage", `eval result: true", source: file:///w/index.html (17) garbage`, false},
+		{"unbalanced quote", `eval result: true"`, false},
+		{"unrelated console text", `console message: eval result: true`, false},
+		{"unrelated console text then false", "console message: eval result: true\neval result: false", false},
+		{"number is not boolean", `eval result: 1`, false},
+		{"object is not boolean", `eval result: {"pass":true}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := &fakeReg{out: tc.out}
+			v := RunVerify(context.Background(), reg, "/w", &plan.Verify{Kind: "eval", Expr: "!!x", Path: "index.html"})
+			if v.Pass != tc.pass {
+				t.Fatalf("Pass = %v, want %v for %q", v.Pass, tc.pass, tc.out)
+			}
+			var args map[string]string
+			if err := json.Unmarshal(reg.args, &args); err != nil {
+				t.Fatal(err)
+			}
+			if args["eval"] != "JSON.stringify(!!(!!x))" {
+				t.Fatalf("verification did not request an actual boolean: %q", args["eval"])
+			}
+		})
+	}
+}
+
 func TestVerifyNilIsNeverAPass(t *testing.T) {
 	if RunVerify(context.Background(), nil, "/w", nil).Pass {
 		t.Fatal("no verify must never read as done")

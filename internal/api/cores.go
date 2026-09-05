@@ -22,7 +22,7 @@ func (a *API) ListCores(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	live := a.cfg.Endpoints.Model
+	live := a.ConfigSnapshot().Endpoints.Model
 	activeID := ""
 	if c := reg.ByEndpoint(live); c != nil {
 		activeID = c.ID
@@ -67,9 +67,9 @@ func (a *API) SelectCore(w http.ResponseWriter, r *http.Request) {
 
 	// Point the running harness at the new endpoint and persist it, so a
 	// restart of crv comes up on the same Core.
-	a.cfg.Endpoints.Model = c.Endpoint
-	if a.configPath != "" {
-		_ = config.Save(a.configPath, a.cfg)
+	if err := a.updateConfig(func(next *config.Config) { next.Endpoints.Model = c.Endpoint }, nil, false); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"core":    c,
@@ -78,7 +78,7 @@ func (a *API) SelectCore(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /api/sampling — the session default and what a UI may offer.
+// GET /api/sampling — global defaults for future runs and what a UI may offer.
 func (a *API) GetSampling(w http.ResponseWriter, r *http.Request) {
 	name := "strict"
 	if a.chat != nil {
@@ -90,11 +90,8 @@ func (a *API) GetSampling(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /api/sampling — change the session default, live.
-//
-// No restart: temperature and top_p are per-request fields. They were read once
-// from CRV_TEMP at startup purely because nothing had ever needed to change
-// them, which made a tuning knob look like a deploy-time decision.
+// POST /api/sampling — persist the default for future runs. An accepted run
+// retains its frozen sampling snapshot; changing this never retunes it mid-run.
 func (a *API) SetSampling(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
@@ -107,8 +104,21 @@ func (a *API) SetSampling(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "loop not wired"})
 		return
 	}
-	a.chat.SetSampling(body.Name)
-	writeJSON(w, http.StatusOK, map[string]any{"active": a.chat.SamplingName()})
+	valid := false
+	for _, p := range llm.PresetNames() {
+		if body.Name == p {
+			valid = true
+		}
+	}
+	if !valid {
+		writeJSON(w, 400, map[string]string{"error": "invalid sampling preset"})
+		return
+	}
+	if err := a.updateConfig(func(next *config.Config) { next.Sampling = body.Name }, func() { a.chat.SetSampling(body.Name) }, false); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"active": body.Name})
 }
 
 // GET /api/cores/{id}/params — what a Core runs with: the profile's defaults
@@ -238,10 +248,9 @@ func (a *API) ApplyCore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := reg.ActiveCore()
-	endpointChanged := a.cfg.Endpoints.Model != c.Endpoint
-	a.cfg.Endpoints.Model = c.Endpoint
-	if a.configPath != "" {
-		_ = config.Save(a.configPath, a.cfg)
+	if err := a.updateConfig(func(next *config.Config) { next.Endpoints.Model = c.Endpoint }, nil, false); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
 	if c.Unit == "" {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -265,7 +274,6 @@ func (a *API) ApplyCore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := cores.SwitchRequest{Core: c.ID, Unit: c.Unit, Stop: stop, RestartCerveau: true, RestartEmbed: true}
-	_ = endpointChanged // Cerveau restarts either way: a re-apply of params needs the client rebuilt too
 	if err := cores.WriteSwitchRequest(req); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -291,9 +299,8 @@ func (a *API) GetThinking(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /api/thinking — change it live and persist it. Thinking is a per-call
-// template argument: the next model call under a matching turn gets it, no
-// restart, and the reasoning is stored on the assistant event for the record.
+// POST /api/thinking — persist defaults for future runs. Already-accepted runs
+// retain the mode and effort recorded in their acceptance snapshot.
 func (a *API) SetThinking(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Mode   string `json:"mode"`
@@ -307,11 +314,15 @@ func (a *API) SetThinking(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "loop not wired"})
 		return
 	}
-	a.chat.SetThinking(body.Mode, body.Effort)
-	mode, effort := a.chat.Thinking()
-	a.cfg.ThinkingMode, a.cfg.ThinkingEffort = mode, effort
-	if a.configPath != "" {
-		_ = config.Save(a.configPath, a.cfg)
+	if (body.Mode != "off" && body.Mode != "plan" && body.Mode != "autopilot" && body.Mode != "always") || !llm.ValidThinking(body.Effort) || body.Effort == "off" {
+		writeJSON(w, 400, map[string]string{"error": "invalid thinking mode or effort"})
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"mode": mode, "effort": effort})
+	if err := a.updateConfig(func(next *config.Config) {
+		next.ThinkingMode, next.ThinkingEffort = body.Mode, body.Effort
+	}, func() { a.chat.SetThinking(body.Mode, body.Effort) }, false); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"mode": body.Mode, "effort": body.Effort})
 }

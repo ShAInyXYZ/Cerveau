@@ -79,7 +79,9 @@ func TestLoopToolCallThenAnswer(t *testing.T) {
 	}
 	var types []episodic.EventType
 	for _, ev := range events {
-		types = append(types, ev.Type)
+		if ev.Type != episodic.RunState && ev.Type != episodic.Note {
+			types = append(types, ev.Type)
+		}
 	}
 	want := []episodic.EventType{
 		episodic.MsgUser, episodic.MsgAssistant, episodic.ToolCall,
@@ -98,8 +100,12 @@ func TestLoopToolCallThenAnswer(t *testing.T) {
 		OK     bool   `json:"ok"`
 		Output string `json:"output"`
 	}
-	if err := json.Unmarshal(events[3].Payload, &resultPayload); err != nil {
-		t.Fatal(err)
+	for _, event := range events {
+		if event.Type == episodic.ToolResult {
+			if err := json.Unmarshal(event.Payload, &resultPayload); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	// read output is line-numbered ("1\tfile-content-123") so the model can
 	// target edits by location instead of re-reading to find them.

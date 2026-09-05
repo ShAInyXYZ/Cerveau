@@ -29,7 +29,7 @@
     return () => clearInterval(i);
   });
   const elapsed = $derived(
-    sessionStore.runStarted ? Math.floor((now - sessionStore.runStarted) / 1000) : 0,
+    sessionStore.runStarted ? Math.max(0,Math.floor((now - sessionStore.runStarted) / 1000)) : 0,
   );
 </script>
 
@@ -39,13 +39,10 @@
   <section role="status" aria-live="polite" aria-atomic="false" class="working" aria-label="agent working log">
     <div class="whead">
       <span class="wname label">CERVEAU</span>
-      <span class="wstatus">{anyRunning ? 'working' : 'thinking'}<span class="ell">…</span></span>
+      <span class="wstatus">{(sessionStore.run?.status==='running' ? sessionStore.run.phase : sessionStore.run?.status)?.replaceAll('_',' ') || 'connecting'}</span>
       <span class="wtime tag">{elapsed}s</span>
       <div class="rspace"></div>
-      <button class="ictl" onclick={() => sessionStore.pause()} use:tooltip={'pause'}
-        aria-label="pause the running turn"><Pause size={11} /></button>
-      <button class="ictl danger" onclick={() => sessionStore.kill()} use:tooltip={'stop'}
-        aria-label="stop the running turn"><Square size={11} /></button>
+
     </div>
 
     {#if toolSteps.length}

@@ -54,7 +54,7 @@ func TestSkillToolGuardBlocksDangerousCommand(t *testing.T) {
 }
 
 func TestWithSessionToolsIsolation(t *testing.T) {
-	base := NewRegistry(Entry{Tool: NewRead(t.TempDir()), RiskTier: RiskSafe})
+	base := NewRegistry(Entry{Tool: NewRead(t.TempDir()), RiskTier: RiskSafe}, Entry{Tool: NewBash(t.TempDir()), RiskTier: RiskSafe})
 	baseCount := len(base.Specs(""))
 
 	g := guard.New(t.TempDir())

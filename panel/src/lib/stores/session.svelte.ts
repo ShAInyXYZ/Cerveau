@@ -1,340 +1,140 @@
-// Session store — everything about the active session and its live turn.
-// Replaces the App.svelte god-component state + the 17-prop drill into Chat.
-import { api, streamEvents } from '../api';
+// Server projections own execution state; UI requests never own the worker.
+import { api, ApiError, streamEvents, type RunControl } from '../api';
 import { toStep, errorKey } from '../steps';
-import { ErrorChime } from '../errorchime';
 import { storage, storageKeys } from '../storage';
 import { play } from '../sound.js';
 import { healthStore } from './health.svelte.ts';
-import type {
-  ChatMessage, EpisodicEvent, LiveStep, Mode, PlanReport, Question,
-  SessionError, SessionMeta, WindowReport,
-} from '../types';
+import type { ChatMessage, EpisodicEvent, LiveStep, Mode, PlanReport, Question, SessionError, SessionMeta, RunState, PlanState } from '../types';
 
-const TICK_MS = 2000;
-const TICK_KEEP = 200;
-const ERROR_CARDS = 3;
-
-let sessions = $state<SessionMeta[]>([]);
-// sessions with a turn executing now — CLI runs included, so a build started
-// outside the panel is visibly running instead of looking idle.
-let runningIds = $state<string[]>([]);
-// A ONE-TURN sampling override. It clears after the turn it applies to, so a
-// deliberate choice for one message never silently becomes the new normal.
-let turnSampling = $state<string>('');
-let activeId = $state<string | null>(null);
-let messages = $state<ChatMessage[]>([]);
-let ticks = $state<EpisodicEvent[]>([]);
-let lastEvents = $state<Record<string, EpisodicEvent>>({});
-let running = $state(false);
-let runStarted = $state<number | null>(null);
-let windowReport = $state<WindowReport | null>(null);
-let question = $state<Question | null>(null);
-let errors = $state<SessionError[]>([]);
-let report = $state<PlanReport | null>(null);
-// What happened on the way to each reply, keyed by the reply's event id.
-// Served by /state so it survives the end of the turn, a reload, and a
-// session switch — the live working log is cleared when a turn ends.
-let logs = $state<Record<string, EpisodicEvent[]>>({});
-let skills = $state<unknown[]>([]);
-// Autopilot is the default: Cerveau is a build harness first, a chat second.
-// The last choice is remembered per browser, so a reload does not reset it.
-const MODE_KEY = 'crv.mode';
-function initialMode(): Mode {
-  try {
-    const m = localStorage.getItem(MODE_KEY);
-    if (m === 'discussion' || m === 'autopilot' || m === 'brainstorming') return m;
-  } catch { /* no storage */ }
-  return 'autopilot';
+let sessions=$state<SessionMeta[]>([]), runningIds=$state<string[]>([]);
+let activeId=$state<string|null>(null), mode=$state<Mode>(initialMode());
+let messages=$state<ChatMessage[]>([]), ticks=$state<EpisodicEvent[]>([]);
+let logs=$state<Record<string,EpisodicEvent[]>>({}), lastEvents=$state<Record<string,EpisodicEvent>>({});
+let errors=$state<SessionError[]>([]), question=$state<Question|null>(null), report=$state<PlanReport|null>(null);
+let run=$state<RunState|null>(null), plan=$state<PlanState|null>(null), requestError=$state('');
+let skills=$state<unknown[]>([]), turnSampling=$state(''), submitting=$state<string[]>([]);
+let generation=0, refreshSeq=0, timer:ReturnType<typeof setInterval>|null=null, closeStream:(()=>void)|null=null;
+let connectionLost=$state(false);
+let streamTimer:ReturnType<typeof setTimeout>|null=null;
+let dismissed=new Set<string>();
+const pendingCommands=new Map<string,{key:string;id:string}>();
+const pendingControls=new Map<string,{key:string;body:RunControl}>();
+function recallPending<T>(kind:string,sid:string,map:Map<string,T>):T|undefined {
+ if(map.has(sid))return map.get(sid);
+ try { const raw=sessionStorage.getItem('crv.pending.'+kind+'.'+sid);if(raw){const value=JSON.parse(raw) as T;map.set(sid,value);return value;} }catch{}
 }
-let mode = $state<Mode>(initialMode());
-let liveSteps = $state<LiveStep[]>([]);
-
-let dismissed = new Set<string>();
-let closeStream: (() => void) | null = null;
-let timer: ReturnType<typeof setInterval> | null = null;
-
-async function loadMessages(): Promise<void> {
-  if (!activeId) return;
-  const d = await api.sessionState(activeId);
-  // never blank the chat on a transient failed fetch
-  if (d && Array.isArray(d.messages)) {
-    messages = d.messages;
-    logs = (d as { logs?: Record<string, EpisodicEvent[]> }).logs ?? {};
-  }
+function savePending<T>(kind:string,sid:string,map:Map<string,T>,value?:T) {
+ if(value)map.set(sid,value);else map.delete(sid);
+ try { const key='crv.pending.'+kind+'.'+sid;if(value)sessionStorage.setItem(key,JSON.stringify(value));else sessionStorage.removeItem(key); }catch{}
 }
+const activeStatuses=new Set(['running','paused','pause_requested','waiting_user','cancelling']);
+function initialMode():Mode { try { const m=localStorage.getItem('crv.mode'); if(m==='discussion'||m==='brainstorming') return m; }catch{} return 'autopilot'; }
+function current(sid:string,g:number) { return activeId===sid && generation===g; }
+function busy() { return !!activeId && (submitting.includes(activeId)||runningIds.includes(activeId)||!!run&&activeStatuses.has(run.status)); }
+function failure(e:unknown) { requestError=e instanceof Error?e.message:String(e); }
 
-async function loadTicks(): Promise<void> {
-  if (!activeId) return;
-  const evts = await api.events(activeId);
-  ticks = evts.slice(-TICK_KEEP);
-  if (evts.length) lastEvents = { ...lastEvents, [activeId]: evts[evts.length - 1] };
+function subscribe(sid:string,g:number,cursor:string) {
+ if(closeStream||!current(sid,g))return;
+ const update=()=>{if(!current(sid,g)||streamTimer)return;streamTimer=setTimeout(()=>{streamTimer=null;void refresh();},100);};
+ closeStream=streamEvents(sid,update,cursor,update);
 }
-
-async function loadQuestion(): Promise<void> {
-  // poll unconditionally: a question can be pending server-side even when this
-  // tab didn't start the turn (reload, second tab, parked ask_user)
-  if (!activeId) return;
-  const d = await api.question(activeId);
-  const next = d?.question ? d : null;
-  if (next && !question) play('ask');
-  question = next;
+async function refresh() {
+ const sid=activeId,g=generation,seq=++refreshSeq;if(!sid)return;
+ const state=await api.sessionState(sid);
+ if(!current(sid,g)||seq!==refreshSeq)return;
+ if(!state){connectionLost=true;return;}
+ connectionLost=false;
+ if(Array.isArray(state.messages))messages=state.messages;
+ logs=state.logs??{};
+ const previous=run;run=state.run??null;plan=state.plan_state??null;
+ if(previous?.id===run?.id && previous && activeStatuses.has(previous.status) && run?.status==='completed')play('done');
+ runningIds=runningIds.filter(id=>id!==sid);
+ if(state.running)runningIds=[...runningIds,sid];
+ ticks=(state.events??[]).slice(-200);
+ if(ticks.length)lastEvents={...lastEvents,[sid]:ticks[ticks.length-1]};
+ question=state.question?.question?state.question:null;
+ errors=(state.errors??[]).filter((e,i)=>!dismissed.has(errorKey(e,i))).slice(-3);
+ report=state.report??null;
+ subscribe(sid,g,state.cursor??'');
 }
-
-// Play on HAPPENING, not on display. Counting errors meant every session
-// switch (which empties the list) re-announced whatever was already there, so
-// opening a session that ended on a guard stop replayed its error out loud.
-const chime = new ErrorChime();
-
-async function loadErrors(): Promise<void> {
-  if (!activeId) return;
-  const all = await api.errors(activeId);
-  // transient cards are auto-retry chatter the user cannot act on
-  const kept = all
-    .map((e, i) => ({ e, key: errorKey(e, i) }))
-    .filter(({ e, key }) => e.class !== 'transient' && !dismissed.has(key))
-    .slice(-ERROR_CARDS);
-  errors = kept.map(({ e }) => e);
-  if (chime.shouldPlay(kept.map(({ key }) => key))) play('error');
+async function runControl(action:'pause'|'resume'|'kill'|'steer',text=''):Promise<boolean> {
+ const sid=activeId,g=generation,target=run;if(!sid||!target)return false;
+ const key=JSON.stringify([target.id,action,text]);
+ const saved=recallPending('control',sid,pendingControls);
+ const body=saved?.key===key?saved.body:{run_id:target.id,control_id:crypto.randomUUID(),control_version:target.control_version??0};
+ savePending('control',sid,pendingControls,{key,body});
+ try {
+  const accepted=action==='steer'?await api.steer(sid,text,body):await api[action](sid,body);
+  savePending('control',sid,pendingControls);
+  if(current(sid,g)){run=accepted.run;requestError='';await refresh();}
+  return true;
+ }catch(e){
+  if(e instanceof ApiError && e.status>=400 && e.status<500)savePending('control',sid,pendingControls);
+  if(current(sid,g)){failure(e);await refresh();}
+  return false;
+ }
 }
-
-async function loadReport(): Promise<void> {
-  if (!activeId) return;
-  // Keep the last good report. The fetch helper returns null for ANY non-200,
-  // and /report 404s until a plan event exists — the first seconds of every
-  // turn. Assigning that null erased the plan the strip was waiting for, over
-  // and over, so the strip could never appear mid-run. `report` is cleared
-  // explicitly on session switch, which is the only place it should go blank.
-  const next = await api.report(activeId);
-  if (next) report = next;
+async function control(fn:(sid:string)=>Promise<unknown>):Promise<boolean> {
+ const sid=activeId,g=generation;if(!sid)return false;
+ try { await fn(sid);if(current(sid,g)){requestError='';await refresh();}return true; }
+ catch(e){if(current(sid,g))failure(e);return false;}
+}
+async function command(body:Record<string,unknown>):Promise<boolean> {
+ const sid=activeId,g=generation;if(!sid||busy()||connectionLost)return false;
+ const key=JSON.stringify(body),saved=recallPending('command',sid,pendingCommands);
+ const command_id=saved?.key===key?saved.id:crypto.randomUUID();
+ savePending('command',sid,pendingCommands,{key,id:command_id});
+ submitting=[...submitting,sid];requestError='';
+ try {
+  const accepted=await api.command(sid,{...body,command_id});
+  savePending('command',sid,pendingCommands);
+  if(current(sid,g)){run=accepted.run;turnSampling='';await refresh();}
+  return true;
+ }catch(e){
+  if(e instanceof ApiError && e.status>=400 && e.status<500)savePending('command',sid,pendingCommands);
+  if(current(sid,g))failure(e);return false;
+ }finally{submitting=submitting.filter(id=>id!==sid);}
 }
 
-/** The workspace follows the SESSION: selecting a session in another project
- *  re-points the core (registry, guard, code graph, RFX) at its folder. */
-async function followSessionWorkspace(id: string): Promise<void> {
-  const ws = sessions.find((x) => x.id === id)?.workspace;
-  if (!ws || ws === healthStore.workspace) return;
-  const r = await api.setWorkspace(ws);
-  if (r?.ok) await healthStore.refresh();
-}
-
-export const sessionStore = {
-  get sessions() { return sessions; },
-  get activeId() { return activeId; },
-  get activeIsInstant() { return sessions.find((s) => s.id === activeId)?.instant === true; },
-  get messages() { return messages; },
-  get ticks() { return ticks; },
-  get lastEvents() { return lastEvents; },
-  // running = this tab started a turn, OR the server says one is executing in
-  // the active session. Without the second half a CLI build renders as a dead
-  // screen: the working log is gated on this flag, and the assistant messages
-  // during a build are empty (the model is calling tools, not talking), so
-  // there is literally nothing on screen while the machine works.
-  get running() { return running || runningIds.includes(activeId ?? ''); },
-  get runStarted() { return runStarted; },
-  get windowReport() { return windowReport; },
-  get question() { return question; },
-  get errors() { return errors; },
-  get report() { return report; },
-  get logs() { return logs; },
-  get skills() { return skills; },
-  get runningIds() { return runningIds; },
-  get turnSampling() { return turnSampling; },
-  set turnSampling(v: string) { turnSampling = v; },
-  // liveSteps is fed by the SSE stream, which only exists for turns this tab
-  // started. For a CLI run, derive the same steps from the episodic ticks we
-  // already poll — otherwise the working log is empty for the whole build.
-  get liveSteps() {
-    if (liveSteps.length) return liveSteps;
-    if (!runningIds.includes(activeId ?? '')) return liveSteps;
-    const out: LiveStep[] = [];
-    for (const ev of ticks) {
-      const st = toStep(ev as EpisodicEvent);
-      if (st) out.push(st);
-    }
-    return out;
-  },
-  get mode() { return mode; },
-  set mode(m: Mode) { mode = m; try { localStorage.setItem(MODE_KEY, m); } catch { /* no storage */ } },
-
-  async loadSessions(): Promise<void> {
-    sessions = await api.sessions();
-    runningIds = await api.runningSessions();
-    if (!activeId && sessions.length) this.select(sessions[0].id);
-  },
-
-  async loadSkills(): Promise<void> {
-    skills = await api.skills();
-  },
-
-  select(id: string): void {
-    activeId = id;
-    messages = []; errors = []; question = null; report = null; logs = {};
-    chime.reset();   // a session opened for the first time must be silent
-    dismissed = new Set(storage.get<string[]>(storageKeys.dismissedErrors(id), []));
-    void loadMessages(); void loadTicks(); void loadErrors(); void loadReport();
-    void followSessionWorkspace(id);
-  },
-
-  /**
-   * Edit a user message: drop it and everything after it, then send the new
-   * text as a fresh turn.
-   *
-   * The log is append-only, so an edit cannot be a patch — every turn after
-   * that message was a response to the ORIGINAL, and keeping both would leave
-   * the model reading a question and a correction with no way to know which
-   * one counts.
-   */
-  async editAndResend(eventId: string, text: string): Promise<void> {
-    if (!activeId || running || !text.trim()) return;
-    try {
-      await api.rewind(activeId, eventId);
-    } catch {
-      return;             // refused (a turn is running) — leave the log alone
-    }
-    await loadMessages();
-    await this.send(text);
-  },
-
-  async send(text: string, opts: { step?: boolean } = {}): Promise<void> {
-    if (!activeId || running) return;
-    const sid = activeId;
-    running = true; runStarted = Date.now();
-    liveSteps = []; errors = [];
-    // optimistic echo of the user's message
-    messages = [...messages, {
-      type: 'msg.user', ts: new Date().toISOString(), payload: { text }, _optimistic: true,
-    }];
-
-    // SSE drives LIVE STEPS only; authoritative messages come from /state below
-    closeStream?.();
-    const seen = new Set(messages.map((m) => m.id).filter(Boolean));
-    let sawNew = false;
-    closeStream = streamEvents(sid, (ev) => {
-      if (sid !== activeId || seen.has(ev.id)) return;
-      seen.add(ev.id);
-      if (ev.type === 'msg.user' && (ev.payload as { text?: string })?.text === text) {
-        sawNew = true; return;
-      }
-      if (!sawNew) return;
-      if (ev.type === 'msg.assistant') {
-        void loadMessages();
-        liveSteps = [];
-      } else {
-        const st = toStep(ev);
-        if (st) liveSteps = [...liveSteps, st];
-      }
-    });
-
-    const used = turnSampling;
-    turnSampling = '';   // one turn only
-    const res = await api.chat(sid, text, mode, !!opts.step, used || undefined);
-    running = false; runStarted = null;
-    closeStream?.(); closeStream = null;
-    liveSteps = [];
-    if (res?.window) windowReport = res.window;
-    await Promise.all([loadMessages(), loadErrors(), loadReport()]);
-    const stop = res?.stop_reason;
-    if (!errors.length && (!stop || stop === 'final_answer')) play('done');
-  },
-
-  /** An RFX panel asking for a turn — identical to the user typing it. */
-  async panelTurn(text: string, m?: Mode): Promise<boolean> {
-    if (!activeId || running) return false;
-    if (m && m !== mode) mode = m;
-    await this.send(text, { step: true });
-    return true;
-  },
-
-  async steer(text: string): Promise<void> {
-    if (!activeId) return;
-    await api.steer(activeId, text);
-    void loadTicks();
-  },
-  async pause(): Promise<void> { if (activeId) await api.pause(activeId); },
-  async kill(): Promise<void> {
-    if (!activeId) return;
-    await api.kill(activeId);
-    running = false; runStarted = null;
-  },
-  async answer(ans: string): Promise<void> {
-    if (!activeId) return;
-    await api.answer(activeId, ans);
-    question = null;
-  },
-  runAutopilot(): void {
-    if (!activeId || running) return;
-    const sid = activeId;
-    running = true; runStarted = Date.now();
-    void api.autopilot(sid).then(() => {
-      running = false; runStarted = null;
-      void Promise.all([loadMessages(), loadTicks(), loadReport(), loadErrors()]);
-    });
-  },
-
-  async dismissAllErrors(): Promise<void> {
-    if (!activeId) return;
-    const all = await api.errors(activeId);
-    dismissed = new Set(all.map((e, i) => errorKey(e, i)));
-    storage.set(storageKeys.dismissedErrors(activeId), [...dismissed]);
-    errors = [];
-  },
-  async retry(text: string): Promise<void> {
-    await this.dismissAllErrors();
-    await this.send(text);
-  },
-
-  async create(name: string, workspace?: string): Promise<void> {
-    const m = await api.createSession(name, workspace);
-    await this.loadSessions();
-    if (m?.id) { play('notify'); this.select(m.id); }
-  },
-  async createInstant(): Promise<void> {
-    const m = await api.createInstant();
-    await this.loadSessions();
-    if (m?.id) { play('notify'); this.select(m.id); }
-  },
-  async rename(id: string, name: string): Promise<void> {
-    if (await api.renameSession(id, name)) { play('confirm'); await this.loadSessions(); }
-  },
-  async remove(id: string, mode: string, confirm: string): Promise<boolean> {
-    const ok = await api.deleteSession(id, mode, confirm);
-    if (ok) {
-      play('confirm');
-      if (activeId === id) { activeId = null; messages = []; }
-      await this.loadSessions();
-    }
-    return ok;
-  },
-
-  /** WS chip picked a folder: a project pill only exists once the workspace
-   *  has a session, so create + select one now. */
-  async onWorkspaceChanged(ws: string): Promise<void> {
-    const name = ws.replace(/[/\\]+$/, '').split(/[/\\]/).pop() || 'session';
-    await this.create(name, ws);
-    await healthStore.refresh();
-  },
-
-  start(): void {
-    if (timer) return;
-    void this.loadSessions(); void this.loadSkills();
-    timer = setInterval(() => {
-      void loadTicks(); void loadQuestion(); void loadErrors();
-      // keep the running set fresh: a CLI turn can start or finish at any
-      // moment and the panel has no other way to learn about it.
-      void api.runningSessions().then((ids) => { runningIds = ids; }).catch(() => {});
-      // Poll while a turn is RUNNING too, not only once a report exists.
-      // `if (report)` refreshed a report we already had and never fetched the
-      // first one, so the plan strip could not appear until the turn ended —
-      // and by then the plan was complete, so it archived itself on arrival.
-      // The strip is a progress indicator; it has to show up during the work.
-      // The RFX planner fetches independently, which is why it filled in at
-      // the start while the chat strip stayed empty (2026-09-04, fan).
-      if (report || running) void loadReport();
-    }, TICK_MS);
-  },
-  stop(): void {
-    if (timer) { clearInterval(timer); timer = null; }
-    closeStream?.(); closeStream = null;
-  },
+export const sessionStore={
+ get sessions(){return sessions;},get activeId(){return activeId;},
+ get activeIsInstant(){return sessions.find(s=>s.id===activeId)?.instant===true;},
+ get workspace(){return sessions.find(s=>s.id===activeId)?.workspace??healthStore.workspace;},
+ get messages(){return messages;},get ticks(){return ticks;},get lastEvents(){return lastEvents;},
+ get running(){return busy();},get submitting(){return !!activeId&&submitting.includes(activeId);},
+ get connectionLost(){return connectionLost;},get run(){return run;},get plan(){return plan;},get requestError(){return requestError;},
+ get runStarted(){return run&&activeStatuses.has(run.status)?Date.parse(run.started):null;},
+ get windowReport(){return run?.result?.window??null;},get question(){return question;},get errors(){return errors;},get report(){return report;},
+ get logs(){return logs;},get skills(){return skills;},get runningIds(){return runningIds;},
+ get turnSampling(){return turnSampling;},set turnSampling(v:string){turnSampling=v;},
+ get mode(){return mode;},set mode(v:Mode){mode=v;try{localStorage.setItem('crv.mode',v);}catch{}},
+ get liveSteps(){return ticks.filter(e=>!run||e.payload?.run_id===run.id).map(toStep).filter((v):v is LiveStep=>!!v);},
+ async loadSessions(){sessions=await api.sessions();runningIds=await api.runningSessions();if(!activeId&&sessions.length)this.select(sessions[0].id);},
+ async loadSkills(){skills=await api.skills();},
+ select(id:string){
+  generation++;connectionLost=false;if(streamTimer)clearTimeout(streamTimer);streamTimer=null;activeId=id;messages=[];ticks=[];errors=[];logs={};question=null;report=null;run=null;plan=null;requestError='';turnSampling='';
+  dismissed=new Set(storage.get<string[]>(storageKeys.dismissedErrors(id),[]));
+  closeStream?.();closeStream=null;void refresh();
+ },
+ async send(text:string,opts:{step?:boolean}={}){return command({kind:'chat',text,mode,sampling:turnSampling});},
+ async editAndResend(eventId:string,text:string){
+  const sid=activeId,g=generation;if(!sid||busy()||!text.trim())return;
+  if(!await control(id=>api.rewind(id,eventId)))return;
+  if(current(sid,g))await this.send(text);
+ },
+ async panelTurn(text:string,m?:Mode){if(m)mode=m;return this.send(text);},
+ async steer(text:string){return runControl('steer',text);},
+ async pause(){return runControl('pause');},async resume(){return runControl('resume');},async kill(){return runControl('kill');},
+ async answer(ans:string){const q=question;return control(id=>api.answer(id,ans,q?.id,q?.run_id));},
+ async runAutopilot(){return command({kind:'continue',plan_event_id:plan?.plan_event_id});},
+ async runStep(step=-1,revision=false){return command({kind:'step',step,revision,plan_event_id:plan?.plan_event_id});},
+ async dismissAllErrors(){if(!activeId)return;dismissed=new Set(errors.map(errorKey));storage.set(storageKeys.dismissedErrors(activeId),[...dismissed]);errors=[];},
+ async retry(text:string){if(plan)return this.runStep(plan.blocked>=0?plan.blocked:-1);return this.send(text);},
+ async create(name:string,workspace?:string){try{const m=await api.createSession(name,workspace);await this.loadSessions();if(m?.id)this.select(m.id);}catch(e){failure(e);}},
+ async createInstant(){try{const m=await api.createInstant();await this.loadSessions();if(m?.id)this.select(m.id);}catch(e){failure(e);}},
+ async rename(id:string,name:string){if(await api.renameSession(id,name))await this.loadSessions();},
+ async remove(id:string,m:string,confirm:string){const ok=await api.deleteSession(id,m,confirm);if(ok){if(activeId===id){generation++;activeId=null;messages=[];closeStream?.();}await this.loadSessions();}return ok;},
+ async onWorkspaceChanged(ws:string){await this.create(ws.replace(/[/\\]+$/,'').split(/[/\\]/).pop()||'session',ws);},
+ start(){if(timer)return;void this.loadSessions();void this.loadSkills();timer=setInterval(()=>{void refresh();void api.runningSessions().then(ids=>runningIds=ids);},2000);},
+ stop(){if(timer)clearInterval(timer);timer=null;generation++;closeStream?.();closeStream=null;},
 };

@@ -55,11 +55,17 @@ func (c *Client) samplingFor(override string) Sampling {
 	if strings.TrimSpace(override) != "" {
 		return Preset(override)
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.sampling
 }
 
 // SetSampling changes the session default, live.
-func (c *Client) SetSampling(name string) { c.sampling = Preset(name) }
+func (c *Client) SetSampling(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sampling = Preset(name)
+}
 
 // SamplingName reports the current session default.
-func (c *Client) SamplingName() string { return c.sampling.Name }
+func (c *Client) SamplingName() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.sampling.Name }

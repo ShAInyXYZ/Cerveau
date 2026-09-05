@@ -32,12 +32,14 @@ const maxRevisions = 2
 
 // StepState is one step's standing: what happened, how many times, and why.
 type StepState struct {
+	ID       string   `json:"id"`
 	Index    int      `json:"index"`
 	Title    string   `json:"title"`
 	Status   string   `json:"status"` // pending | running | passed | failed | blocked
 	Rev      int      `json:"rev"`    // 0 = first attempt
 	Verdict  *Verdict `json:"verdict,omitempty"`
 	Attempts int      `json:"attempts"`
+	Reason   string   `json:"reason,omitempty"`
 }
 
 // Supervisor tracks a plan's execution.
@@ -48,13 +50,15 @@ type Supervisor struct {
 	// pairFails counts how often the SAME (revised, downstream) pair has
 	// failed. A pair that fails twice is a genuine disagreement, not a fixable
 	// slip, so it hands back instead of revising a third time.
-	pairFails map[[2]int]int
+	pairFails      map[[2]int]int
+	reverify       []int
+	revisionTarget int
 }
 
 func NewSupervisor(p *Plan) *Supervisor {
-	s := &Supervisor{Plan: p, pairFails: map[[2]int]int{}}
+	s := &Supervisor{Plan: p, pairFails: map[[2]int]int{}, revisionTarget: -1}
 	for i, st := range p.Steps {
-		s.Steps = append(s.Steps, StepState{Index: i, Title: st.Title, Status: "pending"})
+		s.Steps = append(s.Steps, StepState{ID: fmt.Sprintf("step-%d", i+1), Index: i, Title: st.Title, Status: "pending"})
 	}
 	return s
 }
@@ -120,11 +124,15 @@ func (s *Supervisor) Record(idx int, v Verdict, needsStep int) Decision {
 	// A run that asks to reopen an EARLIER step takes priority over its own
 	// verdict: it cannot honestly pass while its foundation is wrong.
 	if needsStep >= 0 && needsStep < idx {
+		st.Status = "pending"
 		return s.revise(needsStep, idx)
 	}
 
 	if v.Pass {
 		st.Status = "passed"
+		if idx == s.revisionTarget && len(s.reverify) > 0 {
+			return Decision{Action: "reverify", Step: idx, Reverify: append([]int(nil), s.reverify...), Reasoning: "target passed; recheck invalidated downstream evidence now"}
+		}
 		if s.Done() {
 			return Decision{Action: "done", Step: idx, Reasoning: "every step passed its own check"}
 		}
@@ -165,9 +173,9 @@ func (s *Supervisor) revise(target, asker int) Decision {
 				target+1, asker+1)}
 	}
 
-	tgt.Rev++
-	tgt.Status = "pending"
-	tgt.Attempts = 0
+	if err := s.Reopen(target, fmt.Sprintf("step %d requested a correction", asker+1)); err != nil {
+		return Decision{Action: "blocked", Step: target, HandBack: true, Reasoning: err.Error()}
+	}
 
 	// A revision can invalidate a later step that was verified against the OLD
 	// file. Re-run the declared checks of every later PASSED step that shares a
@@ -175,9 +183,33 @@ func (s *Supervisor) revise(target, asker int) Decision {
 	// run, and it catches the silent breakage.
 	return Decision{
 		Action: "revise", Step: target, Rev: tgt.Rev,
-		Reverify:  s.downstreamSharing(target),
+		// Invalidated now; verification is scheduled only AFTER target pass.
 		Reasoning: fmt.Sprintf("step %d needs step %d changed first", asker+1, target+1),
 	}
+}
+
+func (s *Supervisor) Reopen(target int, reason string) error {
+	if target < 0 || target >= len(s.Steps) {
+		return fmt.Errorf("no such revision target")
+	}
+	tgt := &s.Steps[target]
+	if tgt.Rev >= maxRevisions {
+		tgt.Status = "blocked"
+		return fmt.Errorf("step %d reached its revision limit; revise the plan explicitly", target+1)
+	}
+	tgt.Rev++
+	tgt.Status = "pending"
+	tgt.Attempts = 0
+	tgt.Reason = reason
+	s.revisionTarget = target
+	s.reverify = nil
+	for i := target + 1; i < len(s.Steps); i++ {
+		if s.Steps[i].Status == "passed" || s.Steps[i].Status == "needs_reverify" {
+			s.Steps[i].Status = "needs_reverify"
+			s.reverify = append(s.reverify, i)
+		}
+	}
+	return nil
 }
 
 // downstreamSharing lists later steps that already passed and touch a file the

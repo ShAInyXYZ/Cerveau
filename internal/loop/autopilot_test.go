@@ -71,9 +71,11 @@ func TestAutopilotFreshWindow(t *testing.T) {
 	wr, _ := episodic.Open(eventsPath)
 	wr.Append(episodic.MsgUser, map[string]string{"text": "SECRET-CHATTER-MARKER old discussion"})
 	wr.Append(episodic.MsgAssistant, map[string]any{"text": "old reply"})
+	wr.Append(episodic.MsgUser, map[string]string{"text": "TASK-CONSTRAINT-MARKER"})
+	os.WriteFile(filepath.Join(tmp, "a.txt"), []byte("fixture"), 0600)
 	wr.Append(episodic.Plan, map[string]any{
 		"title": "PLAN-MARKER refactor",
-		"steps": []map[string]any{{"title": "do the thing"}},
+		"steps": []map[string]any{{"title": "do the thing", "files": []string{"a.txt"}, "verify": map[string]any{"kind": "contains", "file": "a.txt", "symbol": "fixture"}}},
 	})
 	wr.Close()
 
@@ -81,6 +83,7 @@ func TestAutopilotFreshWindow(t *testing.T) {
 	reg := tools.NewRegistry(tools.Entry{Tool: tools.NewRead(tmp), RiskTier: tools.RiskSafe})
 	l := New(llm.NewClient(srv.URL), reg, open, func(string) string { return eventsPath }, nil)
 
+	l.SetWorkspaceFunc(func(string) string { return tmp })
 	res, err := l.RunAutopilot(context.Background(), "s1")
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +163,7 @@ func TestAutopilotHandbackOnFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.StopReason != "plan_drift_handback" {
+	if res.StopReason != "plan_blocked" {
 		t.Fatalf("stop = %s", res.StopReason)
 	}
 	if !strings.Contains(res.Reply, "1 failed") || !strings.Contains(res.Reply, "1 skipped") {
@@ -357,7 +360,8 @@ func TestAutopilotReopensAnEarlierStepOnRequest(t *testing.T) {
 		// The second step's first run asks for step 1 back. On the revision
 		// run the file gains the symbol step 2 needs.
 		if calls == 2 {
-			body = "blocked: step 1 must declare the shared state object"
+			json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{{"message": map[string]any{"role": "assistant", "tool_calls": []map[string]any{{"id": "rev1", "type": "function", "function": map[string]string{"name": "request_revision", "arguments": `{"target":0,"reason":"declare the shared state object"}`}}}}, "finish_reason": "tool_calls"}}})
+			return
 		}
 		// the revision run adds what step 2 said was missing
 		if calls == 3 {

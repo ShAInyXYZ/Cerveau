@@ -313,12 +313,12 @@ func TestPlanGateRefusesToForceAnEmptyOffer(t *testing.T) {
 	events, _ := episodic.Replay(eventsPath)
 	var loud bool
 	for _, e := range events {
-		if e.Type != episodic.Note {
+		if e.Type != episodic.Err {
 			continue
 		}
-		var n struct{ Kind, Text string }
+		var n struct{ Stop, Detail string }
 		json.Unmarshal(e.Payload, &n)
-		if n.Kind == "plan_first" && strings.Contains(n.Text, "not available in autopilot") {
+		if n.Stop == "planning_blocked" && strings.Contains(n.Detail, "commit_plan is unavailable") {
 			loud = true
 		}
 	}
@@ -388,11 +388,11 @@ func TestStepRequestCarriesThePlanningReads(t *testing.T) {
 		t.Fatalf("expected a step call after the plan, got %d calls", len(m.bodies))
 	}
 	// call 3 is the first STEP run; the fixture's index.html says "435 lines of monolith"
-	if !strings.Contains(m.bodies[2], "435 lines of monolith") {
-		t.Error("the step's request must carry the source read during planning")
+	if strings.Contains(m.bodies[2], "435 lines of monolith") {
+		t.Error("the step must not inherit stale planning source text")
 	}
-	if !strings.Contains(m.bodies[2], "do not re-read it") {
-		t.Error("the step must be told the source is already in hand")
+	if strings.Contains(m.bodies[2], "do not re-read it") {
+		t.Error("the step must be free to read current files")
 	}
 }
 

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"errors"
 
 	"cerveau/internal/guard"
@@ -220,7 +221,25 @@ func RegistryFrom(ctx context.Context) *Registry {
 	return r
 }
 
+type modeKey struct{}
+
+func ModeOf(ctx context.Context) string { m, _ := ctx.Value(modeKey{}).(string); return m }
 func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMessage, mode string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	// Internal callers historically represent no parameters with a nil map,
+	// which json.Marshal encodes as null. Normalize that shorthand here, before
+	// guards and tools see it. Model-originated calls are validated as non-null
+	// objects by the loop's executeCall boundary before reaching the registry.
+	if args == nil || bytes.Equal(bytes.TrimSpace(args), []byte("null")) {
+		args = json.RawMessage(`{}`)
+	}
+	var object map[string]json.RawMessage
+	if !json.Valid(args) || json.Unmarshal(args, &object) != nil || object == nil {
+		return "", fmt.Errorf("invalid JSON arguments for %s", name)
+	}
+	ctx = context.WithValue(ctx, modeKey{}, mode)
 	ctx = WithRegistry(ctx, r)
 	e, ok := r.entries[name]
 	if !ok {
@@ -254,9 +273,13 @@ func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMe
 	// Hard-rule remediation: rewrite the call to its safe form (or block if the
 	// safe form can't be produced) BEFORE execution. Applies in every mode.
 	if r.remediate != nil {
+		original := append(json.RawMessage(nil), args...)
 		rewritten, err := r.remediate(name, args)
 		if err != nil {
 			return "", fmt.Errorf("guard denied %q: %w", name, err)
+		}
+		if err := r.validateRemediatedArgs(ctx, name, original, rewritten, mode); err != nil {
+			return "", err
 		}
 		args = rewritten
 	}
@@ -272,6 +295,25 @@ func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMe
 			break
 		}
 		args = newArgs
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		if r.guard != nil {
+			if err := r.guard(name, args); err != nil {
+				return out, fmt.Errorf("guard denied repaired call: %w", err)
+			}
+		}
+		if r.remediate != nil {
+			original := append(json.RawMessage(nil), args...)
+			rewritten, repairErr := r.remediate(name, args)
+			if repairErr != nil {
+				return out, repairErr
+			}
+			if err := r.validateRemediatedArgs(ctx, name, original, rewritten, mode); err != nil {
+				return out, err
+			}
+			args = rewritten
+		}
 		fixNotes = append(fixNotes, note)
 		out, err = r.dispatch(ctx, e, name, args, mode)
 	}
@@ -282,6 +324,31 @@ func (r *Registry) ExecuteMode(ctx context.Context, name string, args json.RawMe
 		r.postExec(name, args)
 	}
 	return out, err
+}
+
+// A remediator is a single transformation, not a second dispatch authority.
+// Validate its output without invoking it recursively. Approval for the original
+// arguments does not authorize a rewritten action that the guard would deny.
+func (r *Registry) validateRemediatedArgs(ctx context.Context, name string, before, after json.RawMessage, mode string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(after, &object) != nil || object == nil {
+		return fmt.Errorf("invalid remediated JSON arguments for %s", name)
+	}
+	if mode == ModeDiscussion && (name == "edit" || name == "write") {
+		var path string
+		if json.Unmarshal(object["path"], &path) != nil || !isDesignArtifact(path) {
+			return fmt.Errorf("discussion mode: remediated writes limited to design artifacts")
+		}
+	}
+	if !bytes.Equal(before, after) && r.guard != nil {
+		if err := r.guard(name, after); err != nil {
+			return fmt.Errorf("guard denied remediated call: %w", err)
+		}
+	}
+	return nil
 }
 
 func (r *Registry) dispatch(ctx context.Context, e Entry, name string, args json.RawMessage, mode string) (string, error) {

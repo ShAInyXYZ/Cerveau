@@ -93,10 +93,21 @@ body { font: 12px/1.5 system-ui, sans-serif; }
     // prompt asks the model to scope itself and nothing enforces it, so the
     // core never knew a step was requested, never verified one, and never
     // wrote a checkpoint. Requires ui.turn.
-    runStep(step, revision) {
+    runPlan(plan_event_id) {
+      return new Promise((resolve) => { const id=++seq;pending.set(id,resolve);parent.postMessage({rfx:"runPlan",id,plan_event_id},"*"); });
+    },
+    // One server-owned scope; the browser is only an observer. Steps must
+    // be unique ascending zero-based indices with unfinished prerequisites.
+    runSelected(steps, plan_event_id) {
       return new Promise((resolve) => {
         const id = ++seq; pending.set(id, resolve);
-        parent.postMessage({ rfx: "runStep", id, step, revision: !!revision }, "*");
+        parent.postMessage({ rfx: "runSelected", id, steps, plan_event_id }, "*");
+      });
+    },
+    runStep(step, revision, plan_event_id) {
+      return new Promise((resolve) => {
+        const id = ++seq; pending.set(id, resolve);
+        parent.postMessage({ rfx: "runStep", id, step, revision: !!revision, plan_event_id }, "*");
       });
     },
     // files(paths): ground truth for the workspace — which declared paths

@@ -1,0 +1,99 @@
+import { vi, test, expect, beforeEach } from 'vitest';
+// Actual Svelte store, compiled by the existing Vite plugin. Network and audio mocked.
+// Vitest globals avoid depending on a node_modules link outside panel/.
+
+const { api, play } = vi.hoisted(() => ({
+  api: Object.fromEntries(['sessionState','events','errors','report','question','setWorkspace',
+    'sessions','runningSessions','skills','chat','rewind','command','pause','resume','kill','steer','answer'].map(k => [k, vi.fn()])),
+  play: vi.fn(),
+}));
+vi.mock('../api', () => ({ api, ApiError:class ApiError extends Error{}, streamEvents: () => () => {} }));
+vi.mock('../sound.js', () => ({ play }));
+vi.mock('../storage', () => ({
+  storage: { get: (_k: string, fallback: unknown) => fallback, set: vi.fn() },
+  storageKeys: { dismissedErrors: (id: string) => id },
+}));
+vi.mock('./health.svelte.ts', () => ({
+  healthStore: { workspace: '', refresh: vi.fn() },
+}));
+
+const settle = () => new Promise(resolve => setTimeout(resolve,0));
+beforeEach(() => {
+  vi.resetModules(); vi.resetAllMocks(); vi.useRealTimers();
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() });
+  api.sessionState.mockResolvedValue({ messages: [], running:false });
+  for (const k of ['events','errors','sessions','runningSessions','skills']) api[k].mockResolvedValue([]);
+  for (const k of ['report','question','setWorkspace','chat']) api[k].mockResolvedValue(null);
+ api.rewind.mockRejectedValue(new Error('run active')); api.command.mockRejectedValue(new Error('connection lost'));
+});
+
+test('L09: a late response from session A cannot replace session B', async () => {
+  const { sessionStore: s } = await import('./session.svelte.ts');
+  let finishA: (v: any) => void = () => {};
+  api.sessionState.mockImplementation((id: string) => id === 'A'
+    ? new Promise(resolve => { finishA = resolve; })
+    : Promise.resolve({ messages: [{ id: 'B-message', type: 'msg.user', payload: { text: 'B' } }] }));
+  s.select('A'); s.select('B'); await settle();
+  finishA({ messages: [{ id: 'A-message', type: 'msg.user', payload: { text: 'A' } }] });
+  await settle();
+  expect(s.activeId).toBe('B');
+  expect(s.messages[0].id).toBe('B-message');
+});
+
+test('L10: null/failed chat response cannot announce success', async () => {
+  const { sessionStore: s } = await import('../stores/session.svelte.ts');
+  s.select('A'); await settle();
+  await s.send('hello');
+  expect(play).not.toHaveBeenCalledWith('done');
+});
+
+test('L10: failed rewind cannot send replacement text', async () => {
+  const { sessionStore: s } = await import('../stores/session.svelte.ts');
+  s.select('A'); await settle();
+  await s.editAndResend('old-message', 'replacement');
+  expect(api.command).not.toHaveBeenCalled();
+});
+
+test('L09: server-owned run prevents another local start', async () => {
+  const { sessionStore: s } = await import('../stores/session.svelte.ts');
+  api.runningSessions.mockResolvedValue(['A']);
+ api.sessionState.mockResolvedValue({messages:[],running:true,run:{id:'external',status:'running'}});
+  await s.loadSessions(); s.select('A'); await settle();
+  expect(s.running).toBe(true);
+  await s.send('overlapping run');
+  expect(api.command).not.toHaveBeenCalled();
+});
+
+test('L08: externally started run polls its first plan and final messages', async () => {
+  const { sessionStore: s } = await import('../stores/session.svelte.ts');
+  let poll: () => void = () => {};
+  vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: () => void) => { poll = fn; return 123; }) as any);
+  api.runningSessions.mockResolvedValue(['A']);
+  s.select('A'); s.start(); await settle();
+  api.report.mockClear(); api.sessionState.mockClear();
+  poll(); await settle();
+  s.stop();
+  expect({ reports: api.report.mock.calls.length, states: api.sessionState.mock.calls.length })
+    .toEqual({ reports: 0, states: 1 });
+});
+
+test('failed snapshot preserves confirmed plan/question/errors and reports unknown connection',async()=>{
+ const { sessionStore:s }=await import('./session.svelte.ts');
+ api.sessionState.mockResolvedValueOnce({messages:[],run:{id:'r1',status:'running'},question:{id:'q1',run_id:'r1',question:'Continue?'},report:{title:'Plan',steps:[]},errors:[{id:'e1',what:'Failure'}]});
+ let poll:()=>void=()=>{};
+ vi.spyOn(globalThis,'setInterval').mockImplementation(((fn:()=>void)=>{poll=fn;return 123;}) as any);
+ s.select('A');s.start();await settle();
+ api.sessionState.mockResolvedValue(null);poll();await settle();s.stop();
+ expect(s.connectionLost).toBe(true);expect(s.run?.id).toBe('r1');
+ expect(s.question?.id).toBe('q1');expect(s.report?.title).toBe('Plan');expect(s.errors[0].id).toBe('e1');
+});
+
+test('control carries exact run version and uncertain retry keeps its identity',async()=>{
+ const { sessionStore:s }=await import('./session.svelte.ts');
+ api.sessionState.mockResolvedValue({messages:[],running:true,run:{id:'r1',status:'running',control_version:3}});
+ s.select('A');await settle();
+ api.pause.mockRejectedValue(new Error('lost acknowledgement'));
+ await s.pause();await s.pause();
+ const first=api.pause.mock.calls[0][1],second=api.pause.mock.calls[1][1];
+ expect(first).toMatchObject({run_id:'r1',control_version:3});expect(first.control_id).toBeTruthy();expect(second).toEqual(first);
+});

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -151,13 +152,60 @@ type chatResponse struct {
 		Message      Message `json:"message"`
 		FinishReason string  `json:"finish_reason"`
 	} `json:"choices"`
-	Usage Usage `json:"usage"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
+	Usage Usage           `json:"usage"`
+	Error json.RawMessage `json:"error"`
+}
+
+// HTTPError retains transport status even when a Core/proxy returns a string,
+// plain text, or HTML instead of the OpenAI error-object shape. In particular,
+// authentication and model-name errors must not become JSON-decoding errors.
+type HTTPError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("llm error (HTTP %d): %s", e.StatusCode, e.Message)
+}
+
+func responseErrorMessage(data []byte) string {
+	var object map[string]json.RawMessage
+	if json.Unmarshal(data, &object) == nil && object != nil {
+		for _, key := range []string{"error", "message", "detail"} {
+			if value, ok := object[key]; ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return responseErrorMessage(value)
+			}
+		}
+	}
+	var message string
+	if json.Unmarshal(data, &message) == nil {
+		return strings.TrimSpace(message)
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (c *Client) responseError(status int, data []byte) error {
+	message := responseErrorMessage(data)
+	if message == "" {
+		message = http.StatusText(status)
+		if message == "" {
+			message = "empty error response"
+		}
+	}
+	// Do not echo our credential into session logs if an upstream includes it
+	// in its diagnostic body. Bound diagnostics so a proxy error page stays a
+	// useful incident, not an unbounded transcript payload.
+	if c.key != "" {
+		message = strings.ReplaceAll(message, c.key, "[redacted]")
+	}
+	if len(message) > 2048 {
+		message = message[:2048] + "…"
+	}
+	return &HTTPError{StatusCode: status, Message: message}
 }
 
 type Client struct {
+	mu       sync.RWMutex
 	base     string
 	key      string
 	model    string
@@ -207,7 +255,7 @@ func (c *Client) CompleteWith(ctx context.Context, messages []Message, tools []T
 	// answer still fits after the reasoning, and reasoning_effort bounds it.
 	level := ThinkingOf(ctx)
 	if level == "" {
-		level = c.thinking
+		level = c.ThinkingLevel()
 	}
 	kw := map[string]any{"enable_thinking": false}
 	if level != "" && level != ThinkingOff {
@@ -254,16 +302,24 @@ func (c *Client) CompleteWith(ctx context.Context, messages []Message, tools []T
 		return Message{}, Usage{}, fmt.Errorf("llm unreachable: %w", err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	var responseBody io.Reader = resp.Body
+	failedStatus := resp.StatusCode < 200 || resp.StatusCode >= 300
+	if failedStatus {
+		responseBody = io.LimitReader(resp.Body, 64<<10)
+	}
+	data, err := io.ReadAll(responseBody)
 	if err != nil {
 		return Message{}, Usage{}, err
+	}
+	if failedStatus {
+		return Message{}, Usage{}, c.responseError(resp.StatusCode, data)
 	}
 	var out chatResponse
 	if err := json.Unmarshal(data, &out); err != nil {
 		return Message{}, Usage{}, fmt.Errorf("parse llm response: %w", err)
 	}
-	if out.Error != nil {
-		return Message{}, Usage{}, fmt.Errorf("llm error: %s", out.Error.Message)
+	if len(out.Error) > 0 && !bytes.Equal(bytes.TrimSpace(out.Error), []byte("null")) {
+		return Message{}, Usage{}, c.responseError(resp.StatusCode, out.Error)
 	}
 	if len(out.Choices) == 0 {
 		return Message{}, Usage{}, fmt.Errorf("llm returned no choices")

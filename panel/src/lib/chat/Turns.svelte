@@ -132,7 +132,7 @@
           {#if copied === ckey}<Check size={13} />{:else}<Copy size={13} />{/if}
         </button>
         {#if user && m.id && !sessionStore.running}
-          <button class="act" onclick={() => startEdit(m.id, m.payload?.text ?? '')}
+          <button class="act" onclick={() => startEdit(m.id!, m.payload?.text ?? '')}
             use:tooltip={'edit this message — Cerveau answers again from here, replacing what came after'}
             aria-label="edit message">
             <Pencil size={13} />

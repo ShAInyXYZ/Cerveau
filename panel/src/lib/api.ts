@@ -2,7 +2,7 @@
 // Every endpoint is a named function; components never string-build URLs.
 import type {
   ChatMessage, ChatResult, EpisodicEvent, Health, Mode, PlanReport,
-  Question, SessionError, SessionMeta,
+  Question, SessionError, SessionMeta, RunState, PlanState, SessionSnapshot,
 } from './types';
 
 // Auth — the core gates everything behind a bearer token once paired.
@@ -48,15 +48,25 @@ async function getJSON<T>(url: string, opts?: RequestInit): Promise<T | null> {
   }
 }
 
-function postJSON<T>(url: string, body?: unknown): Promise<T | null> {
-  return getJSON<T>(url, {
+export class ApiError extends Error {
+ constructor(public status: number, message: string) { super(message); this.name='ApiError'; }
+}
+export interface RunControl { run_id: string; control_id: string; control_version: number }
+async function postJSON<T>(url: string, body?: unknown): Promise<T> {
+ const r = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body ?? {}),
-  });
+ });
+ const value = await r.json().catch(() => null);
+ if (!r.ok) throw new ApiError(r.status, value?.error || `Request failed (HTTP ${r.status})`);
+ if (value === null) throw new ApiError(r.status, 'The server returned no acknowledgement.');
+ return value as T;
 }
 
 export const api = {
+  command: (id: string, body: unknown) => postJSON<{run: RunState}>(`/api/sessions/${id}/commands`, body),
+  resume: (id: string, control: RunControl) => postJSON<{run:RunState}>(`/api/sessions/${id}/resume`, control),
   health: () => getJSON<Health>('/api/health'),
   sessions: async (): Promise<SessionMeta[]> =>
     (await getJSON<{ sessions?: SessionMeta[] }>('/api/sessions'))?.sessions ?? [],
@@ -65,7 +75,7 @@ export const api = {
   runningSessions: async (): Promise<string[]> =>
     (await getJSON<{ running?: string[] }>('/api/sessions'))?.running ?? [],
   sessionState: (id: string) =>
-    getJSON<{ messages?: ChatMessage[] }>(`/api/sessions/${id}/state`),
+    getJSON<SessionSnapshot>(`/api/sessions/${id}/state`),
   events: async (id: string): Promise<EpisodicEvent[]> => {
     try {
       const r = await fetch(`/api/sessions/${id}/events`);
@@ -91,10 +101,10 @@ export const api = {
    *  append-only log */
   rewind: (id: string, eventId: string) =>
     postJSON<{ ok: boolean }>(`/api/sessions/${id}/rewind`, { event_id: eventId }),
-  steer: (id: string, text: string) => postJSON(`/api/sessions/${id}/steer`, { text }),
-  pause: (id: string) => postJSON(`/api/sessions/${id}/pause`),
-  kill: (id: string) => postJSON(`/api/sessions/${id}/kill`),
-  answer: (id: string, answer: string) => postJSON(`/api/sessions/${id}/answer`, { answer }),
+  steer: (id: string, text: string, control: RunControl) => postJSON<{run:RunState}>(`/api/sessions/${id}/steer`, { ...control, text }),
+  pause: (id: string, control: RunControl) => postJSON<{run:RunState}>(`/api/sessions/${id}/pause`, control),
+  kill: (id: string, control: RunControl) => postJSON<{run:RunState}>(`/api/sessions/${id}/kill`, control),
+  answer: (id: string, answer: string, question_id?: string, run_id?: string) => postJSON(`/api/sessions/${id}/answer`, { answer, question_id, run_id }),
   autopilot: (id: string) => postJSON(`/api/sessions/${id}/autopilot`),
 
   createSession: (name: string, workspace?: string) =>
@@ -143,6 +153,8 @@ export type IdleStatus = {
 export function streamEvents(
   sessionId: string,
   onEvent: (ev: EpisodicEvent) => void,
+  after = '',
+  onConnect?: () => void,
 ): () => void {
   let es: EventSource | null = null;
   let closed = false;
@@ -151,10 +163,15 @@ export function streamEvents(
 
   const connect = () => {
     if (closed) return;
-    es = new EventSource(`/api/sessions/${sessionId}/stream`);
-    es.onopen = () => { retryMs = 1000; };
+    es = new EventSource(`/api/sessions/${sessionId}/stream?after=${encodeURIComponent(after)}`);
+    es.onopen = () => { retryMs = 1000; onConnect?.(); };
     es.onmessage = (m) => {
-      try { onEvent(JSON.parse(m.data)); } catch { /* heartbeats/partials */ }
+      try {
+        const event = JSON.parse(m.data) as EpisodicEvent;
+        if (after && Number(event.id.replace('evt_', '')) <= Number(after.replace('evt_', ''))) return;
+        after = event.id;
+        onEvent(event);
+      } catch { /* heartbeats/partials */ }
     };
     es.onerror = () => {
       es?.close();

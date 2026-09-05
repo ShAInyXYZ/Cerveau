@@ -55,7 +55,7 @@ func TestLLMTransientRetriedThenSucceeds(t *testing.T) {
 	events, _ := episodic.Replay(eventsPath)
 	retries := 0
 	for _, ev := range events {
-		if ev.Type == episodic.Err && strings.Contains(string(ev.Payload), "retrying") {
+		if ev.Type == episodic.Note && strings.Contains(string(ev.Payload), "retry_wait") {
 			retries++
 		}
 	}

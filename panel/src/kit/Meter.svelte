@@ -1,4 +1,5 @@
 <script>
+  import { tooltip } from './tooltip.js';
   // context-fill gauge — a segmented industrial bar (like a level meter)
   let { value = 0, max = 1, zone = 'green', segments = 16 } = $props();
   const pct = $derived(max > 0 ? Math.min(1, value / max) : 0);

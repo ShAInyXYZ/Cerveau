@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,6 +17,11 @@ import (
 func (a *API) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	path := a.sess.EventsPath(id)
+	cursor := r.Header.Get("Last-Event-ID")
+	if cursor == "" {
+		cursor = r.URL.Query().Get("after")
+	}
+	after, _ := strconv.Atoi(strings.TrimPrefix(cursor, "evt_"))
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -25,6 +32,7 @@ func (a *API) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
+	flusher.Flush()
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -55,7 +63,13 @@ func (a *API) StreamEvents(w http.ResponseWriter, r *http.Request) {
 		if json.Unmarshal(line, &probe) != nil {
 			return
 		}
-		fmt.Fprintf(w, "data: %s\n\n", line)
+		eventID, _ := probe["id"].(string)
+		seq, _ := strconv.Atoi(strings.TrimPrefix(eventID, "evt_"))
+		if seq <= after {
+			return
+		}
+		after = seq
+		fmt.Fprintf(w, "id: %s\ndata: %s\n\n", eventID, line)
 		flusher.Flush()
 	}
 

@@ -1,73 +1,23 @@
 <script lang="ts">
   import { Dot } from '../../kit/index.js';
   import { tooltip } from '../../kit/tooltip.js';
-  import { storage, storageKeys } from '../storage';
   import { sessionStore } from '../stores/session.svelte.ts';
-  import { ListChecks, Check, ChevronRight, ChevronDown } from 'lucide-svelte';
-
-  const CELEBRATE_MS = 2400;
-  const COLLAPSE_MS = 520;
+  import { ListChecks, ChevronRight, ChevronDown } from 'lucide-svelte';
 
   let planOpen = $state(true);
-  const report = $derived(sessionStore.report);
-
-  // ── plan completion: celebrate briefly, then archive the strip ──
-  // The report stays in the session log; a per-plan flag hides the strip.
-  type Phase = 'live' | 'celebrate' | 'collapsing' | 'archived';
-  let planPhase = $state<Phase>('live');
-  let celebrated = false; // plain guard, NOT reactive — phase writes can't retrigger
-  const planId = $derived(report?.plan_event_id ?? report?.title ?? '');
-  const planComplete = $derived(
-    !!report && report.steps.length > 0 && report.steps.every((s) => s.status === 'done'),
-  );
-  const reduceMotion =
-    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  // The timer sequence runs OUTSIDE the effect: report polls constantly, and an
-  // effect owning timers would re-run and cancel them (learned the hard way).
-  function runCompletionSequence(): void {
-    const stamp = () => storage.set(storageKeys.planArchived(planId), '1');
-    if (reduceMotion) { planPhase = 'archived'; stamp(); return; }
-    planPhase = 'celebrate';
-    setTimeout(() => (planPhase = 'collapsing'), CELEBRATE_MS);
-    setTimeout(() => { planPhase = 'archived'; stamp(); }, CELEBRATE_MS + COLLAPSE_MS);
-  }
-
-  $effect(() => {
-    if (!report) { planPhase = 'live'; celebrated = false; return; }
-    if (planId && storage.get<string>(storageKeys.planArchived(planId), '') === '1') {
-      planPhase = 'archived';
-      return;
-    }
-    if (planComplete && !celebrated) {
-      celebrated = true;
-      runCompletionSequence();
-    }
-  });
-
-  const pending = $derived(
-    report ? report.steps.filter((s) => s.status !== 'done' && s.status !== 'failed').length : 0,
-  );
-  const finished = $derived(pending === 0);
-
+ const report=$derived(sessionStore.report);
+ const pending=$derived(report?report.steps.filter(s=>s.status!=='done'&&s.status!=='failed'&&s.status!=='blocked').length:0);
+ const finished=$derived(!!report&&report.steps.length>0&&report.done===report.steps.length);
   function stepTone(status: string): 'ok' | 'err' | 'warn' | 'off' {
     if (status === 'done') return 'ok';
-    if (status === 'failed') return 'err';
-    if (status === 'partial') return 'warn';
+    if (status === 'failed' || status === 'blocked') return 'err';
+    if (['running','verifying','needs_reverify','unverified'].includes(status)) return 'warn';
     return 'off';
   }
 </script>
 
-{#if report && planPhase !== 'archived'}
-  <div class="planwrap" class:collapsing={planPhase === 'collapsing'}>
-    {#if planPhase === 'celebrate'}
-      <div class="planstrip done celebrate" role="status">
-        <div class="ps-done">
-          <span class="ps-check"><Check size={13} strokeWidth={3} /></span>
-          <span class="ps-done-text">Plan complete — all {report.steps.length} steps done</span>
-        </div>
-      </div>
-    {:else}
+{#if report}
+  <div class="planwrap">
       <div class="planstrip" class:done={finished}>
         <button class="ps-head" onclick={() => (planOpen = !planOpen)}
           aria-expanded={planOpen}
@@ -85,7 +35,7 @@
         {#if planOpen}
           <ol class="ps-steps">
             {#each report.steps as s, i}
-              <li class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed'}
+              <li class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed' || s.status === 'blocked'}
                 class:part={s.status === 'partial'}>
                 <Dot tone={stepTone(s.status)} size={5} />
                 <span class="rnum tag">{String(i + 1).padStart(2, '0')}</span>
@@ -96,7 +46,6 @@
           </ol>
         {/if}
       </div>
-    {/if}
   </div>
 {/if}
 
@@ -110,40 +59,11 @@
     position: relative; z-index: var(--z-raised);
     overflow: hidden;
   }
-  .planwrap.collapsing {
-    animation: plan-collapse .5s var(--ease-mech) forwards;
-  }
-  @keyframes plan-collapse {
-    from { max-height: 200px; opacity: 1; transform: none; margin-bottom: 8px; }
-    60%  { opacity: 0; }
-    to   { max-height: 0; opacity: 0; transform: translateY(-4px); margin-bottom: 0; }
-  }
   .planstrip {
     border-radius: 10px; overflow: hidden;
     background: var(--s1); box-shadow: inset 0 0 0 1px var(--line);
   }
   .planstrip.done { opacity: .72; }
-
-  .planstrip.celebrate {
-    opacity: 1;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent);
-    animation: plan-glow 1.6s ease-out;
-  }
-  @keyframes plan-glow {
-    0%   { box-shadow: inset 0 0 0 1px var(--line); }
-    25%  { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 70%, transparent),
-                       0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent); }
-    100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent); }
-  }
-  .ps-done { display: flex; align-items: center; gap: 9px; padding: 9px 12px; }
-  .ps-check {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
-    background: var(--ok); color: var(--bg);
-    animation: plan-pop .4s cubic-bezier(.2, 1.4, .4, 1) both;
-  }
-  @keyframes plan-pop { from { transform: scale(0); } to { transform: scale(1); } }
-  .ps-done-text { font-size: 12px; font-weight: 600; color: var(--ok); }
 
   .ps-head {
     display: flex; align-items: center; gap: 8px; width: 100%;

@@ -1,0 +1,354 @@
+// Regression tests for the deployed loop lifecycle.
+// The baseline audit probes are preserved under docs/loop-audit-probes.
+package loop
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"cerveau/internal/episodic"
+	"cerveau/internal/llm"
+	"cerveau/internal/plan"
+	"cerveau/internal/tools"
+)
+
+func auditFixture(t *testing.T, p *Plan, modelURL string) (*Loop, *episodic.Writer, string) {
+	t.Helper()
+	ws := t.TempDir()
+	path := filepath.Join(ws, "events.jsonl")
+	wr, err := episodic.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { wr.Close() })
+	if _, err := wr.Append(episodic.Plan, p); err != nil {
+		t.Fatal(err)
+	}
+	reg := tools.NewRegistry(
+		tools.Entry{Tool: tools.NewRead(ws), RiskTier: tools.RiskSafe},
+		tools.Entry{Tool: tools.NewWrite(ws), RiskTier: tools.RiskSafe},
+	)
+	l := New(llm.NewClient(modelURL), reg,
+		func(string) (*episodic.Writer, error) { return wr, nil },
+		func(string) string { return path }, nil)
+	l.SetWorkspaceFunc(func(string) string { return ws })
+	return l, wr, ws
+}
+
+func auditPlan() *Plan {
+	return &Plan{Title: "audit", Steps: []PlanStep{{Title: "one", Files: []string{"x"},
+		Verify: &plan.Verify{Kind: "contains", File: "x", Symbol: "OLD"}}}}
+}
+
+func auditAppend(t *testing.T, wr *episodic.Writer, kind episodic.EventType, payload any) {
+	t.Helper()
+	if _, err := wr.Append(kind, payload); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func auditWrite(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLifecycleL01OldRunCannotReleaseNewOwner(t *testing.T) {
+	r := newRunsRegistry()
+	old, current := &runHandle{}, &runHandle{}
+	releaseOld := r.register("s", old)
+	defer r.register("s", current)()
+	releaseOld()
+	if r.get("s") != current {
+		t.Fatal("old cleanup erased the newer active run")
+	}
+}
+
+func TestLifecycleL03NewPlanStartsClean(t *testing.T) {
+	l, wr, _ := auditFixture(t, auditPlan(), "http://unused.invalid")
+	auditAppend(t, wr, episodic.Checkpoint, map[string]any{"index": 0, "status": "done", "check": "old check"})
+	p := auditPlan()
+	p.Title = "new task"
+	p.Steps[0].Title = "different work"
+	auditAppend(t, wr, episodic.Plan, p)
+	st, err := l.PlanStateOf("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Steps[0].Status != "pending" {
+		t.Fatalf("new plan inherited old status: %+v", st.Steps[0])
+	}
+}
+
+func TestLifecycleL04BlockedReplayMatchesLive(t *testing.T) {
+	p := auditPlan()
+	l, wr, _ := auditFixture(t, p, "http://unused.invalid")
+	sup := NewSupervisor(p)
+	for n := 0; n < 2; n++ {
+		d := sup.Record(0, Verdict{Check: "false", Pass: false}, -1)
+		auditAppend(t, wr, episodic.Checkpoint, map[string]any{
+			"index": 0, "status": statusFor(sup.Steps[0].Status), "decision": d.Action})
+	}
+	restored, err := l.restoreSupervisor("s", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Steps[0].Status != sup.Steps[0].Status || restored.Steps[0].Attempts != sup.Steps[0].Attempts {
+		t.Fatalf("live=%+v; replay=%+v", sup.Steps[0], restored.Steps[0])
+	}
+}
+
+func TestLifecycleL04TargetRevisionSurvivesReplay(t *testing.T) {
+	p := auditPlan()
+	p.Steps = append(p.Steps, PlanStep{Title: "two"})
+	l, wr, _ := auditFixture(t, p, "http://unused.invalid")
+	sup := NewSupervisor(p)
+	sup.Record(0, Verdict{Pass: true}, -1)
+	auditAppend(t, wr, episodic.Checkpoint, map[string]any{"index": 0, "status": "done", "rev": 0})
+	state := sup.Steps[1]
+	d := sup.Record(1, Verdict{Pass: false}, 0)
+	// The exact fields runPlanFrom currently persists after Record.
+	auditAppend(t, wr, episodic.Checkpoint, map[string]any{
+		"index": 1, "rev": state.Rev, "status": statusFor(sup.Steps[1].Status), "decision": d.Action, "why": d.Reasoning})
+	if err := l.saveSupervisor(wr, "s", sup); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := l.restoreSupervisor("s", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Steps[0].Rev != sup.Steps[0].Rev || restored.Steps[0].Status != sup.Steps[0].Status {
+		t.Fatalf("target live=%+v; replay=%+v", sup.Steps[0], restored.Steps[0])
+	}
+}
+
+func TestLifecycleL06NoCheckCannotPass(t *testing.T) {
+	m := newScriptedModel(textReply("done"))
+	defer m.srv.Close()
+	p := auditPlan()
+	p.Steps[0].Verify = nil
+	l, _, _ := auditFixture(t, p, m.srv.URL)
+	if _, err := l.RunStep(context.Background(), "s", StepRunRequest{Step: 0}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := l.PlanStateOf("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Steps[0].Status == "passed" {
+		t.Fatalf("unverified step marked passed: %+v", st.Steps[0])
+	}
+}
+
+func TestLifecycleL07ExistenceCannotProveCriterion(t *testing.T) {
+	l, _, ws := auditFixture(t, auditPlan(), "http://unused.invalid")
+	auditWrite(t, filepath.Join(ws, "x"), "WRONG")
+	events, err := episodic.Replay(l.path("s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := BuildReportAt(events, ws)
+	if report.Done != 0 {
+		t.Fatalf("no run and criterion false, but report=%+v", report.Steps)
+	}
+}
+
+func TestLifecycleL12PlanningCannotExecuteUnofferedWrite(t *testing.T) {
+	m := newScriptedModel(toolCall("write", `{"path":"gate-bypass.txt","content":"side effect"}`), textReply("done"))
+	defer m.srv.Close()
+	l, _ := gateFixture(t, m)
+	entries := append(l.registry().Entries(), tools.Entry{Tool: tools.NewWrite(l.workspace("s1")), RiskTier: tools.RiskSafe})
+	l.SetRegistry(tools.NewRegistry(entries...))
+	if _, err := l.Run(context.Background(), "s1", "Build a new feature in this project", "autopilot"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range m.offered[0] {
+		if name == "write" {
+			t.Fatal("invalid fixture: write was offered")
+		}
+	}
+	if _, err := os.Stat(filepath.Join(l.workspace("s1"), "gate-bypass.txt")); err == nil {
+		t.Fatal("write was excluded from planning tools but still executed")
+	}
+}
+
+func TestLifecycleL13ResumedTurnRecordsUserBoundary(t *testing.T) {
+	m := newScriptedModel(textReply("done"))
+	defer m.srv.Close()
+	l, _, ws := auditFixture(t, auditPlan(), m.srv.URL)
+	auditWrite(t, filepath.Join(ws, "x"), "OLD")
+	if _, err := l.Run(context.Background(), "s", "AUDIT_CONTINUE", "autopilot"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := episodic.Replay(l.path("s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Type == episodic.MsgUser && strings.Contains(string(event.Payload), "AUDIT_CONTINUE") {
+			return
+		}
+	}
+	t.Fatal("resumed turn never appended msg.user; ChatUI SSE gate cannot open")
+}
+
+func TestLifecycleL05ManualRevisionInvalidatesDownstream(t *testing.T) {
+	m := newScriptedModel(toolCall("write", `{"path":"x","content":"NEW"}`), textReply("done"))
+	defer m.srv.Close()
+	p := auditPlan()
+	p.Steps[0].Verify.Symbol = "NEW"
+	p.Steps = append(p.Steps, PlanStep{Title: "dependent", Files: []string{"x"}, Verify: &plan.Verify{Kind: "contains", File: "x", Symbol: "OLD"}})
+	l, wr, ws := auditFixture(t, p, m.srv.URL)
+	auditWrite(t, filepath.Join(ws, "x"), "OLD")
+	for i := 0; i < 2; i++ {
+		auditAppend(t, wr, episodic.Checkpoint, map[string]any{"index": i, "status": "done"})
+	}
+	if _, err := l.RunStep(context.Background(), "s", StepRunRequest{Step: 0, Revision: true}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := l.PlanStateOf("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Steps[1].Status == "passed" {
+		t.Fatal("dependent remains passed after revision made its criterion false")
+	}
+}
+
+func TestLifecycleL05ReverifyRunsAfterEdit(t *testing.T) {
+	m := newScriptedModel(toolCall("request_revision", `{"target":0,"reason":"step 1 must change first"}`), toolCall("write", `{"path":"x","content":"NEW"}`), textReply("done"))
+	defer m.srv.Close()
+	p := auditPlan()
+	p.Steps[0].Verify.Symbol = "NEW"
+	p.Steps = append(p.Steps,
+		PlanStep{Title: "dependent", Files: []string{"x"}, Verify: &plan.Verify{Kind: "contains", File: "x", Symbol: "OLD"}},
+		PlanStep{Title: "asker", Files: []string{"x"}, Verify: &plan.Verify{Kind: "contains", File: "x", Symbol: "NEW"}})
+	l, _, ws := auditFixture(t, p, m.srv.URL)
+	auditWrite(t, filepath.Join(ws, "x"), "OLD")
+	sup := NewSupervisor(p)
+	sup.Record(0, Verdict{Pass: true}, -1)
+	sup.Record(1, Verdict{Pass: true}, -1)
+	if _, err := l.runPlanFrom(context.Background(), "s", p, sup, 2, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	actual := RunVerify(context.Background(), l.registryFor("s"), ws, p.Steps[1].Verify)
+	if sup.Steps[1].Status == "passed" && !actual.Pass {
+		t.Fatal("downstream pass retained from BEFORE the edit; check is now false")
+	}
+}
+
+func TestLifecycleL02ControlsAndActiveState(t *testing.T) {
+	for _, control := range []string{"pause", "steer", "state"} {
+		t.Run(control, func(t *testing.T) {
+			entered, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			unblock := func() { once.Do(func() { close(release) }) }
+			defer unblock()
+			var mu sync.Mutex
+			var bodies []string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body json.RawMessage
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+					return
+				}
+				mu.Lock()
+				bodies = append(bodies, string(body))
+				n := len(bodies)
+				mu.Unlock()
+				if n == 1 {
+					close(entered)
+					<-release
+				}
+				reply := textReply("done")
+				if n == 1 {
+					reply = toolCall("read", `{"path":"x"}`)
+				}
+				json.NewEncoder(w).Encode(map[string]any{"choices": []any{reply}, "usage": map[string]int{"prompt_tokens": 5, "completion_tokens": 3}})
+			}))
+			defer srv.Close()
+			l, wr, ws := auditFixture(t, auditPlan(), srv.URL)
+			auditWrite(t, filepath.Join(ws, "x"), "OLD")
+			finished := make(chan error, 1)
+			go func() { _, err := l.RunStep(context.Background(), "s", StepRunRequest{Step: 0}); finished <- err }()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				unblock()
+				t.Fatal("fake model never entered")
+			}
+			var activeStatus string
+			switch control {
+			case "pause":
+				if !l.Pause("s") {
+					unblock()
+					t.Fatal("pause rejected")
+				}
+			case "steer":
+				auditAppend(t, wr, episodic.MsgUser, map[string]any{"text": "AUDIT_STEER_MARKER"})
+				if !l.Steer("s") {
+					unblock()
+					t.Fatal("steer rejected")
+				}
+			case "state":
+				st, err := l.PlanStateOf("s")
+				if err != nil {
+					unblock()
+					t.Fatal(err)
+				}
+				activeStatus = st.Steps[0].Status
+			}
+			unblock()
+			if control == "pause" {
+				select {
+				case <-finished:
+					t.Fatal("pause released ownership")
+				case <-time.After(100 * time.Millisecond):
+				}
+				mu.Lock()
+				n := len(bodies)
+				mu.Unlock()
+				if n > 1 {
+					t.Fatal("model kept running while paused")
+				}
+				if !l.Resume("s") {
+					t.Fatal("resume failed")
+				}
+			}
+			select {
+			case err := <-finished:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(5 * time.Second):
+				l.Kill("s")
+				t.Fatal("fake run timed out")
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			switch control {
+			case "pause":
+				if len(bodies) < 2 {
+					t.Fatal("resume did not continue")
+				}
+			case "steer":
+				if len(bodies) < 2 || !strings.Contains(bodies[1], "AUDIT_STEER_MARKER") {
+					t.Fatal("steer accepted but absent from next model request")
+				}
+			case "state":
+				if activeStatus != "running" {
+					t.Fatalf("model in flight but plan status=%s", activeStatus)
+				}
+			}
+		})
+	}
+}

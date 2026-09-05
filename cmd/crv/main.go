@@ -32,7 +32,12 @@ import (
 
 func main() {
 	configPath := flag.String("config", config.DefaultPath(), "path to config.json")
+	versionOnly := flag.Bool("version", false, "print build identity without starting services")
 	flag.Parse()
+	if *versionOnly {
+		fmt.Printf("Cerveau %s LABRIG (%s)\n", api.Version, api.BuildRevision)
+		return
+	}
 
 	cfg, err := config.LoadOrCreate(*configPath)
 	if err != nil {
@@ -219,6 +224,9 @@ func main() {
 	a.SetContextFunc(winMgr.Budget)
 	a.SetContextSync(winMgr.Sync)
 	agentLoop := loop.New(llmClient, registry, a.Writer, sess.EventsPath, winMgr)
+	if cfg.Sampling != "" {
+		agentLoop.SetSampling(cfg.Sampling)
+	}
 	agentLoop.SetThinking(cfg.ThinkingMode, cfg.ThinkingEffort) // default autopilot/medium; persisted from Settings
 
 	// RFX: the loader validates step tools against the LIVE registry — which
@@ -245,7 +253,7 @@ func main() {
 		if m, err := sess.Get(sessionID); err == nil && m.Workspace != "" {
 			return m.Workspace
 		}
-		return cfg.Workspace
+		return a.ConfigSnapshot().Workspace
 	})
 	// Per-session tool registries.
 	//
@@ -279,6 +287,18 @@ func main() {
 		r.SetRemediator(func(tool string, args json.RawMessage) (json.RawMessage, error) {
 			return grd.Remediate(tool, args, time.Now())
 		})
+		ix := codeintel.NewIndexer(store, abs)
+		indexCtx, indexCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_, _ = ix.Index(indexCtx)
+		indexCancel()
+		r.SetPostExec(func(name string, args json.RawMessage) {
+			if name == "write" || name == "edit" {
+				var a struct{ Path string }
+				if json.Unmarshal(args, &a) == nil && a.Path != "" {
+					_ = ix.ReindexOnEdit(context.Background(), a.Path)
+				}
+			}
+		})
 		regCache[abs] = r
 		return r
 	})
@@ -288,6 +308,7 @@ func main() {
 	// tell the model what the harness itself is running, so it never suggests
 	// serving user work on ports the stack already occupies (e.g. :8080 = LLM)
 	agentLoop.SetStackFunc(func() string {
+		cfg := a.ConfigSnapshot()
 		return fmt.Sprintf(
 			"Local stack ALREADY RUNNING on this machine (never serve anything on these ports): "+
 				"Cerveau API on localhost%s, LLM server (llama.cpp) on %s, embedder on %s, Typesense on %s. "+
@@ -317,7 +338,7 @@ func main() {
 	}
 	skillLoader := skills.NewLoader(filepath.Join(cfg.SessionsDir, "..", "skills"))
 	agentLoop.SetSkills(skillLoader, func(defs []skills.SkillTool) []tools.Tool {
-		return tools.SkillTools(defs, cfg.Workspace, grd.Check)
+		return tools.SkillTools(defs, a.ConfigSnapshot().Workspace, grd.Check)
 	})
 	a.SetSkillLoader(skillLoader)
 	a.SetLoop(agentLoop)

@@ -2,7 +2,7 @@
   "dgv": 1,
   "meta": {
     "title": "Stepwise runs — one step, one run, one verdict",
-    "description": "The plan is the execution unit. Read first, then a FORCED commit_plan with a check per step; the supervisor runs one step per run in the session's workspace, judges it by its own check, records a checkpoint, and only a pass advances. Proven 2026-09-05 on \"improve our car game\": 11 steps, 11 passed, 0 failed, 7 min. Both surfaces drive it through one step-control API.",
+    "description": "0.6 LABRIG source: detached admission, plan-bound supervisor state, validated checks and revision ordering, one-prefix UI projection. Bundled Planner 1.5.0 requires matching deployment. Prior happy-path benchmarks remain historical evidence, not full lifecycle proof. See release-0.6-LABRIG.md and loop-contract.",
     "updated": "2026-09-05",
     "colorBy": "kind",
     "driftIgnore": [
@@ -35,12 +35,12 @@
       "id": "plan",
       "label": "1 · Plan — once per task",
       "position": {
-        "x": 396,
+        "x": 400,
         "y": 0
       },
       "size": {
-        "width": 1004,
-        "height": 925
+        "width": 996,
+        "height": 510
       }
     },
     {
@@ -48,12 +48,12 @@
       "id": "drive",
       "label": "2 · Drive — the new part: who decides what runs next",
       "position": {
-        "x": 1532,
+        "x": 1536,
         "y": 0
       },
       "size": {
-        "width": 680,
-        "height": 1043
+        "width": 672,
+        "height": 739
       }
     },
     {
@@ -61,12 +61,12 @@
       "id": "run",
       "label": "3 · Run — one step, start to verdict",
       "position": {
-        "x": 2344,
+        "x": 2348,
         "y": 0
       },
       "size": {
-        "width": 1004,
-        "height": 862
+        "width": 996,
+        "height": 517
       }
     },
     {
@@ -74,12 +74,12 @@
       "id": "record",
       "label": "4 · Record — what makes progress real",
       "position": {
-        "x": -4,
-        "y": 1044
+        "x": 0,
+        "y": 879
       },
       "size": {
-        "width": 1004,
-        "height": 421
+        "width": 996,
+        "height": 296
       }
     },
     {
@@ -87,12 +87,12 @@
       "id": "show",
       "label": "5 · Show",
       "position": {
-        "x": 1132,
-        "y": 1044
+        "x": 1136,
+        "y": 879
       },
       "size": {
-        "width": 680,
-        "height": 698
+        "width": 672,
+        "height": 514
       }
     }
   ],
@@ -123,9 +123,9 @@
       "path": "internal/loop/loop.go",
       "position": {
         "x": 444,
-        "y": 246
+        "y": 173
       },
-      "note": "Rewritten 2026-09-04/05 after seven live failures, each a different bug:\n\n1. commit_plan was registered for discussion only — every autopilot planning call offered an EMPTY tool list. The model never wrote plans as prose out of habit; it had no tool to call.\n2. \"Improve our car game\" cannot be planned without reading it. It may now read — orientation free, four reads — then the call is FORCED via tool_choice (guided decoding). Narrowing the offer alone was toothless.\n3. The shared SessionContext was overwritten by every chat request; a commit from one session landed in another. The id rides the run's context now.\n4. A landed plan was pasted in as guidance and the same turn carried on. It hands off to the supervisor.\n5. The step runner used the global registry; a step wrote into the wrong tree and failed its own check.\n6. An overrun step was marked failed with its check never run. The check decides.\n7. An empty steps array was a legal exit under forced decoding; steps and files are required with minItems 1. And the model needs three tries to write a real check, not two.\n\nFINAL (improve-rejects3, 2026-09-05 00:05): read → forced commit on the FIRST try (11 steps, real checks) → hand-off → 11 checkpoints, every step built in the session workspace and passed its own check, the last an eval on the served page → 11 done, 0 failed, 0 skipped, 7 min 6 s. GET /plan: done."
+      "note": "Bounded planning requires structured commit_plan with executable criteria; malformed/missing plans suspend, no prose execution fallback. Answer-only uses same runner."
     },
     {
       "ports": [],
@@ -152,11 +152,12 @@
       "label": "plan event",
       "sublabel": "steps + files + verify, in events.jsonl",
       "frame": "plan",
-      "status": "wip",
+      "status": "done",
       "position": {
         "x": 1092,
-        "y": 246
-      }
+        "y": 180
+      },
+      "note": "Immutable plan event identity and full plan.state snapshots; latest-plan reducer never inherits older indexed checkpoints."
     },
     {
       "ports": [],
@@ -165,13 +166,13 @@
       "kind": "service",
       "label": "Step supervisor",
       "sublabel": "owns the cursor · an autopilot turn with an unfinished plan RESUMES it",
-      "note": "The piece that did not exist. It holds the step cursor, starts one run per step, reads each verdict and decides: advance, retry, or reopen an earlier one. It never writes code — it decides what the next run is asked to do.\n\nRebuilt from the event log on every call rather than held in memory, so a panel button, a CLI call and a resumed session all see the same state.\n\nAn UNFINISHED plan owns autopilot turns in its session (2026-09-05). \"keep going\" typed into the chat used to start a free turn with the plan pasted in as guidance — never the supervisor — and the model replayed its stuck reply six times. Now the turn hands off at the next pending step, or reopens the blocked one for a single further run, with the user's words carried into the step as steering. A finished plan does not capture the turn.\n\nProven live: eleven advances in a row on the car refactor, each on an observed check, ending in done.",
+      "note": "Persists attempt/revision/pair counters and selection cursor. All entry points use shared supervisor and safe control boundaries.",
       "frame": "drive",
       "tech": "Go",
       "status": "done",
       "position": {
         "x": 1580,
-        "y": 367
+        "y": 228
       },
       "path": "internal/loop/supervisor.go"
     },
@@ -188,7 +189,7 @@
       "status": "done",
       "position": {
         "x": 1904,
-        "y": 589
+        "y": 289
       },
       "path": "internal/loop/stepprompt.go"
     },
@@ -199,7 +200,7 @@
       "kind": "module",
       "label": "Revision decider",
       "sublabel": "reopen an earlier step as rev_n · cap 2 · re-verify downstream",
-      "note": "When a run reports that an EARLIER step is wrong or incomplete, the supervisor opens a revision run for that step — rev_2, rev_3 — with the new context explaining what is needed and why. When it passes, the cursor returns to where it left off. The model asks for this via a `needs_step` field on the verdict; the harness does not guess.\n\nTWO RULES stop it looping, decided 2026-09-04:\n\n1. CAP. Two revisions per step. The third request hands back to the user with every verdict on record, rather than spending the task on one disputed file.\n\n2. RE-VERIFY DOWNSTREAM. A revision can invalidate a later step that was verified against the old file. After any revision, re-run the verify of every later step that shares a file with the revised one. Cheap — it is the declared check, not a new run — and it catches the silent breakage. If the same PAIR of steps fails twice, that is a genuine disagreement about the design: hand back with both verdicts instead of trying a third time.",
+      "note": "Structured request_revision, invalidate dependent evidence BEFORE editing, target correction/verification then downstream checks. Selected scope suspends for out-of-scope repair.",
       "frame": "drive",
       "tech": "Go",
       "status": "done",
@@ -221,7 +222,7 @@
       "status": "done",
       "position": {
         "x": 2392,
-        "y": 213
+        "y": 168
       },
       "path": "internal/loop/autopilot.go"
     },
@@ -279,12 +280,12 @@
       "kind": "storage",
       "label": "checkpoint event",
       "sublabel": "step N, rev R — verdict, the check, its evidence, and why",
-      "note": "Written when a run ends, per step and revision, carrying the step INDEX so a revision's checkpoint is distinguishable from the first attempt's and two steps with the same name do not share a verdict.\n\nThis is the event BuildReportAt always preferred and had never once received, which is why status used to be guessed from disk.",
+      "note": "Canonical plan.state saved before projection-only compatibility checkpoint; interrupted process never manufactures a settled check.",
       "frame": "record",
       "status": "done",
       "position": {
         "x": 44,
-        "y": 1104
+        "y": 952
       }
     },
     {
@@ -298,7 +299,7 @@
       "status": "done",
       "position": {
         "x": 368,
-        "y": 1178
+        "y": 988
       }
     },
     {
@@ -320,9 +321,9 @@
       "status": "done",
       "position": {
         "x": 692,
-        "y": 1165
+        "y": 939
       },
-      "note": "Fold keeps tool calls, results, notes and errors between a user message and the reply that closes them, keyed by the reply's event id (State.Logs). The chat shows them collapsed above each reply — the live log cleared at the end of the turn, so a finished turn had no record of what led to its report."
+      "note": "Report and plan are from the same replay projection; no filesystem-based passed status. 0.6 /state packages both with one cursor."
     },
     {
       "ports": [],
@@ -331,13 +332,13 @@
       "kind": "ui",
       "label": "Native plan strip",
       "sublabel": "SIMPLE surface · steps, which is running, pass/fail · no knobs",
-      "note": "What a user gets with no RFX pack installed. Shows the plan the moment it commits, marks the running step, shows each verdict as it lands, and offers ONE action: continue after a hand-back.\n\nNot yet moved onto the step API: it still renders /report, which now carries real per-step status from checkpoints but not the cursor (next, blocked, revision).",
+      "note": "Reads canonical report inside /state, retains completed plan; snapshot includes activephase. Real Go API desktop/mobile pause/reload/reconnect verification passed; prod0.5unchanged.",
       "frame": "show",
       "tech": "Svelte 5",
-      "status": "todo",
+      "status": "done",
       "position": {
         "x": 1180,
-        "y": 1453
+        "y": 1168
       },
       "path": "panel/src/lib/chat/PlanStrip.svelte"
     },
@@ -348,14 +349,19 @@
       "kind": "ui",
       "label": "RFX Planner panel",
       "sublabel": "ADVANCED surface · calls runStep(), no longer writes prompts",
-      "note": "~/.crv/rfx/planner/ui/panel.html. Its step buttons now call rfx.runStep(i) — the core scopes the run, executes it, checks it and records the verdict. Re-running a passed step calls runStep(i, true), a revision, which is what it is: a human saw something the check did not.\n\nIts scenario rules (auto-continue, pause on failure, run a selected subset in order) stay in the panel — those are genuinely UI policy, unlike prompt-writing.\n\nStill wip: the pack lives in ~/.crv/rfx and is not versioned with the repo.",
+      "note": "Repo Planner1.5.0 built withserver-owned whole/selected scope andcanonicalpendingstates. Noautomaticbrowserrestarts. Host+pack not installed; deployment remains open.",
       "frame": "show",
       "tech": "HTML in a sandboxed iframe",
       "status": "wip",
       "position": {
         "x": 1180,
-        "y": 1104
-      }
+        "y": 939
+      },
+      "path": [
+        "rfx/planner/pack.yaml",
+        "rfx/planner/ui/panel.html",
+        "panel/src/lib/RfxCustomPanel.svelte"
+      ]
     },
     {
       "ports": [
@@ -371,13 +377,13 @@
       "kind": "api",
       "label": "Step control API",
       "sublabel": "GET /plan · POST /plan/step — the one way to drive a plan",
-      "note": "GET  /api/sessions/{id}/plan       the plan + per-step status, next, blocked\nPOST /api/sessions/{id}/plan/step  run one step (step -1 = whichever is next)\n\nOne contract so the two surfaces cannot drift apart. The cursor is rebuilt from the event log on every call rather than held in memory: a panel button, a CLI call and a resumed session must all see the same state, and the log is the only thing all three share.\n\nThe RFX bridge exposes the same two as rfx.plan() and rfx.runStep().",
+      "note": "POSTcommands accepts chat/step/continue/selected withpersistedcommandIDs; controls matchrun/controlversion. Legacy HTTPwaiters observe detachedworker.",
       "frame": "show",
       "tech": "Go net/http",
       "status": "done",
       "position": {
         "x": 1504,
-        "y": 1251
+        "y": 1048
       },
       "path": "internal/api/api.go"
     }
@@ -1658,6 +1664,183 @@
           "to": "done"
         }
       ]
+    },
+    {
+      "at": "2026-09-05T02:57:07.782Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Audit: this view is not authoritative yet"
+      }
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Rewritten 2026-09-04/05 after seven live failures, each a different bug:\n\n1. …",
+          "to": "Bounded planning requires structured commit_plan with executable criteria; ma…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planevt",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "to": "Immutable plan event identity and full plan.state snapshots; latest-plan redu…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "The piece that did not exist. It holds the step cursor, starts one run per st…",
+          "to": "Persists attempt/revision/pair counters and selection cursor. All entry point…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "revision",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "When a run reports that an EARLIER step is wrong or incomplete, the superviso…",
+          "to": "Structured request_revision, invalidate dependent evidence BEFORE editing, ta…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkpoint",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Written when a run ends, per step and revision, carrying the step INDEX so a …",
+          "to": "Canonical plan.state saved before projection-only compatibility checkpoint; i…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Fold keeps tool calls, results, notes and errors between a user message and t…",
+          "to": "Report and plan are from the same replay projection; no filesystem-based pass…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "What a user gets with no RFX pack installed. Shows the plan the moment it com…",
+          "to": "Reads canonical report inside /state, retains completed plan; snapshot includ…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "~/.crv/rfx/planner/ui/panel.html. Its step buttons now call rfx.runStep(i) — …",
+          "to": "Repo Planner1.5.0 built withserver-owned whole/selected scope andcanonicalpen…"
+        },
+        {
+          "field": "path",
+          "to": "rfx/planner/pack.yaml, rfx/planner/ui/panel.html, panel/src/lib/RfxCustomPanel.svelte"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "node",
+      "id": "stepapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "GET  /api/sessions/{id}/plan       the plan + per-step status, next, blocked\n…",
+          "to": "POSTcommands accepts chat/step/continue/selected withpersistedcommandIDs; con…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.831Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "The plan is the execution unit. Read first, then a FORCED commit_plan with a …",
+          "to": "0.6 LABRIG source: detached admission, plan-bound supervisor state, validated…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T05:09:31.836Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Audit: this view is not authoritative yet"
+      }
     }
   ]
 }

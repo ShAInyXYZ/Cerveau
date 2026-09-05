@@ -34,7 +34,7 @@ export interface ChatMessage {
   id?: string;
   type: 'msg.user' | 'msg.assistant';
   ts: string;
-  payload?: { text?: string };
+  payload?: { text?: string; tool_calls?: unknown[] };
   _optimistic?: boolean;
 }
 
@@ -46,6 +46,7 @@ export interface EpisodicEvent {
 }
 
 export interface SessionError {
+ id?: string; run_id?: string;
   class?: string;
   what?: string;
   why?: string;
@@ -56,7 +57,7 @@ export interface SessionError {
 
 export interface StepReport {
   title: string;
-  status: 'pending' | 'partial' | 'done' | 'failed' | 'skipped';
+  status: string;
   summary?: string;
   ts?: string;
 }
@@ -73,6 +74,8 @@ export interface PlanReport {
 }
 
 export interface Question {
+ id?: string;
+ run_id?: string;
   question: string;
   options?: string[];
 }
@@ -105,3 +108,21 @@ export interface LiveStep {
 }
 
 export type Mode = 'discussion' | 'autopilot' | 'brainstorming';
+
+export interface RunState {
+ control_version: number;
+ result?: ChatResult;
+ id: string; status: string; phase?: string; tool?: string; step: number;
+ started: string; updated: string; reason?: string; calls: number;
+ thinking_mode: string; thinking_effort: string; sampling: string;
+}
+export interface SessionSnapshot {
+ messages?: ChatMessage[]; logs?: Record<string, EpisodicEvent[]>;
+ run?: RunState | null; plan_state?: PlanState | null; running?: boolean;
+ cursor?: string; events?: EpisodicEvent[];
+ question?: Question | null; errors?: SessionError[]; report?: PlanReport | null;
+}
+export interface PlanState {
+ plan_event_id: string; title: string; next: number; blocked: number; done: boolean;
+ steps: {id: string; title: string; status: string; rev: number; attempts: number}[];
+}

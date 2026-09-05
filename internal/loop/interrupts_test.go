@@ -142,9 +142,22 @@ func TestPauseParks(t *testing.T) {
 	if !l.Pause("s1") {
 		t.Fatal("no active run to pause")
 	}
-	res := <-resCh
-	if res == nil || res.StopReason != "paused" {
-		t.Fatalf("res = %+v", res)
+	select {
+	case <-resCh:
+		t.Fatal("pause released ownership")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if len(l.RunningSessions()) != 1 {
+		t.Fatal("paused worker lost ownership")
+	}
+	if !l.Resume("s1") {
+		t.Fatal("resume failed")
+	}
+	l.Kill("s1")
+	select {
+	case <-resCh:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled worker did not exit")
 	}
 }
 

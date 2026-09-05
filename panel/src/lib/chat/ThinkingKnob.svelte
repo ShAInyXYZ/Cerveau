@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tooltip } from '../../kit/tooltip.js';
-  import { j, jpost } from '../api';
+  import { settingsStore } from '../stores/settings.svelte.ts';
 
   // The thinking EFFORT, on the bar where the work is asked for. This is the
   // session setting (the same one as Settings → Thinking), not a one-turn
@@ -10,9 +10,9 @@
   // "off" here means mode off; a level means the current mode (autopilot by
   // default) at that effort. Chat turns keep answering directly unless the
   // mode is "always" — that switch stays in Settings, it is rarely wanted.
-  let mode = $state('plan');
-  let effort = $state('medium');
-  let levels = $state<string[]>([]);
+  const mode = $derived(settingsStore.thinking.mode);
+  const effort = $derived(settingsStore.thinking.effort);
+  const levels = $derived(settingsStore.thinking.efforts.length?['off',...settingsStore.thinking.efforts]:[]);
   let open = $state(false);
 
   const TIP: Record<string, string> = {
@@ -22,13 +22,7 @@
     xhigh:  'the model\'s default: validate assumptions, weigh alternatives — thousands of tokens per call'
   };
 
-  async function load() {
-    try {
-      const t = await j('/api/thinking');
-      if (t?.efforts) { mode = t.mode; effort = t.effort; levels = ['off', ...t.efforts]; }
-    } catch { /* older core */ }
-  }
-  $effect(() => { void load(); });
+  $effect(() => { void settingsStore.load(); });
 
   const current = $derived(mode === 'off' ? 'off' : effort);
 
@@ -37,19 +31,19 @@
     const next = level === 'off'
       ? { mode: 'off', effort }
       : { mode: mode === 'off' ? 'plan' : mode, effort: level };
-    mode = next.mode; effort = next.effort;              // optimistic: it is instant
-    try { await jpost('/api/thinking', next); } catch { await load(); }
+    await settingsStore.setThinking(next);
   }
 </script>
 
+{#if settingsStore.error}<p role="alert">{settingsStore.error}</p>{/if}
 {#if levels.length}
   <div class="knob">
-    <button class="pill" onclick={() => (open = !open)}
-      aria-label="thinking effort"
+    <button class="pill" onclick={() => { void settingsStore.load(); open = !open; }}
+      aria-label="thinking effort for future runs (all sessions)"
       use:tooltip={current === 'off'
         ? 'thinking: off. Click to let builds reason before each step.'
         : `thinking: ${effort}${mode === 'always' ? ' on every turn' : mode === 'autopilot' ? ' on every autopilot call' : ' while planning a build'}. Click to change.`}>
-      <span class="label">THINK</span>
+      <span class="label">NEXT RUN</span>
       <span class="name mono">{current}</span>
       {#if current !== 'off'}
         <span class="scope">{mode === 'always' ? 'every turn' : mode === 'autopilot' ? 'every step' : 'plan only'}</span>
@@ -61,7 +55,7 @@
         {#each levels as l (l)}
           <button class="item" class:sel={l === current} onclick={() => pick(l)} use:tooltip={TIP[l] || l}>
             <span>{l}</span>
-            {#if l === 'low'}<span class="def">default</span>{/if}
+
           </button>
         {/each}
       </div>
@@ -76,7 +70,7 @@
      the input it belongs to. */
   .knob { position: relative; display: inline-flex; }
   .pill {
-    display: inline-flex; align-items: center; gap: 7px;
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
     background: transparent; border: 1px solid var(--line2); border-radius: 999px;
     padding: 3px 10px 3px 9px; cursor: pointer; color: var(--faint); font: inherit;
     transition: color .1s, border-color .1s, background .1s;

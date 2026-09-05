@@ -63,7 +63,7 @@ func (l *Loop) boundaryHooks(sessionID string) {
 	meta, err := l.distill(ctx, sessionID)
 	if err != nil {
 		if wr, werr := l.open(sessionID); werr == nil {
-			wr.Append(episodic.Err, map[string]string{"class": "boundary", "detail": "turn_close distill failed: " + err.Error()})
+			wr.Append(episodic.Note, map[string]string{"class": "boundary", "detail": "turn_close distill failed: " + err.Error()})
 		}
 		return
 	}

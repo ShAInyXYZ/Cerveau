@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tooltip } from '../../kit/tooltip.js';
-  import { api } from '../api';
+  import { settingsStore } from '../stores/settings.svelte.ts';
   import { sessionStore } from '../stores/session.svelte.ts';
   import { Thermometer } from 'lucide-svelte';
 
@@ -10,8 +10,8 @@
   // for the message where you want something else — "give me three approaches"
   // wants Creative, "refactor this carefully" wants Strict — and it clears
   // itself afterwards so a deliberate choice never becomes the new normal.
-  let sessionDefault = $state('strict');
-  let presets = $state<string[]>([]);
+  const sessionDefault=$derived(settingsStore.sampling.active);
+  const presets=$derived(settingsStore.sampling.presets);
   let open = $state(false);
 
   const TIP: Record<string, string> = {
@@ -21,12 +21,7 @@
     creative: 'temperature 0.7 — widest spread, when there is no single right answer.'
   };
 
-  $effect(() => {
-    void api.getSampling().then((d) => {
-      sessionDefault = d.active; presets = d.presets;
-    }).catch(() => {});
-  });
-
+  $effect(() => { void settingsStore.load(); });
   const active = $derived(sessionStore.turnSampling || sessionDefault);
   const overridden = $derived(!!sessionStore.turnSampling);
 
@@ -38,10 +33,10 @@
 
 {#if presets.length}
   <div class="knob">
-    <button class="pill" class:on={overridden} onclick={() => (open = !open)}
+    <button class="pill" class:on={overridden} onclick={() => { void settingsStore.load(); open = !open; }}
       aria-label="sampling for this message"
       use:tooltip={overridden
-        ? `this message runs ${active} — the session default is ${sessionDefault}`
+        ? `this message runs ${active} — the global default is ${sessionDefault}`
         : `sampling: ${sessionDefault}. Click to change it for this message only.`}>
       <Thermometer size={13} />
       {#if overridden}<span class="name">{active}</span>{/if}

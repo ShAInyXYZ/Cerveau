@@ -3,6 +3,7 @@ package guard
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,7 +55,7 @@ func (g *Guard) Remediate(tool string, args json.RawMessage, now time.Time) (jso
 		}
 		// Only back up files the guard considers important AND that already exist.
 		if importantPath(a.Path) {
-			if err := backupFile(g.workspace, a.Path, now); err != nil {
+			if err := backupFile(g.ws(), a.Path, now); err != nil {
 				return nil, fmt.Errorf("refusing to modify %q: backup failed: %w", a.Path, err)
 			}
 		}
@@ -108,11 +109,18 @@ func importantPath(p string) bool {
 // backupFile copies workspace/path to path.bak.<ts> if the target exists.
 // A missing target is fine (new file — nothing to back up).
 func backupFile(workspace, path string, now time.Time) error {
-	full := path
-	if !filepath.IsAbs(full) {
-		full = filepath.Join(workspace, path)
+	// Tool paths are workspace-relative. This side effect happens before the
+	// tool's own jail validation, so it needs an independent traversal-safe
+	// boundary. Root protects both reads and backup creation from symlink swaps.
+	if workspace == "" || !filepath.IsLocal(path) {
+		return fmt.Errorf("backup path %q must be relative to the workspace", path)
 	}
-	info, err := os.Stat(full)
+	root, err := os.OpenRoot(workspace)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil // creating a new file — nothing to back up
@@ -122,10 +130,48 @@ func backupFile(workspace, path string, now time.Time) error {
 	if info.IsDir() {
 		return nil
 	}
-	data, err := os.ReadFile(full)
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("backup source %q is not a regular file", path)
+	}
+	src, err := root.Open(path)
 	if err != nil {
 		return err
 	}
-	bak := fmt.Sprintf("%s.bak.%s", full, now.UTC().Format("20060102-150405"))
-	return os.WriteFile(bak, data, info.Mode().Perm())
+	defer src.Close()
+	info, err = src.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("backup source %q is not a regular file", path)
+	}
+	data, err := io.ReadAll(src)
+	if err != nil {
+		return err
+	}
+	base := fmt.Sprintf("%s.bak.%s", path, now.UTC().Format("20060102-150405"))
+	for attempt := 0; attempt < 100; attempt++ {
+		bak := base
+		if attempt > 0 {
+			bak = fmt.Sprintf("%s.%d", base, attempt)
+		}
+		// O_EXCL protects previous backups and refuses pre-planted symlinks.
+		dst, err := root.OpenFile(bak, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		_, writeErr := dst.Write(data)
+		if writeErr == nil {
+			writeErr = dst.Sync()
+		}
+		closeErr := dst.Close()
+		if writeErr != nil {
+			return writeErr
+		}
+		return closeErr
+	}
+	return fmt.Errorf("cannot create a distinct backup for %q", path)
 }

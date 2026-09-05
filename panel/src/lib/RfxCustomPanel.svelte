@@ -1,7 +1,8 @@
 <script>
+ import { sessionStore } from './stores/session.svelte.ts';
   import { Zap, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-svelte';
   import { rfxIcon } from './rfxIcons.js';
-  import { j, jpost, fetchEvents } from './api';
+  import { j, jpost, ApiError } from './api';
 
   // RfxCustomPanel — RFX-UI tier 2: the pack ships its own ui/panel.html
   // (any HTML/CSS/JS) rendered in a SANDBOXED iframe. Full presentation
@@ -18,15 +19,27 @@
   let frameH = $state(260);
   let pendingDanger = $state(null); // {id, name, args, source}
   let iframeEl = $state(null);
+  // Retain identity when a POST's acknowledgement is lost. A retry of the
+  // same uncertain intent must discover the accepted run, not repeat it.
+  const uncertainPlanCommands = new Map();
+  function uncertainCommand(key) {
+    try { const saved = sessionStorage.getItem('crv.rfx.pending.' + key); if (saved) return saved; } catch {}
+    return uncertainPlanCommands.get(key);
+  }
+  function rememberCommand(key, value) {
+    if (value) uncertainPlanCommands.set(key, value); else uncertainPlanCommands.delete(key);
+    try { if (value) sessionStorage.setItem('crv.rfx.pending.' + key, value); else sessionStorage.removeItem('crv.rfx.pending.' + key); } catch {}
+  }
 
   const PackIcon = $derived(rfxIcon(pack.icon, Zap));
   const enabledSet = $derived(new Set(members.filter((m) => m.enabled !== false).map((m) => m.name)));
   const maxRisk = $derived(members.some((m) => m.risk === 'dangerous') ? 'dangerous'
     : members.some((m) => m.risk === 'sensitive') ? 'sensitive' : 'safe');
 
-  async function execute(id, name, args, source, confirmed = false) {
+  async function execute(id, name, args, source, confirmed = false, sid = sessionId) {
     try {
-      const res = await jpost('/api/rfx/run', { name, args: args ?? {}, confirmed });
+      if (!sid || sid !== sessionId || sid !== sessionStore.activeId) throw new Error('Session changed; request the reflex again in the intended session.');
+      const res = await jpost('/api/rfx/run', { session_id: sid, name, args: args ?? {}, confirmed });
       source.postMessage({ rfx: 'result', id, ok: !!res.ok, output: res.output ?? '', error: res.error ?? '' }, '*');
     } catch (e) {
       source.postMessage({ rfx: 'result', id, ok: false, output: '', error: String(e) }, '*');
@@ -41,12 +54,12 @@
   async function readSession(id, source) {
     if (!pack.ui?.session) return reply(source, id, { ok: false, error: 'pack does not declare ui.session' });
     if (!sessionId) return reply(source, id, { ok: false, error: 'no active session' });
+    const sid = sessionId;
     try {
-      // /events is JSONL, not JSON — fetchEvents parses it line by line
-      const [state, list] = await Promise.all([
-        j(`/api/sessions/${sessionId}/state`),
-        fetchEvents(`/api/sessions/${sessionId}/events`)
-      ]);
+      const state = await j(`/api/sessions/${sid}/state`);
+      if (sessionId !== sid) throw new Error('Session changed; refresh the panel.');
+      if (!state) throw new Error('Could not load session state; refresh before starting work.');
+      const list = state.events ?? [];
       const checkpoints = list.filter((e) => e.type === 'checkpoint')
         .map((e) => ({ ...(e.payload ?? {}), ts: e.ts }));
       const closes = list.filter((e) => e.type === 'turn.close');
@@ -55,9 +68,11 @@
       const lastErr = errs.length ? (errs[errs.length - 1].payload ?? {}) : null;
       reply(source, id, {
         ok: true,
-        session: sessionId,
+        session: sid,
         plan: state?.plan ?? null,
         checkpoints,
+        planState:state?.plan_state??null,
+        run:state?.run??null,
         running: !!state?.running,
         lastClose: closes.length ? (closes[closes.length - 1].payload ?? {}) : null,
         lastError: lastErr,
@@ -76,7 +91,7 @@
   async function probeFiles(id, paths, source) {
     if (!pack.ui?.session) return reply(source, id, { ok: false, error: 'pack does not declare ui.session' });
     try {
-      const res = await jpost('/api/files/probe', { paths: paths ?? [] });
+      const res = await jpost('/api/files/probe', { session_id: sessionId, paths: paths ?? [] });
       reply(source, id, { ok: true, workspace: res?.workspace ?? '', files: res?.files ?? [] });
     } catch (e) {
       reply(source, id, { ok: false, error: String(e) });
@@ -104,8 +119,12 @@
   async function readPlan(id, source) {
     if (!pack.ui?.session) return reply(source, id, { ok: false, error: 'pack does not declare ui.session' });
     if (!sessionId) return reply(source, id, { ok: false, error: 'no active session' });
+    const sid = sessionId;
     try {
-      reply(source, id, { ok: true, ...(await j(`/api/sessions/${sessionId}/plan`)) });
+      const state = await j(`/api/sessions/${sid}/plan`);
+      if (sessionId !== sid) throw new Error('Session changed; refresh the panel.');
+      if (!state) throw new Error('Could not load the committed plan; refresh before starting work.');
+      reply(source, id, { ok: true, ...state });
     } catch (e) {
       reply(source, id, { ok: false, error: String(e) });
     }
@@ -118,17 +137,38 @@
   // idea a step was requested: nothing bound the run to step 3, nothing
   // verified it, and no checkpoint was written. Same ui.turn gate — it starts
   // work in the user's session either way.
-  async function runStep(id, step, revision, source) {
+  async function runStep(id, step, revision, source, steps = undefined, displayedPlanID = undefined) {
     if (!pack.ui?.turn) return reply(source, id, { ok: false, error: 'pack does not declare ui.turn' });
     if (!sessionId) return reply(source, id, { ok: false, error: 'no active session' });
     try {
-      const r = await fetch(`/api/sessions/${sessionId}/plan/step`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ step: Number.isInteger(step) ? step : -1, revision: !!revision })
-      });
-      const body = await r.json().catch(() => ({}));
-      reply(source, id, r.ok ? { ok: true, ...body } : { ok: false, error: body.error || `HTTP ${r.status}` });
+      const sid=sessionId;
+      const ps=await j(`/api/sessions/${sid}/plan`);
+      if(!ps)throw new Error('No committed plan');
+      if(sessionId!==sid)throw new Error('Session changed before acceptance; no run was started.');
+      if(displayedPlanID && displayedPlanID!==ps.plan_event_id)throw new Error('Plan changed; refresh the panel before running.');
+      const intent={
+        kind:step==='selected'?'selected':step==='all'?'continue':'step',
+        step:Number.isInteger(step)?step:-1,steps,revision:!!revision,plan_event_id:ps.plan_event_id
+      };
+      const key=JSON.stringify([sid,intent]);
+      const commandID=uncertainCommand(key)??crypto.randomUUID();
+      rememberCommand(key,commandID);
+      let accepted;
+      try { accepted=await jpost(`/api/sessions/${sid}/commands`,{command_id:commandID,...intent}); }
+      catch(error) { if(error instanceof ApiError && error.status>=400 && error.status<500)rememberCommand(key); throw error; }
+      rememberCommand(key);
+      // Await terminal projection, not a fragile long-running HTTP response.
+      const until=Date.now()+2*60*60*1000;
+      while(Date.now()<until){
+        if(sessionId!==sid)throw new Error('Session changed; the original run continues in its own session.');
+        const state=await j(`/api/sessions/${sid}/state`);
+        if(state?.run?.id===accepted.run.id && !state.running){
+          reply(source,id,{ok:state.run.status==='completed',run:state.run,error:state.run.reason??''});return;
+        }
+        if(state?.run?.id && state.run.id!==accepted.run.id)throw new Error('A newer run is now displayed; inspect the original run in session history.');
+        await new Promise(resolve=>setTimeout(resolve,1000));
+      }
+      throw new Error('Observation timed out; inspect the run before retrying.');
     } catch (e) {
       reply(source, id, { ok: false, error: String(e) });
     }
@@ -143,7 +183,9 @@
     }
     if (m.rfx === 'session') { readSession(m.id, e.source); return; }
     if (m.rfx === 'plan') { readPlan(m.id, e.source); return; }
-    if (m.rfx === 'runStep') { runStep(m.id, m.step, m.revision, e.source); return; }
+    if (m.rfx === 'runPlan') { runStep(m.id, 'all', false, e.source, undefined, m.plan_event_id); return; }
+    if (m.rfx === 'runSelected') { runStep(m.id, 'selected', false, e.source, m.steps, m.plan_event_id); return; }
+    if (m.rfx === 'runStep') { runStep(m.id, m.step, m.revision, e.source, undefined, m.plan_event_id); return; }
     if (m.rfx === 'files') { probeFiles(m.id, m.paths, e.source); return; }
     if (m.rfx === 'turn') { postTurn(m.id, m.text, m.mode, e.source); return; }
     if (m.rfx !== 'run') return;
@@ -158,7 +200,7 @@
     }
     if (target.risk === 'dangerous') {
       // host-owned confirm: the panel cannot draw over this strip
-      pendingDanger = { id: m.id, name: m.name, args: m.args, source: e.source };
+      pendingDanger = { id: m.id, name: m.name, args: m.args, source: e.source, sid: sessionId };
       return;
     }
     execute(m.id, m.name, m.args, e.source);
@@ -167,7 +209,7 @@
   function approveDanger() {
     const p = pendingDanger;
     pendingDanger = null;
-    if (p) execute(p.id, p.name, p.args, p.source, true);
+    if (p) execute(p.id, p.name, p.args, p.source, true, p.sid);
   }
   function denyDanger() {
     const p = pendingDanger;

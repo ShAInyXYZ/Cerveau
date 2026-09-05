@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"cerveau/internal/plan"
@@ -16,9 +17,10 @@ import (
 // Evidence is the point: "done" must be something the harness watched happen,
 // with the output that says so, not the model's opinion that it has finished.
 type Verdict struct {
-	Pass     bool   `json:"pass"`
-	Check    string `json:"check"`    // the verify, in one line
-	Evidence string `json:"evidence"` // what came back
+	WorkspaceVersion string `json:"workspace_version,omitempty"`
+	Pass             bool   `json:"pass"`
+	Check            string `json:"check"`    // the verify, in one line
+	Evidence         string `json:"evidence"` // what came back
 }
 
 // verifyToolRunner is the slice of the tool registry a verify needs. Narrow on
@@ -26,6 +28,11 @@ type Verdict struct {
 type verifyToolRunner interface {
 	ExecuteMode(ctx context.Context, name string, args json.RawMessage, mode string) (string, error)
 }
+
+// Chromium's console renderer leaves its closing quote and source location on
+// check_page's eval line. Match the complete value (not a truthy prefix) and
+// only that known suffix; arbitrary trailing text must never prove a check.
+var verifyEvalValue = regexp.MustCompile(`^(true|false|"true"|"false")(?:", source: .+ \([0-9]+\))?$`)
 
 // RunVerify performs the step's declared check and reports what it saw.
 //
@@ -66,10 +73,9 @@ func verifyEval(ctx context.Context, reg verifyToolRunner, v *plan.Verify, line 
 	// check_page reports the value as `eval result: <v>` among console lines.
 	pass := false
 	for _, l := range strings.Split(out, "\n") {
-		if i := strings.Index(l, "eval result:"); i >= 0 {
-			val := strings.TrimSpace(l[i+len("eval result:"):])
-			val = strings.TrimSuffix(strings.TrimSpace(val), `"`)
-			pass = strings.HasPrefix(val, "true")
+		if val, ok := strings.CutPrefix(strings.TrimSpace(l), "eval result:"); ok {
+			m := verifyEvalValue.FindStringSubmatch(strings.TrimSpace(val))
+			pass = len(m) == 2 && (m[1] == "true" || m[1] == `"true"`)
 			break
 		}
 	}
@@ -88,7 +94,16 @@ func verifyCommand(ctx context.Context, reg verifyToolRunner, v *plan.Verify, li
 }
 
 func verifyContains(workspace string, v *plan.Verify, line string) Verdict {
-	full := filepath.Join(workspace, filepath.Clean("/"+v.File))
+	root, _ := filepath.Abs(workspace)
+	full := filepath.Join(root, filepath.Clean("/"+v.File))
+	resolved, resolveErr := filepath.EvalSymlinks(full)
+	if resolveErr != nil {
+		return Verdict{Check: line, Evidence: resolveErr.Error()}
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil || !strings.HasPrefix(resolved, resolvedRoot+string(filepath.Separator)) {
+		return Verdict{Check: line, Evidence: "check path escapes session workspace"}
+	}
 	b, err := os.ReadFile(full)
 	if err != nil {
 		return Verdict{Pass: false, Check: line, Evidence: fmt.Sprintf("%s: %v", v.File, err)}

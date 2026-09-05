@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -23,9 +24,8 @@ type PlanStep struct {
 	Files  []string `json:"files"`
 	Risk   string   `json:"risk"`
 
-	// Verify is the check that proves this step done. Absent on plans committed
-	// through the markdown path, and on every plan written before step-wise
-	// execution existed — those fall back to disk reconciliation.
+	// Verify is the check that proves this step done. Legacy plans without a
+	// valid check remain unverified; file existence is not completion evidence.
 	Verify *plan.Verify `json:"verify,omitempty"`
 }
 
@@ -78,7 +78,12 @@ type StepResult struct {
 	Summary string `json:"summary"`
 }
 
-func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, error) {
+func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (result *Result, runErr error) {
+	ctx, _, finish, err := l.beginRun(ctx, sessionID, "autopilot", "")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { finish(result, runErr) }()
 	plan, planEvt, err := LatestPlan(l.path(sessionID))
 	if err != nil {
 		return nil, err
@@ -105,305 +110,358 @@ func (l *Loop) RunAutopilot(ctx context.Context, sessionID string) (*Result, err
 // deliberate: a step run by a button must obey exactly the same rules — its own
 // prompt, its own check, a checkpoint carrying the verdict — as a step run by
 // autopilot, or the two surfaces drift apart again.
-func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, sup *Supervisor, start int, single bool, steer string) (*Result, error) {
-	ctx = tools.WithSession(ctx, sessionID) // see Run
-	wr, err := l.open(sessionID)
+func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, sup *Supervisor, start int, single bool, steer string) (result *Result, runErr error) {
+	ctx, h, finish, err := l.beginRun(ctx, sessionID, "autopilot", steer)
 	if err != nil {
 		return nil, err
 	}
-	runCtx, rootCancel := context.WithCancel(ctx)
-	h := &runHandle{rootCancel: rootCancel}
-	defer l.runs.register(sessionID, h)()
-	defer rootCancel()
-
-	mode := ModeByName("autopilot")
-	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + mode.Module
-
+	defer func() { finish(result, runErr) }()
+	wr := h.writer
+	reg, notes, err := l.prepareRunRegistry(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	h.registry = reg
+	h.skillNotes = notes
+	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + ModeByName("autopilot").Module
+	for _, note := range notes {
+		systemPrompt += "\n\n" + note
+	}
+	original := taskBrief(l.path(sessionID))
+	if original != "" && original != h.brief {
+		h.brief = original + "\nCurrent instruction: " + h.brief
+	}
 	var pulls []memory.Pull
 	if l.recall != nil {
-		pulls = l.recall.TurnStart(runCtx, sessionID, plan.Title, nil)
+		pulls = l.recall.TurnStart(ctx, sessionID, plan.Title, nil)
 	}
-
-	sources := planningSources(l.path(sessionID))
-
-	results := make([]StepResult, len(plan.Steps))
-	for i, st := range plan.Steps {
-		results[i] = StepResult{Step: st.Title, Status: sup.Steps[i].Status}
-		if results[i].Status == "passed" {
-			results[i].Status = "done"
-			if v := sup.Steps[i].Verdict; v != nil {
-				results[i].Summary = v.Evidence
-			}
+	first := start
+	scope, selected := ctx.Value(selectionKey{}).(stepSelection)
+	if selected {
+		if _, err := wr.Append(episodic.Note, map[string]any{"kind": "selected_scope", "steps": scope, "text": "Server-owned selection; no unselected execution or verification is authorized."}); err != nil {
+			return nil, err
 		}
-		_ = st
 	}
 	handback := false
-	first := start
-
-	// A hard ceiling on runs, not on steps: retries and revisions are extra
-	// runs by design, and without a cap a plan could ask for them forever.
-	maxRuns := 3*len(plan.Steps) + 4
-
-	for runs := 0; runs < maxRuns; runs++ {
+	attempts := 0
+	for ; attempts < 3*len(plan.Steps)+4; attempts++ {
+		if err := h.boundary(ctx); err != nil {
+			return &Result{StopReason: "cancelled"}, err
+		}
 		idx := first
 		first = -1
 		if idx < 0 {
-			idx = sup.Next()
+			if selected {
+				idx = scope.next(sup)
+			} else {
+				idx = sup.Next()
+			}
 		}
 		if idx < 0 {
-			break // done, or blocked
-		}
-		if h.killed.Load() {
-			results[idx].Status = "skipped"
-			results[idx].Summary = "killed by user"
-			handback = true
+			handback = !sup.Done()
+			if selected {
+				handback = !scope.done(sup)
+			}
 			break
 		}
-
-		state := sup.Steps[idx]
-		results[idx].Status = "running"
-
-		summary, stepErr := l.runStep(runCtx, wr, sessionID, systemPrompt, mode, plan, idx, pulls,
-			StepPrompt{
-				Index:   idx,
-				Rev:     state.Rev,
-				Step:    plan.Steps[idx],
-				Verify:  plan.Steps[idx].Verify,
-				Context: stepRunContext(sup, idx, steer),
-				Sources: sources,
-			})
-
-		// The step's own check decides — even when the run did not end
-		// cleanly. The final car run wrote js/input.js, then kept reading
-		// instead of stopping, hit the iteration cap, and was marked failed
-		// with its check never run. The file satisfied the check; the exit
-		// code decided instead of the observation. A user kill is the one
-		// thing that skips the check: nothing was allowed to finish.
-		runFailed := stepErr != nil
-		if runFailed && h.killed.Load() {
-			results[idx].Status = "skipped"
-			results[idx].Summary = "killed by user"
-			handback = true
-			break
-		}
-		if runFailed {
-			summary = "run did not finish (" + stepErr.Error() + ")"
-		}
-
-		// A plan committed through the markdown path (or before verifies
-		// existed) declares none. Then the model's summary is all there is:
-		// accept it from a run that finished, say "unverified" plainly, and
-		// never accept it from one that did not.
-		verdict := Verdict{Pass: !runFailed, Check: "no check declared", Evidence: "unverified: " + summary}
-		if v := plan.Steps[idx].Verify; v != nil {
-			verdict = RunVerify(runCtx, l.registryFor(sessionID), l.workspace(sessionID), v)
-			if runFailed {
-				verdict.Evidence = summary + " — " + verdict.Evidence
+		st := &sup.Steps[idx]
+		if selected {
+			// Revisions may invalidate dependencies after admission. Never
+			// silently widen the selection to repair that changed foundation.
+			for j := 0; j < idx; j++ {
+				if sup.Steps[j].Status != "passed" {
+					st.Reason = fmt.Sprintf("Selected execution paused: step %d needs unfinished step %d first.", idx+1, j+1)
+					handback = true
+					break
+				}
+			}
+			if handback {
+				break
 			}
 		}
-
-		needs := needsStepFrom(summary, idx)
+		if err := plan.Steps[idx].Verify.Validate(); err != nil {
+			st.Status = "blocked"
+			st.Reason = "Plan needs a valid check before execution: " + err.Error()
+			st.Verdict = &Verdict{Check: "unverified", Evidence: st.Reason}
+			if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+				return nil, err
+			}
+			handback = true
+			break
+		}
+		h.mu.Lock()
+		h.state.Step = idx
+		h.mu.Unlock()
+		st.Status = "running"
+		if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+			return nil, err
+		}
+		summary, stepErr := l.runStep(ctx, wr, sessionID, systemPrompt, ModeByName("autopilot"), plan, idx, pulls,
+			StepPrompt{Index: idx, Rev: st.Rev, Step: plan.Steps[idx], Verify: plan.Steps[idx].Verify,
+				Context: stepRunContext(sup, idx, steer) + "\n" + st.Reason})
+		if ctx.Err() != nil || h.killed.Load() {
+			st.Status = "pending"
+			_ = l.saveSupervisor(wr, sessionID, sup)
+			return &Result{StopReason: "cancelled", Reply: "Cancelled; completed files are retained."}, ctx.Err()
+		}
+		var requested *revisionRequest
+		needs := -1
+		if errors.As(stepErr, &requested) {
+			needs = requested.target
+			summary = requested.reason
+		}
+		var verdict Verdict
+		if needs >= 0 {
+			verdict = Verdict{Check: "revision requested", Evidence: summary}
+		} else {
+			st.Status = "verifying"
+			if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+				return nil, err
+			}
+			if err := h.boundary(ctx); err != nil {
+				return nil, err
+			}
+			verdict = l.verifyStep(ctx, wr, sessionID, idx, plan.Steps[idx].Verify)
+			if stepErr != nil {
+				verdict.Evidence = "Execution stopped: " + stepErr.Error() + "\n" + verdict.Evidence
+			}
+		}
+		if ctx.Err() != nil {
+			st.Status = "pending"
+			_ = l.saveSupervisor(wr, sessionID, sup)
+			return nil, ctx.Err()
+		}
 		dec := sup.Record(idx, verdict, needs)
-
-		results[idx].Status = statusFor(sup.Steps[idx].Status)
-		results[idx].Summary = summaryFor(verdict, summary)
-		wr.Append(episodic.Checkpoint, map[string]any{
-			"step": plan.Steps[idx].Title, "index": idx, "rev": state.Rev,
-			"status": results[idx].Status, "summary": results[idx].Summary,
-			"check": verdict.Check, "evidence": clipEvidence(verdict.Evidence),
-			"decision": dec.Action, "why": dec.Reasoning})
-
-		// A revision can invalidate a later step whose check was observed
-		// against the old file. Re-run those checks — cheap, because it is the
-		// declared check and not another run.
-		for _, d := range dec.Reverify {
-			if plan.Steps[d].Verify == nil {
-				continue
-			}
-			rv := RunVerify(runCtx, l.registryFor(sessionID), l.workspace(sessionID), plan.Steps[d].Verify)
-			if !rv.Pass {
-				sup.ReverifyFailed(d, rv)
-				results[d].Status = "pending"
-				results[d].Summary = "re-check failed after step " + fmt.Sprint(dec.Step+1) + " changed: " + rv.Check
-				wr.Append(episodic.Checkpoint, map[string]any{
-					"step": plan.Steps[d].Title, "index": d, "status": "pending",
-					"summary": results[d].Summary, "check": rv.Check, "evidence": clipEvidence(rv.Evidence)})
-			}
+		if selected && needs >= 0 && !scope.includes(needs) {
+			// Record has invalidated the target and downstream evidence. Leave
+			// that truth persisted, but require a new explicit scope to fix it.
+			dec.HandBack = true
+			st.Reason = fmt.Sprintf("Step %d requires revision of unselected step %d. Select the prerequisite or run the whole plan. %s", idx+1, needs+1, summary)
+			verdict.Evidence = st.Reason
+			st.Verdict.Evidence = st.Reason
 		}
 
+		if needs >= 0 && dec.Action == "revise" {
+			sup.Steps[needs].Reason = summary
+		}
+		if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+			return nil, err
+		}
+		_, planID, _ := LatestPlan(l.path(sessionID))
+		cpStatus := statusFor(sup.Steps[idx].Status)
+		if needs >= 0 {
+			cpStatus = "pending"
+		}
+		if _, err := wr.Append(episodic.Checkpoint, map[string]any{"plan_event_id": planID, "index": idx, "step": st.Title, "status": cpStatus, "rev": st.Rev, "check": verdict.Check, "evidence": verdict.Evidence, "decision": dec.Action, "projection_only": true}); err != nil {
+			return nil, err
+		}
+		// Reverify is emitted only after the corrected target has passed.
+		for _, d := range dec.Reverify {
+			if selected && !scope.includes(d) {
+				continue // remains needs_reverify until a subsequent authorized run
+			}
+			if err := h.boundary(ctx); err != nil {
+				return nil, err
+			}
+			rv := l.verifyStep(ctx, wr, sessionID, d, plan.Steps[d].Verify)
+			sup.Steps[d].Verdict = &rv
+			if rv.Pass {
+				sup.Steps[d].Status = "passed"
+			} else {
+				sup.ReverifyFailed(d, rv)
+			}
+			remaining := sup.reverify[:0]
+			for _, x := range sup.reverify {
+				if x != d {
+					remaining = append(remaining, x)
+				}
+			}
+			sup.reverify = remaining
+			if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+				return nil, err
+			}
+		}
+		if len(sup.reverify) == 0 {
+			sup.revisionTarget = -1
+		}
 		if dec.HandBack {
 			handback = true
-			wr.Append(episodic.Note, map[string]string{"kind": "step_handback", "text": dec.Reasoning})
 			break
 		}
-		// One step, by request: a button that says "run step 3" runs step 3
-		// and stops, so the user sees the verdict before anything else moves.
 		if single {
 			break
 		}
 	}
-
-	// Anything the cursor never reached.
-	for i := range results {
-		if results[i].Status == "pending" || results[i].Status == "running" {
-			results[i].Status = "skipped"
-			if results[i].Summary == "" {
-				results[i].Summary = "not reached"
-			}
+	if attempts >= 3*len(plan.Steps)+4 {
+		handback = true
+	}
+	if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+		return nil, err
+	}
+	results := make([]StepResult, len(plan.Steps))
+	for i, st := range sup.Steps {
+		results[i] = StepResult{Step: st.Title, Status: statusFor(st.Status), Summary: st.Reason}
+		if st.Verdict != nil {
+			results[i].Summary = summaryFor(*st.Verdict, "")
 		}
 	}
-
 	report := renderReport(plan, results, handback)
-	wr.Append(episodic.MsgAssistant, map[string]any{"text": report})
-	wr.Append(episodic.TurnClose, map[string]any{"autopilot": true, "handback": handback})
-	l.runBoundary(sessionID)
-	stopReason := StopFinalAnswer
-	if handback {
-		stopReason = "plan_drift_handback"
+	if selected {
+		if scope.done(sup) {
+			report = "Selected steps passed. Unselected steps were not executed.\n\n" + report
+		} else {
+			report = "Selected execution stopped before every selected step passed.\n\n" + report
+		}
 	}
-	return &Result{Reply: report, Iterations: len(plan.Steps), StopReason: stopReason, Pulls: len(pulls)}, nil
+	if _, err := wr.Append(episodic.MsgAssistant, map[string]any{"text": report}); err != nil {
+		return nil, err
+	}
+	if _, err := wr.Append(episodic.TurnClose, map[string]any{"autopilot": true, "handback": handback, "plan_complete": sup.Done(), "selected_steps": scope}); err != nil {
+		return nil, err
+	}
+	l.runBoundary(sessionID)
+	stop := StopFinalAnswer
+	if handback {
+		stop = "plan_blocked"
+	}
+	h.mu.Lock()
+	calls := h.state.Calls
+	h.mu.Unlock()
+	return &Result{Reply: report, Iterations: calls, StopReason: stop, Pulls: len(pulls)}, nil
 }
 
-func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, systemPrompt string, mode Mode, plan *Plan, idx int, pulls []memory.Pull, sp StepPrompt) (string, error) {
-	// The prompt for THIS step, carrying its check verbatim. The user's
-	// original prompt is not here: it was used once, to plan. Re-injecting it
-	// into every step is what let a run wander across the whole task and made
-	// the plan decoration.
-	stepGoal := sp.Text()
+type revisionRequest struct {
+	target int
+	reason string
+}
 
-	// The SESSION's registry, jailed to the session's workspace — not the
-	// global one. Every tool captures its jail root at construction, so the
-	// global registry writes into the global workspace whatever the session
-	// says. The first hand-off run wrote js/config.js twice, successfully,
-	// somewhere else, and its own check — which reads the session workspace
-	// — found no such file (2026-09-04). The chat path had this fix already;
-	// the step runner did not.
-	stepReg := l.registryFor(sessionID)
+func (r *revisionRequest) Error() string { return r.reason }
 
-	items := []window.Item{{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"}}
-	// see loop.go: the template allows exactly one system message, at index 0
+func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sid, systemPrompt string, mode Mode, p *Plan, idx int, pulls []memory.Pull, sp StepPrompt) (string, error) {
+	h := handleOf(ctx)
+	reg := h.registry
+	goal := sp.Text()
+	items := []window.Item{
+		{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"},
+		{Msg: llm.Message{Role: "user", Content: "Task constraints (do only the active step):\n" + h.brief + "\nPlan: " + p.Title + "\n" + goal}, Kind: "pinned"},
+	}
 	if text := wrapReminder(memory.FormatPulls(pulls)); text != "" {
 		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pulls"})
 	}
-	planPayload := fmt.Sprintf("Plan: %s (step %d/%d in progress)", plan.Title, idx+1, len(plan.Steps))
-	items = append(items,
-		window.Item{Msg: llm.Message{Role: "user", Content: planPayload}, Kind: "user"},
-		window.Item{Msg: llm.Message{Role: "user", Content: stepGoal}, Kind: "user"},
-	)
-	// What the plan was MADE from. A step starts with a fresh window, so
-	// without this the model has never seen the file it was told to split:
-	// it re-reads all 435 lines, which alone costs the iterations it had,
-	// and never reaches a write (2026-09-04, improve-overrun — no writes
-	// at all in two attempts). Demoted to a tool-result item so the window
-	// manager treats it like any other read.
-	if sp.Sources != "" {
-		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: sp.Sources}, Kind: "tool"})
-	}
-
-	g := newTurnGuard(0)
-	// The guard needs to know when the workspace moves, or a re-check after
-	// an edit that returns the same answer reads as a loop (see guard.go).
-	stepWS := ""
-	if l.workspace != nil {
-		stepWS = l.workspace(sessionID)
-	}
-	work := newWorkTracker(stepWS) // an empty root measures nothing and never blocks
-	// The session's THINK level. Steps used to inherit the client default —
-	// off — whatever the knob said: at xhigh the model debugged a keypress
-	// that did not register with 154-token replies and zero reasoning, and
-	// re-ran the same probe six times (2026-09-05, NFQ). mode "plan" still
-	// means plan-only; "autopilot" and "always" now reach the steps.
-	level := l.thinkingFor(mode.Name)
-	lastText := ""
-	// Iterations measure effort, not stuckness. A step reading a 566-line
-	// file in chunks and then editing it four times is at the cap before it
-	// has run its own check; the repeat, idle and error guards catch genuine
-	// spinning. Like the chat loop, a step whose workspace is still changing
-	// earns another slice, up to maxIterExtensions.
+	g := newTurnGuardBudget(0, maxStepTime)
+	work := newWorkTracker(h.state.Workspace)
 	extFP, _ := work.fingerprint()
+	level := h.thinkingFor(mode.Name, false)
+	seenSteer := map[string]bool{}
+	if events, err := episodic.Replay(l.path(sid)); err == nil {
+		for _, ev := range events {
+			seenSteer[ev.ID] = true
+		}
+	}
 	for i := 1; ; i++ {
+		wasPaused := h.paused.Load()
+		if err := h.boundary(ctx); err != nil {
+			return "", err
+		}
+		if wasPaused {
+			g.progress()
+		}
+		if events, err := episodic.Replay(l.path(sid)); err == nil {
+			for _, ev := range events {
+				if seenSteer[ev.ID] || ev.Type != episodic.MsgUser {
+					continue
+				}
+				seenSteer[ev.ID] = true
+				var msg struct{ Text string }
+				if json.Unmarshal(ev.Payload, &msg) == nil {
+					items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: msg.Text}, Kind: "pinned", EvtID: ev.ID})
+				}
+			}
+		}
 		fp, _ := work.fingerprint()
 		g.observeWorkspace(fp)
 		if i > g.maxIter+g.iterExts*g.maxIter && fp != extFP && g.extendIter() {
 			extFP = fp
-			wr.Append(episodic.Note, map[string]string{"kind": "iteration_checkpoint",
-				"text": fmt.Sprintf("step iteration cap reached while the workspace is still changing — extended (%d/%d)", g.iterExts, maxIterExtensions)})
+			wr.Append(episodic.Note, map[string]string{"kind": "iteration_checkpoint", "text": "Workspace changed; granting one bounded additional attempt budget."})
 		}
-		// Same checkpoint-instead-of-death as the chat loop: a step that
-		// builds several files legitimately spends more than one budget slice.
 		if g.tokensExhausted() && g.extendTokens() {
-			wr.Append(episodic.Note, map[string]string{"kind": "token_checkpoint",
-				"text": "token budget checkpoint — budget refreshed; continue the step in progress, do not restart it"})
+			wr.Append(episodic.Note, map[string]string{"kind": "token_checkpoint", "text": "Continuing with an additional bounded token slice."})
 		}
 		if _, detail, tripped := g.preThink(i); tripped {
 			return "", fmt.Errorf("guard: %s", detail)
 		}
-		// Compress through the window manager exactly like a chat turn.
-		// Sending raw items let a long step grow past the model's context
-		// ("request (33144 tokens) exceeds the available context size") —
-		// tool results are demoted to event pointers, then oldest-first
-		// trimmed, so the step survives instead of dying at the ceiling.
-		msgs, rep := l.compress(ctx, items)
-		if rep.Zone == window.ZoneRed {
-			wr.Append(episodic.Note, map[string]string{"kind": "window",
-				"text": fmt.Sprintf("step window compressed: %d demoted, %d trimmed (%d tok)", rep.Demoted, rep.Trimmed, rep.Tokens)})
+		msgs, _ := l.compress(ctx, items)
+		specs := reg.Specs(mode.Name)
+		filtered := specs[:0:0]
+		for _, s := range specs {
+			if s.Function.Name != "commit_plan" {
+				filtered = append(filtered, s)
+			}
 		}
-		reply, usage, err := l.completeWithRetry(llm.WithThinking(ctx, level), wr, msgs, stepReg.Specs(mode.Name), "", mode.ProseCap)
+		specs = filtered
+		if idx > 0 {
+			specs = append(specs, llm.ToolSpec{Type: "function", Function: llm.FunctionSpec{Name: "request_revision", Description: "Stop this step and request a correction to an earlier step. Zero-based target; explain exactly what must change.", Parameters: map[string]any{"type": "object", "properties": map[string]any{"target": map[string]any{"type": "integer", "minimum": 0, "maximum": idx - 1}, "reason": map[string]any{"type": "string"}}, "required": []string{"target", "reason"}}}})
+		}
+		reply, usage, err := l.completeWithRetry(llm.WithThinking(ctx, level), wr, msgs, specs, "", mode.ProseCap)
+		if errors.Is(err, errControl) {
+			h.steered.Store(false)
+			i--
+			g.progress()
+			continue
+		}
 		g.addTokens(usage.AnswerTokens())
 		if err != nil {
 			return "", err
 		}
-		// Reasoning that overran its budget leaves no answer to act on. Same
-		// graded fallback as the plan gate: step down and try the call again.
+		if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage)); err != nil {
+			return "", err
+		}
 		if reply.Truncated() && level != llm.ThinkingOff {
-			next := llm.StepDown(level)
-			wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
-				"text": fmt.Sprintf("step thinking at %s ran past its budget (%d reasoning tokens) — retrying at %s", level, usage.ReasoningTokens, next)})
-			level = next
+			level = llm.StepDown(level)
+			wr.Append(episodic.Note, map[string]string{"kind": "self_correct", "text": "Reasoning budget exhausted; next call uses " + level})
 			continue
 		}
 		if len(reply.ToolCalls) == 0 {
+			if strings.TrimSpace(reply.Content) == "" {
+				return "", fmt.Errorf("model returned no answer or tool call")
+			}
 			return reply.Content, nil
 		}
-		wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
 		items = append(items, window.Item{Msg: llm.Message{Role: "assistant", Content: reply.Content, ToolCalls: reply.ToolCalls}, Kind: "assistant"})
 		for _, tc := range reply.ToolCalls {
-			args := json.RawMessage(tc.Function.Arguments)
-			if !json.Valid(args) {
-				args = json.RawMessage(`{}`)
+			if err := h.boundary(ctx); err != nil {
+				return "", err
 			}
-			wr.Append(episodic.ToolCall, map[string]any{"id": tc.ID, "name": tc.Function.Name, "args": json.RawMessage(tc.Function.Arguments)})
-			out, execErr := stepReg.ExecuteMode(ctx, tc.Function.Name, args, mode.Name)
-			if execErr != nil {
-				// keep the command's own output — it explains the failure
-				if out != "" {
-					out = out + "\n" + execErr.Error()
-				} else {
-					out = execErr.Error()
+			if tc.Function.Name == "request_revision" {
+				var r struct {
+					Target *int
+					Reason string
 				}
+				if json.Unmarshal([]byte(tc.Function.Arguments), &r) == nil && r.Target != nil && *r.Target >= 0 && *r.Target < idx && strings.TrimSpace(r.Reason) != "" {
+					wr.Append(episodic.ToolCall, map[string]any{"id": tc.ID, "name": tc.Function.Name, "args": json.RawMessage(tc.Function.Arguments)})
+					wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": true, "output": "revision requested: " + r.Reason})
+					return "", &revisionRequest{*r.Target, r.Reason}
+				}
+			}
+			out, execErr, eventID := l.executeCall(ctx, wr, reg, specs, mode.Name, tc)
+			items = append(items, window.Item{Msg: llm.Message{Role: "tool", ToolCallID: tc.ID, Content: out}, Kind: "tool", EvtID: eventID})
+			fp, _ = work.fingerprint()
+			g.observeWorkspace(fp)
+			if execErr != nil {
 				if detail, tripped := g.toolError(tc.Function.Name, out); tripped {
-					wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": false, "output": out})
-					return "", fmt.Errorf("%s, last: %s", detail, out)
+					return "", fmt.Errorf("%s: %s", detail, out)
 				}
 			} else {
 				g.toolOK(tc.Function.Name)
+				if !g.seenBefore(tc.Function.Name, json.RawMessage(tc.Function.Arguments), out) {
+					g.progress()
+				}
 			}
-			g.progress() // a tool returned — the turn is moving, not stalled
-			wr.Append(episodic.ToolResult, map[string]any{"id": tc.ID, "name": tc.Function.Name, "ok": execErr == nil, "output": out})
-			items = append(items, window.Item{Msg: llm.Message{Role: "tool", ToolCallID: tc.ID, Content: out}, Kind: "tool"})
-			// loop detection on the RESULT (same call + same output = stuck)
-			if detail, tripped := g.repeatedResult(tc.Function.Name, args, out); tripped {
+			if detail, tripped := g.repeatedResult(tc.Function.Name, json.RawMessage(tc.Function.Arguments), out); tripped {
 				return "", fmt.Errorf("guard: %s", detail)
 			}
 		}
-		if reply.Content != "" {
-			lastText = reply.Content
-		}
 	}
-	if lastText != "" {
-		return lastText, nil
-	}
-	return "", fmt.Errorf("step exceeded 4 iterations")
 }
 
 func renderReport(plan *Plan, results []StepResult, handback bool) string {
@@ -413,20 +471,22 @@ func renderReport(plan *Plan, results []StepResult, handback bool) string {
 	for i, r := range results {
 		icon := "✓"
 		switch r.Status {
-		case "failed":
+		case "failed", "blocked":
 			icon = "✗"
 			failed++
-		case "skipped":
+		case "skipped", "pending", "needs_reverify", "unverified":
 			icon = "·"
 			skipped++
-		default:
+		case "done":
 			done++
+		default:
+			icon = "·"
 		}
 		fmt.Fprintf(&sb, "%s %d. %s — %s\n   %s\n", icon, i+1, r.Step, r.Status, strings.TrimSpace(r.Summary))
 	}
 	fmt.Fprintf(&sb, "\n%d done · %d failed · %d skipped", done, failed, skipped)
 	if handback {
-		sb.WriteString("\nHanded back early: a step failed under a low autonomy budget. Adjust the plan or re-run.")
+		sb.WriteString("\nWork is paused for a decision. Inspect the failed check or budget stop before retrying or revising the plan.")
 	}
 	return sb.String()
 }
