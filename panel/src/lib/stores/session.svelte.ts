@@ -3,6 +3,7 @@ import { api, ApiError, streamEvents, type RunControl } from '../api';
 import { toStep, errorKey } from '../steps';
 import { storage, storageKeys } from '../storage';
 import { play } from '../sound.js';
+import { ErrorChime } from '../errorchime';
 import { healthStore } from './health.svelte.ts';
 import type { ChatMessage, EpisodicEvent, LiveStep, Mode, PlanReport, Question, SessionError, SessionMeta, RunState, PlanState } from '../types';
 
@@ -17,6 +18,10 @@ let generation=0, refreshSeq=0, timer:ReturnType<typeof setInterval>|null=null, 
 let connectionLost=$state(false);
 let streamTimer:ReturnType<typeof setTimeout>|null=null;
 let dismissed=new Set<string>();
+const errorChime=new ErrorChime();
+function incidentKey(e:SessionError,i:number) {
+ return JSON.stringify([activeId,e.run_id??run?.id??'legacy',e.id??errorKey(e,i)]);
+}
 const pendingCommands=new Map<string,{key:string;id:string}>();
 const pendingControls=new Map<string,{key:string;body:RunControl}>();
 function recallPending<T>(kind:string,sid:string,map:Map<string,T>):T|undefined {
@@ -53,7 +58,8 @@ async function refresh() {
  ticks=(state.events??[]).slice(-200);
  if(ticks.length)lastEvents={...lastEvents,[sid]:ticks[ticks.length-1]};
  question=state.question?.question?state.question:null;
- errors=(state.errors??[]).filter((e,i)=>!dismissed.has(errorKey(e,i))).slice(-3);
+ errors=(state.errors??[]).filter((e,i)=>!dismissed.has(incidentKey(e,i))).slice(-3);
+ if(errorChime.shouldPlay(errors.map(incidentKey)))play('error');
  report=state.report??null;
  subscribe(sid,g,state.cursor??'');
 }
@@ -112,6 +118,7 @@ export const sessionStore={
  async loadSessions(){sessions=await api.sessions();runningIds=await api.runningSessions();if(!activeId&&sessions.length)this.select(sessions[0].id);},
  async loadSkills(){skills=await api.skills();},
  select(id:string){
+  errorChime.reset();
   generation++;connectionLost=false;if(streamTimer)clearTimeout(streamTimer);streamTimer=null;activeId=id;messages=[];ticks=[];errors=[];logs={};question=null;report=null;run=null;plan=null;requestError='';turnSampling='';
   dismissed=new Set(storage.get<string[]>(storageKeys.dismissedErrors(id),[]));
   closeStream?.();closeStream=null;void refresh();
@@ -128,7 +135,7 @@ export const sessionStore={
  async answer(ans:string){const q=question;return control(id=>api.answer(id,ans,q?.id,q?.run_id));},
  async runAutopilot(){return command({kind:'continue',plan_event_id:plan?.plan_event_id});},
  async runStep(step=-1,revision=false){return command({kind:'step',step,revision,plan_event_id:plan?.plan_event_id});},
- async dismissAllErrors(){if(!activeId)return;dismissed=new Set(errors.map(errorKey));storage.set(storageKeys.dismissedErrors(activeId),[...dismissed]);errors=[];},
+ async dismissAllErrors(){if(!activeId)return;dismissed=new Set([...dismissed,...errors.map(incidentKey)]);storage.set(storageKeys.dismissedErrors(activeId),[...dismissed]);errors=[];},
  async retry(text:string){if(plan)return this.runStep(plan.blocked>=0?plan.blocked:-1);return this.send(text);},
  async create(name:string,workspace?:string){try{const m=await api.createSession(name,workspace);await this.loadSessions();if(m?.id)this.select(m.id);}catch(e){failure(e);}},
  async createInstant(){try{const m=await api.createInstant();await this.loadSessions();if(m?.id)this.select(m.id);}catch(e){failure(e);}},

@@ -35,12 +35,12 @@
       "id": "plan",
       "label": "1 · Plan — once per task",
       "position": {
-        "x": 400,
+        "x": 396,
         "y": 0
       },
       "size": {
-        "width": 996,
-        "height": 510
+        "width": 1004,
+        "height": 514
       }
     },
     {
@@ -48,12 +48,12 @@
       "id": "drive",
       "label": "2 · Drive — the new part: who decides what runs next",
       "position": {
-        "x": 1536,
+        "x": 1532,
         "y": 0
       },
       "size": {
-        "width": 672,
-        "height": 739
+        "width": 680,
+        "height": 743
       }
     },
     {
@@ -61,12 +61,12 @@
       "id": "run",
       "label": "3 · Run — one step, start to verdict",
       "position": {
-        "x": 2348,
+        "x": 2344,
         "y": 0
       },
       "size": {
-        "width": 996,
-        "height": 517
+        "width": 1004,
+        "height": 521
       }
     },
     {
@@ -74,12 +74,12 @@
       "id": "record",
       "label": "4 · Record — what makes progress real",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 879
       },
       "size": {
-        "width": 996,
-        "height": 296
+        "width": 1004,
+        "height": 300
       }
     },
     {
@@ -87,12 +87,12 @@
       "id": "show",
       "label": "5 · Show",
       "position": {
-        "x": 1136,
+        "x": 1132,
         "y": 879
       },
       "size": {
-        "width": 672,
-        "height": 514
+        "width": 680,
+        "height": 548
       }
     }
   ],
@@ -332,7 +332,7 @@
       "kind": "ui",
       "label": "Native plan strip",
       "sublabel": "SIMPLE surface · steps, which is running, pass/fail · no knobs",
-      "note": "Reads canonical report inside /state, retains completed plan; snapshot includes activephase. Real Go API desktop/mobile pause/reload/reconnect verification passed; prod0.5unchanged.",
+      "note": "Canonical plan/report retained. Incident chime restored with session/run/event identity; first hydration/switch/repeat/reconnect silent, new incident sounds once. Five store regressions plus full 55-test frontend suite pass; plan visuals unchanged.",
       "frame": "show",
       "tech": "Svelte 5",
       "status": "done",
@@ -1841,6 +1841,44 @@
         "kind": "issue",
         "title": "Audit: this view is not authoritative yet"
       }
+    },
+    {
+      "at": "2026-09-05T07:20:19.261Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Reads canonical report inside /state, retains completed plan; snapshot includ…",
+          "to": "Follow-up 1: current-run incident notifications and dismissal use scoped iden…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:21:49.023Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 1: current-run incident notifications and dismissal use scoped iden…",
+          "to": "Canonical plan/report retained. Incident chime restored with session/run/even…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
     }
   ]
 }

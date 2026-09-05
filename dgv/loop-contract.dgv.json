@@ -2,7 +2,7 @@
   "dgv": 1,
   "meta": {
     "title": "0.6 LABRIG — loop contract and release gates",
-    "description": "0.6.0-alpha LABRIG working-tree implementation, build-only; installed 0.5 service unchanged. Immediate gates implemented and tested, broader design extensions remain explicit. Evidence and limitations: docs/release-0.6-LABRIG.md. Existing inference configuration unchanged.",
+    "description": "0.6 LABRIG checkpoint 8571d5f; follow-up hardening in ordered commits. Operator owns installation. Existing Brain Core unchanged. Evidence and limitations in docs/release-0.6-LABRIG.md.",
     "updated": "2026-09-05",
     "colorBy": "kind"
   },
@@ -12,12 +12,12 @@
       "id": "surface",
       "label": "1 · Every surface sees the same state",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 0
       },
       "size": {
-        "width": 672,
-        "height": 559
+        "width": 680,
+        "height": 563
       }
     },
     {
@@ -25,12 +25,12 @@
       "id": "control",
       "label": "2 · Accept and own one run",
       "position": {
-        "x": 812,
+        "x": 808,
         "y": 0
       },
       "size": {
-        "width": 996,
-        "height": 300
+        "width": 1004,
+        "height": 304
       }
     },
     {
@@ -38,12 +38,12 @@
       "id": "execution",
       "label": "3 · Execute / verify under one policy",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 699
       },
       "size": {
-        "width": 1968,
-        "height": 601
+        "width": 1976,
+        "height": 605
       }
     },
     {
@@ -51,12 +51,12 @@
       "id": "evidence",
       "label": "4 · Record once, replay everywhere",
       "position": {
-        "x": 0,
+        "x": -4,
         "y": 1440
       },
       "size": {
-        "width": 1644,
-        "height": 285
+        "width": 1652,
+        "height": 289
       }
     }
   ],
@@ -68,7 +68,7 @@
       "kind": "ui",
       "label": "Chat · CLI · RFX",
       "sublabel": "one command and state contract",
-      "note": "Chat observes all selected sessions via canonical snapshots. CLI HTTP requests use detached commands. RFX whole/selected/next use server execution; bundled Planner 1.5.0 not installed yet. Tests: session.test.ts, rfx-plan.test.ts, runcontrol_test.go.",
+      "note": "Canonical snapshots remain authoritative. Follow-up 1: ErrorChime wired in session store; session/run/event-scoped chime+dismissal. Five red-before/green-after store regressions cover hydration/reload/switch/repeat/reconnect/new run/late responses; 55 Vitest tests pass.",
       "frame": "surface",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -1635,6 +1635,58 @@
         "kind": "issue",
         "title": "Harness adapter: upstream error shape hid the real cause"
       }
+    },
+    {
+      "at": "2026-09-05T07:20:19.250Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Chat observes all selected sessions via canonical snapshots. CLI HTTP request…",
+          "to": "Follow-up 1: restore current-incident chime keyed by session/run/event. Initi…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:20:19.250Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "0.6.0-alpha LABRIG working-tree implementation, build-only; installed 0.5 ser…",
+          "to": "0.6 LABRIG checkpoint 8571d5f; follow-up hardening in ordered commits. Operat…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T07:21:49.016Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up 1: restore current-incident chime keyed by session/run/event. Initi…",
+          "to": "Canonical snapshots remain authoritative. Follow-up 1: ErrorChime wired in se…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
     }
   ]
 }

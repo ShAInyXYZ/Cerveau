@@ -108,6 +108,19 @@ This delivers the immediate release gates, not every extension in the
   extended thermal run, or exhaustive real-model revision/pause scenarios.
   Existing unrelated Svelte warnings and the large-bundle warning remain.
 
+## Post-release hardening
+
+The original 0.6 tree is preserved by checkpoint commit `8571d5f`. Follow-ups
+are separate commits; the operator installs. No installed binary, service or
+Brain Core configuration is changed by this work.
+
+1. **Incident chime restored.** Five new store tests failed before wiring the
+   chime and pass afterward. Notifications and dismissal use session/run/event
+   identity. Initial hydration, reload, session switches, repeated snapshots,
+   reconnect and late cross-session responses are silent; genuinely new
+   incidents sound once. Identical text in a later run is not hidden by an old
+   dismissal. Frontend suite: 55 passing tests.
+
 ## Build and handoff
 
 ```bash

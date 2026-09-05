@@ -97,3 +97,80 @@ test('control carries exact run version and uncertain retry keeps its identity',
  const first=api.pause.mock.calls[0][1],second=api.pause.mock.calls[1][1];
  expect(first).toMatchObject({run_id:'r1',control_version:3});expect(first.control_id).toBeTruthy();expect(second).toEqual(first);
 });
+
+const incident = (runID='r1', id='e1') => ({
+  messages: [], running: false, run: { id: runID, status: 'failed' },
+  errors: [{ id, run_id: runID, class: 'failed', what: 'Tool failed' }],
+});
+async function observeSession() {
+  const { sessionStore: s } = await import('./session.svelte.ts');
+  let poll = () => {};
+  vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: () => void) => { poll = fn; return 123; }) as any);
+  s.select('A'); s.start(); await settle();
+  return { s, async refresh(state: unknown) { api.sessionState.mockResolvedValue(state); poll(); await settle(); } };
+}
+
+test('incident chime sounds once for a new event, never repeated snapshots or reconnect', async () => {
+  const { s, refresh } = await observeSession();
+  await refresh(incident());
+  expect(play.mock.calls).toEqual([['error']]);
+  await refresh(incident());
+  await refresh(null);
+  await refresh(incident());
+  expect(play.mock.calls).toEqual([['error']]);
+  await refresh(incident('r1', 'e2'));
+  expect(play.mock.calls).toEqual([['error'], ['error']]);
+  s.stop();
+});
+
+test('incident chime silently hydrates history on initial load and module reload', async () => {
+  api.sessionState.mockResolvedValue(incident());
+  const { s } = await observeSession();
+  expect(play).not.toHaveBeenCalled();
+  s.stop(); vi.resetModules();
+  const { s: reloaded, refresh } = await observeSession();
+  expect(play).not.toHaveBeenCalled();
+  await refresh(incident('r1', 'e2'));
+  expect(play.mock.calls).toEqual([['error']]);
+  reloaded.stop();
+});
+
+test('incident chime stays silent on session switches but scopes new IDs to the selected session', async () => {
+  const { s, refresh } = await observeSession();
+  await refresh(incident());
+  api.sessionState.mockResolvedValue(incident());
+  s.select('B'); await settle();
+  expect(play.mock.calls).toEqual([['error']]);
+  await refresh(incident('r1', 'e2'));
+  api.sessionState.mockResolvedValue(incident());
+  s.select('A'); await settle();
+  expect(play.mock.calls).toEqual([['error'], ['error']]);
+  await refresh(incident('r1', 'e2'));
+  expect(play.mock.calls).toEqual([['error'], ['error'], ['error']]);
+  s.stop();
+});
+
+test('dismissal cannot hide or silence an identical incident in a later run', async () => {
+  const { s, refresh } = await observeSession();
+  await refresh(incident());
+  await s.dismissAllErrors();
+  await refresh(incident());
+  expect(s.errors).toEqual([]);
+  expect(play.mock.calls).toEqual([['error']]);
+  await refresh(incident('r2'));
+  expect(s.errors).toHaveLength(1);
+  expect(play.mock.calls).toEqual([['error'], ['error']]);
+  s.stop();
+});
+
+test('a late snapshot from another session cannot sound an incident', async () => {
+  const { s, refresh } = await observeSession();
+  let finish: (value: unknown) => void = () => {};
+  api.sessionState.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  s.select('old'); s.select('current'); await settle();
+  finish(incident()); await settle();
+  expect(play).not.toHaveBeenCalled();
+  await refresh(incident());
+  expect(play.mock.calls).toEqual([['error']]);
+  s.stop();
+});
