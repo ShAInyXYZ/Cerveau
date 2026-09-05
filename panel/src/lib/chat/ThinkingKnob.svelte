@@ -51,6 +51,9 @@
         : `thinking: ${effort}${mode === 'always' ? ' on every turn' : mode === 'autopilot' ? ' on every autopilot call' : ' while planning a build'}. Click to change.`}>
       <span class="label">THINK</span>
       <span class="name mono">{current}</span>
+      {#if current !== 'off'}
+        <span class="scope">{mode === 'always' ? 'every turn' : mode === 'autopilot' ? 'every step' : 'plan only'}</span>
+      {/if}
     </button>
 
     {#if open}
@@ -81,6 +84,9 @@
   .pill:hover { color: var(--muted); background: color-mix(in srgb, #fff 4%, transparent); }
   .label { font-size: 9px; letter-spacing: .1em; color: var(--faint); }
   .name { font-size: 11px; color: var(--dim); }
+  /* WHERE it thinks, not only how hard: the mode lived in Settings only and
+     a build ran plan-only while the user read "xhigh" and assumed everywhere. */
+  .scope { font-size: 9px; letter-spacing: .04em; color: var(--faint); }
   .pill:hover .name { color: var(--muted); }
 
   .menu {

@@ -208,6 +208,13 @@
   // A per-call template argument, like sampling: changes apply to the next
   // model call, no restart. Chat stays direct; a build gets to think.
   let thinking = $state({ mode: 'plan', effort: 'low', modes: [], efforts: [] });
+  // The turn-mode knob on the chat bar also has an "autopilot". Same word,
+  // different setting; a build ran with thinking limited to the planning
+  // call while the user believed it was thinking everywhere (2026-09-05).
+  // The API values stay; only what the user reads changes.
+  const THINK_MODE_LABEL = {
+    off: 'never', plan: 'plan only', autopilot: 'every step', always: 'every turn'
+  };
   const THINK_MODE_TIP = {
     off: 'Never think. Fastest; the model reasons in its answer text if at all.',
     plan: 'Think only while dividing a build into steps. Measured: the planning call reasons ~500 tokens and plans well; code-writing calls reason ~10k and overflow. The default.',
@@ -425,7 +432,7 @@
           <div class="think-rows">
             <div use:tooltip={THINK_MODE_TIP[thinking.mode] || ''}>
               <Segmented
-                options={thinking.modes.map((m) => ({ value: m, label: m }))}
+                options={thinking.modes.map((m) => ({ value: m, label: THINK_MODE_LABEL[m] ?? m }))}
                 value={thinking.mode}
                 onchange={(mode) => setThinking({ mode })} />
             </div>
