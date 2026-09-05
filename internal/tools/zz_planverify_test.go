@@ -59,3 +59,49 @@ func TestCommitPlanPersistsVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A forced tool_choice decodes INSIDE this schema. An empty steps array was
+// a legal exit and the model took it; the schema must not permit it.
+func TestCommitPlanSchemaRequiresAtLeastOneStep(t *testing.T) {
+	sch := commitPlanTool(t).Schema()
+	req, _ := sch["required"].([]string)
+	var hasSteps bool
+	for _, r := range req {
+		if r == "steps" {
+			hasSteps = true
+		}
+	}
+	if !hasSteps {
+		t.Error("steps must be required, or a forced call may commit a title and nothing else")
+	}
+	steps, _ := sch["properties"].(map[string]any)["steps"].(map[string]any)
+	if steps["minItems"] != 1 {
+		t.Errorf("steps must declare minItems 1, got %v", steps["minItems"])
+	}
+	// and the tool itself refuses the empty shape with a message that names it
+	if _, err := commitPlanTool(t).Execute(context.Background(), json.RawMessage(`{"title":"P","steps":[]}`)); err == nil || !strings.Contains(err.Error(), "at least one step") {
+		t.Errorf("empty steps must be refused by name, got %v", err)
+	}
+}
+
+// Every step omitted files on the live run. The supervisor's downstream
+// re-verify and the disk fallback both need them; under forced decoding the
+// schema is the only thing that can insist.
+func TestCommitPlanSchemaRequiresFiles(t *testing.T) {
+	sch := commitPlanTool(t).Schema()
+	item := sch["properties"].(map[string]any)["steps"].(map[string]any)["items"].(map[string]any)
+	req, _ := item["required"].([]string)
+	var has bool
+	for _, r := range req {
+		if r == "files" {
+			has = true
+		}
+	}
+	if !has {
+		t.Error("files must be required on each step")
+	}
+	files := item["properties"].(map[string]any)["files"].(map[string]any)
+	if files["minItems"] != 1 {
+		t.Errorf("files must declare minItems 1, got %v", files["minItems"])
+	}
+}

@@ -124,6 +124,8 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 		pulls = l.recall.TurnStart(runCtx, sessionID, plan.Title, nil)
 	}
 
+	sources := planningSources(l.path(sessionID))
+
 	results := make([]StepResult, len(plan.Steps))
 	for i, st := range plan.Steps {
 		results[i] = StepResult{Step: st.Title, Status: sup.Steps[i].Status}
@@ -168,6 +170,7 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 				Step:    plan.Steps[idx],
 				Verify:  plan.Steps[idx].Verify,
 				Context: stepRunContext(sup, idx),
+				Sources: sources,
 			})
 
 		// The step's own check decides — even when the run did not end
@@ -287,10 +290,19 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sessionID, syst
 		window.Item{Msg: llm.Message{Role: "user", Content: planPayload}, Kind: "user"},
 		window.Item{Msg: llm.Message{Role: "user", Content: stepGoal}, Kind: "user"},
 	)
+	// What the plan was MADE from. A step starts with a fresh window, so
+	// without this the model has never seen the file it was told to split:
+	// it re-reads all 435 lines, which alone costs the iterations it had,
+	// and never reaches a write (2026-09-04, improve-overrun — no writes
+	// at all in two attempts). Demoted to a tool-result item so the window
+	// manager treats it like any other read.
+	if sp.Sources != "" {
+		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: sp.Sources}, Kind: "tool"})
+	}
 
 	g := newTurnGuard(0)
 	lastText := ""
-	for i := 1; i <= 4; i++ {
+	for i := 1; i <= maxStepIterations; i++ {
 		// Same checkpoint-instead-of-death as the chat loop: a step that
 		// builds several files legitimately spends more than one budget slice.
 		if g.tokensExhausted() && g.extendTokens() {
@@ -634,4 +646,84 @@ func clipEvidence(s string) string {
 		return s[:297] + "…"
 	}
 	return s
+}
+
+// maxStepIterations bounds one step's run. It was 4, which a step that must
+// read a 435-line file before writing cannot fit. The loop guards — repeat,
+// idle, error — are what catch a step that is circling; the cap is only the
+// backstop, so it can be generous.
+const maxStepIterations = 10
+
+// planningSourcesCap bounds how much read material rides into each step.
+const planningSourcesCap = 40000
+
+// planningSources collects what the model read while planning THIS turn: the
+// tool results of read / grep / outline_file between the last user message
+// and the plan event. Every step then starts knowing the source the plan
+// describes, instead of re-reading it under its own budget.
+func planningSources(eventsPath string) string {
+	events, err := episodic.Replay(eventsPath)
+	if err != nil {
+		return ""
+	}
+	start := -1
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == episodic.MsgUser {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	var b strings.Builder
+	calls := map[string]string{} // tool call id → "name path"
+	for _, ev := range events[start:] {
+		switch ev.Type {
+		case episodic.Plan:
+			// reads AFTER the plan are a step's own, not planning
+			return finishSources(&b)
+		case episodic.ToolCall:
+			var c struct {
+				ID   string          `json:"id"`
+				Name string          `json:"name"`
+				Args json.RawMessage `json:"args"`
+			}
+			if json.Unmarshal(ev.Payload, &c) == nil {
+				var a struct {
+					Path string `json:"path"`
+				}
+				json.Unmarshal(c.Args, &a)
+				calls[c.ID] = c.Name + " " + a.Path
+			}
+		case episodic.ToolResult:
+			var r struct {
+				ID     string `json:"id"`
+				OK     bool   `json:"ok"`
+				Output string `json:"output"`
+			}
+			if json.Unmarshal(ev.Payload, &r) != nil || !r.OK {
+				continue
+			}
+			what := calls[r.ID]
+			if !(strings.HasPrefix(what, "read ") || strings.HasPrefix(what, "grep ") || strings.HasPrefix(what, "outline_file ")) {
+				continue
+			}
+			if b.Len()+len(r.Output) > planningSourcesCap {
+				continue
+			}
+			if b.Len() == 0 {
+				b.WriteString("SOURCE you already read while planning — do not re-read it, build from it:\n")
+			}
+			fmt.Fprintf(&b, "\n--- %s ---\n%s\n", what, r.Output)
+		}
+	}
+	return finishSources(&b)
+}
+
+func finishSources(b *strings.Builder) string {
+	if b.Len() == 0 {
+		return ""
+	}
+	return b.String()
 }

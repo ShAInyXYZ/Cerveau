@@ -53,16 +53,22 @@ func (t *CommitPlan) Schema() map[string]any {
 			"markdown": map[string]any{"type": "string", "description": "the plan as markdown — ## headings, a numbered list, or checkboxes become steps; backticked file paths become each step's files"},
 			"steps": map[string]any{
 				"type": "array",
+				// Under a FORCED tool_choice the decoder generates inside this
+				// schema, and an empty array was a legal exit: the model
+				// produced {"title": …, "steps": []} twice in five seconds and
+				// the gate gave up (2026-09-04). At least one step, always.
+				"minItems": 1,
 				"items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"title":  map[string]any{"type": "string"},
 						"detail": map[string]any{"type": "string"},
-						"files":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						"files": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string"},
+							"description": "the file(s) this step creates or changes — REQUIRED; a later revision re-checks every step that shares one"},
 						"risk":   map[string]any{"type": "string", "enum": []string{"low", "medium", "high"}},
 						"verify": cplan.VerifySchema(),
 					},
-					"required": []string{"title", "verify"},
+					"required": []string{"title", "files", "verify"},
 				},
 			},
 			"autonomy_budget": map[string]any{
@@ -71,7 +77,10 @@ func (t *CommitPlan) Schema() map[string]any {
 				"description": "low: hand back on any step failure. high: log and continue.",
 			},
 		},
-		"required": []string{},
+		// title + steps required. The markdown-only shape still works on an
+		// ordinary call — the schema is advisory there — but a forced call is
+		// decoded inside it, and there the plan must be structured.
+		"required": []string{"title", "steps"},
 	}
 }
 
@@ -101,7 +110,7 @@ func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string,
 		plan.Title = "Plan"
 	}
 	if plan.Title == "" || len(plan.Steps) == 0 {
-		return "", fmt.Errorf("plan needs steps — pass your plan text in the markdown field (## headings, a numbered list, or checkboxes)")
+		return "", fmt.Errorf("plan needs at least one step in `steps` (title, files, verify) — an empty steps array commits nothing")
 	}
 	// Every step must declare a check that can FAIL, and it is rejected here —
 	// at commit time, the way a prose plan is rejected — because a criterion

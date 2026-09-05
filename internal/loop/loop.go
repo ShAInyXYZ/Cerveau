@@ -923,9 +923,12 @@ var planningTools = []string{
 const maxPlanReads = 4
 
 // maxPlanRejects is how many refused commit_plan calls planning tolerates.
-// The tool result names the offending check each time; a model that cannot
-// fix it in two tries is not going to, and the turn runs unplanned instead.
-const maxPlanRejects = 2
+// The tool result names the offending check each time. Live, the model
+// mislabelled a check on try one, dressed existence up as a command on try
+// two, and wrote real content checks on try three — after the budget of two
+// had already given up (2026-09-05). Three forced calls is ~30 s; an
+// unplanned run is the whole design lost.
+const maxPlanRejects = 3
 
 // planOrientation are the planning calls that map the tree rather than read a
 // file. Each is naturally one-shot, so they are free.

@@ -1,6 +1,9 @@
 package plan
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestVerifyValidate(t *testing.T) {
 	cases := []struct {
@@ -85,5 +88,40 @@ func TestEvalRejectsChecksThatCannotFail(t *testing.T) {
 		if err := v.Validate(); err != nil {
 			t.Errorf("should be accepted: %+v: %v", v, err)
 		}
+	}
+}
+
+// A command is existence-only when EVERY segment is; one content check in the
+// chain makes it real. The model's second live attempt wrote
+// `test -f a && grep -q X a` for four steps and only pure `test -f` for one.
+func TestExistenceRuleIsSegmentWise(t *testing.T) {
+	rejected := []string{
+		"test -f js/config.js && test -f js/input.js && test -f js/hud.js",
+		"[ -f a.js ] ; [ -f b.js ]",
+		"ls js/config.js || ls js/other.js",
+	}
+	for _, c := range rejected {
+		if err := (&Verify{Kind: "command", Command: c}).Validate(); err == nil {
+			t.Errorf("pure existence must be refused: %q", c)
+		}
+	}
+	accepted := []string{
+		"test -f js/core/Renderer.js && grep -q 'export class Renderer' js/core/Renderer.js",
+		"grep -q 'MAX_SPEED' js/config.js && grep -q 'export class Input' js/input.js",
+		"test -f a.js && node --check a.js",
+	}
+	for _, c := range accepted {
+		if err := (&Verify{Kind: "command", Command: c}).Validate(); err != nil {
+			t.Errorf("a chain with a content check is real: %q: %v", c, err)
+		}
+	}
+}
+
+// kind "command" with a symbol and no command is a contains-check wearing the
+// wrong label; the refusal must say so.
+func TestCommandWithSymbolIsRedirectedToContains(t *testing.T) {
+	err := (&Verify{Kind: "command", Symbol: "export class Input", URL: "js/input.js"}).Validate()
+	if err == nil || !strings.Contains(err.Error(), `kind "contains"`) {
+		t.Errorf("want a hint towards contains, got %v", err)
 	}
 }

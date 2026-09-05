@@ -24,6 +24,7 @@ type scriptedModel struct {
 	replies []map[string]any
 	offered [][]string
 	forced  []string // tool_choice function name per call, "" when not forced
+	bodies  []string // raw request body per call
 	srv     *httptest.Server
 }
 
@@ -52,6 +53,7 @@ func newScriptedModel(replies ...map[string]any) *scriptedModel {
 		i := len(m.offered)
 		m.offered = append(m.offered, names)
 		m.forced = append(m.forced, forced)
+		m.bodies = append(m.bodies, string(body))
 		reply := m.replies[len(m.replies)-1]
 		if i < len(m.replies) {
 			reply = m.replies[i]
@@ -365,5 +367,31 @@ func TestCommitPlanLandsInTheRunningSessionNotTheSharedOne(t *testing.T) {
 	}
 	if p, _, _ := LatestPlan(other); p != nil {
 		t.Error("the plan must NOT land in the session the shared context happened to name")
+	}
+}
+
+// A step starts with a fresh window. The reads the plan was made from must
+// ride into it, or the model re-reads the whole source under the step's own
+// budget and never reaches a write.
+func TestStepRequestCarriesThePlanningReads(t *testing.T) {
+	m := newScriptedModel(
+		toolCall("read", `{"path":"index.html"}`),
+		toolCall("commit_plan", `{"title":"R","steps":[{"title":"split","files":["index.html"],"verify":{"kind":"contains","file":"index.html","symbol":"monolith"}}]}`),
+		textReply("done"),
+	)
+	defer m.srv.Close()
+	l, _ := gateFixture(t, m)
+	if _, err := l.Run(context.Background(), "s1", "improve our car game", "autopilot"); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.bodies) < 3 {
+		t.Fatalf("expected a step call after the plan, got %d calls", len(m.bodies))
+	}
+	// call 3 is the first STEP run; the fixture's index.html says "435 lines of monolith"
+	if !strings.Contains(m.bodies[2], "435 lines of monolith") {
+		t.Error("the step's request must carry the source read during planning")
+	}
+	if !strings.Contains(m.bodies[2], "do not re-read it") {
+		t.Error("the step must be told the source is already in hand")
 	}
 }

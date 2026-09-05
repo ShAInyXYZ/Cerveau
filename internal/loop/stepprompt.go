@@ -31,6 +31,7 @@ type StepPrompt struct {
 	Step    PlanStep
 	Verify  *plan.Verify
 	Context string // what earlier steps produced, or why this is a revision
+	Sources string // what the model read while planning; sent as its own item
 }
 
 // Text renders the prompt sent to the model.

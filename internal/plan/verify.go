@@ -63,6 +63,28 @@ func isPage(p string) bool {
 	return strings.HasSuffix(l, ".html") || strings.HasSuffix(l, ".htm")
 }
 
+// existenceOnly reports whether EVERY segment of a shell command is a bare
+// existence test. `test -f a && test -f b` is the disk guess; `test -f a &&
+// grep -q X a` is a real check because the grep can fail on content, and the
+// model's second live attempt wrote exactly that shape for four of six steps.
+func existenceOnly(cmd string) bool {
+	segs := reCmdSplit.Split(cmd, -1)
+	any := false
+	for _, seg := range segs {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		any = true
+		if !reExistenceOnly.MatchString(seg) {
+			return false
+		}
+	}
+	return any
+}
+
+var reCmdSplit = regexp.MustCompile(`\s*(?:&&|\|\||;)\s*`)
+
 // Validate reports why a verify is not a real check, or nil when it is one.
 //
 // Called at commit time, so a bad criterion is rejected the way the plan gate
@@ -99,12 +121,18 @@ func (v *Verify) Validate() error {
 	case "command":
 		c := strings.TrimSpace(v.Command)
 		if c == "" {
+			// The model's first live attempt put symbol + url on kind
+			// "command": a contains-check wearing the wrong label. Say so,
+			// rather than only what is missing.
+			if strings.TrimSpace(v.Symbol) != "" {
+				return fmt.Errorf("verify kind %q needs command — you gave symbol %q, which is kind \"contains\" (file + symbol)", v.Kind, v.Symbol)
+			}
 			return fmt.Errorf("verify kind %q needs command: a command whose exit code decides the step", v.Kind)
 		}
-		if reExistenceOnly.MatchString(c) {
-			return fmt.Errorf("verify %q only checks that a file exists, which is true the moment anything writes it — "+
+		if existenceOnly(c) {
+			return fmt.Errorf("verify %q only checks that files exist, which is true the moment anything writes them — "+
 				"that is the disk guess, not a check. Use a command that can FAIL on wrong content "+
-				"(a test run, a linter, node --check), or kind \"contains\" with the symbol the step must add", c)
+				"(grep -q for a symbol, node --check, a test run), or kind \"contains\" with the symbol the step must add", c)
 		}
 		return nil
 	case "contains":
