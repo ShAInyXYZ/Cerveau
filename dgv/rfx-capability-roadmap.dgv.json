@@ -1,0 +1,687 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "RFX — native DGV, GitHub, DevCheck and truthful ChatUI",
+    "description": "User-approved implementation 2026-09-05. Preserve RFX philosophy: few typed verbs, native execution, shared human/model capabilities. No installed pack/service/Core mutations during development. Tests first; graph statuses reflect evidence, not aspiration.",
+    "updated": "2026-09-05",
+    "colorBy": "kind"
+  },
+  "frames": [],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "runtime",
+      "kind": "module",
+      "label": "RFX runtime contract",
+      "note": "Implemented and race-tested: recursive supported argument constraints (including enums/unions), intentional open nested DGV objects, inherited primitive cards, nested exec subprocess permission and environment intersection, host-only approval metadata, 1 MiB stdout/stderr retention caps. RFX API requests are bounded. External exec pack tests use isolated fixtures, not blind installation fuzzing. These are not an OS sandbox.",
+      "status": "done",
+      "path": [
+        "internal/rfx",
+        "internal/tools/reflextool.go",
+        "internal/tools/execreflex.go"
+      ],
+      "position": {
+        "x": 324,
+        "y": 271
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "dgv",
+      "kind": "program",
+      "label": "DGV native RFX",
+      "note": "Native pack unchanged; safe DGV planning reads now live under bounded harness policy. Writes execution-only. Local installation receipt retained privately.",
+      "status": "done",
+      "path": "rfx/dgv",
+      "position": {
+        "x": 0,
+        "y": 557
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "github",
+      "kind": "program",
+      "label": "GitHub canonical RFX",
+      "note": "GitHub 2.0.0: eleven repository-bound talents, explicit literal staging, typed results, expected non-repository status, no hidden inference or account switching. Nested tracked deletions covered by regressions. Push/publish require host approval. Existing installed pack unchanged; authenticated network actions remain unverified. See docs/rfx-github.md.",
+      "status": "done",
+      "path": "rfx/github",
+      "position": {
+        "x": 0,
+        "y": 286
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "devcheck",
+      "kind": "program",
+      "label": "DevCheck browser evidence",
+      "note": "DevCheck 0.1.0: bounded local DOM/console/network inspection, explicit element assertions and capped JPEG page/selector/rectangle captures with retained receipts. Twelve real fixture-browser tests pass. No external origins, profile reuse, arbitrary model JavaScript or mutating HTTP methods. Actual application/Core acceptance remains unverified. See docs/rfx-devcheck.md.",
+      "status": "done",
+      "path": "rfx/devcheck",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "desktop",
+      "kind": "ui",
+      "label": "Consented window / region capture",
+      "note": "Implemented explicit consent-picker capture, single-frame stop, original-pixel crop, bounded JPEG preview and manual image send. At most two 256 KiB JPEG/PNG images, 1280 px per axis. Journal/replay, edit/retry and step context preserve attachments. Image ingress validated; unavailable imported images disclosed; raster cache follows compaction. Fixture-tested, not live-Core or real-desktop-permission verified.",
+      "status": "done",
+      "path": "panel/src/lib/chat",
+      "position": {
+        "x": 648,
+        "y": 434
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "chat",
+      "kind": "ui",
+      "label": "Chat stream and dock layout",
+      "note": "Desktop 1440x1000 and mobile 390x844 fixture QA pass: growing-content following, scroll anchoring, 24/12 px bottom padding, composer growth, IME guard, manual Reflex incident identity, typed All actions, invalid JSON refusal, argument-bound dangerous confirmation and no horizontal overflow. Screenshots: build/rfx-ui-acceptance-7Kgms2. Functional results: build/rfx-ui-acceptance-qaXhtf. Incumbent style preserved.",
+      "status": "done",
+      "path": [
+        "panel/src/lib/chat/Chat.svelte",
+        "panel/src/lib/RfxDock.svelte"
+      ],
+      "position": {
+        "x": 972,
+        "y": 182
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "evidence",
+      "kind": "storage",
+      "label": "Canonical run and artifact evidence",
+      "note": "Existing 0.6 journal/snapshot and step verdict authority retained. New packs must not invent completion or independently drive nested plans.",
+      "status": "done",
+      "path": [
+        "internal/loop",
+        "internal/session"
+      ],
+      "position": {
+        "x": 648,
+        "y": 238
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "release",
+      "kind": "module",
+      "label": "Tests, packaging and handoff",
+      "note": "Recovery installed: 0.6.0-alpha a3a8367-dirty-d706d2b3a3ab; crv/crvcli only. Backup ~/.crv/install-backup-harness-recovery-sf2Sha. Core/config/packs/Minecraft unchanged. Healthy, no automatic resume. Local installation receipt retained privately.",
+      "status": "done",
+      "path": [
+        "scripts/build-release.mjs",
+        "docs"
+      ],
+      "position": {
+        "x": 1296,
+        "y": 387
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "sync",
+      "source": "dgv",
+      "target": "runtime",
+      "label": "typed graph actions",
+      "id": "dgv-runtime"
+    },
+    {
+      "kind": "sync",
+      "source": "github",
+      "target": "runtime",
+      "label": "scoped git actions",
+      "id": "github-runtime"
+    },
+    {
+      "kind": "sync",
+      "source": "devcheck",
+      "target": "runtime",
+      "label": "browser evidence",
+      "id": "devcheck-runtime"
+    },
+    {
+      "kind": "data",
+      "source": "runtime",
+      "target": "evidence",
+      "label": "guarded result + artifact receipt",
+      "id": "runtime-evidence"
+    },
+    {
+      "kind": "data",
+      "source": "desktop",
+      "target": "chat",
+      "label": "explicit compressed image attachment",
+      "id": "desktop-chat"
+    },
+    {
+      "kind": "data",
+      "source": "evidence",
+      "target": "chat",
+      "label": "one canonical snapshot",
+      "id": "evidence-chat"
+    },
+    {
+      "kind": "control",
+      "source": "chat",
+      "target": "runtime",
+      "label": "same host-owned invocation and approval",
+      "id": "chat-runtime"
+    },
+    {
+      "kind": "import",
+      "source": "runtime",
+      "target": "release",
+      "label": "validated runtime",
+      "id": "runtime-release"
+    },
+    {
+      "kind": "import",
+      "source": "chat",
+      "target": "release",
+      "label": "verified surfaces",
+      "id": "chat-release"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runtime",
+      "op": "add",
+      "kind": "module",
+      "label": "RFX runtime contract"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dgv",
+      "op": "add",
+      "kind": "program",
+      "label": "DGV native RFX"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "github",
+      "op": "add",
+      "kind": "program",
+      "label": "GitHub canonical RFX"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "devcheck",
+      "op": "add",
+      "kind": "program",
+      "label": "DevCheck browser evidence"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "desktop",
+      "op": "add",
+      "kind": "ui",
+      "label": "Consented window / region capture"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "chat",
+      "op": "add",
+      "kind": "ui",
+      "label": "Chat stream and dock layout"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "evidence",
+      "op": "add",
+      "kind": "storage",
+      "label": "Canonical run and artifact evidence"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "node",
+      "id": "release",
+      "op": "add",
+      "kind": "module",
+      "label": "Tests, packaging and handoff"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "dgv-runtime",
+      "op": "add",
+      "kind": "sync",
+      "label": "dgv → runtime"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "github-runtime",
+      "op": "add",
+      "kind": "sync",
+      "label": "github → runtime"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "devcheck-runtime",
+      "op": "add",
+      "kind": "sync",
+      "label": "devcheck → runtime"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runtime-evidence",
+      "op": "add",
+      "kind": "data",
+      "label": "runtime → evidence"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "desktop-chat",
+      "op": "add",
+      "kind": "data",
+      "label": "desktop → chat"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "evidence-chat",
+      "op": "add",
+      "kind": "data",
+      "label": "evidence → chat"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "chat-runtime",
+      "op": "add",
+      "kind": "control",
+      "label": "chat → runtime"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "runtime-release",
+      "op": "add",
+      "kind": "import",
+      "label": "runtime → release"
+    },
+    {
+      "at": "2026-09-05T09:16:55.709Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "chat-release",
+      "op": "add",
+      "kind": "import",
+      "label": "chat → release"
+    },
+    {
+      "at": "2026-09-05T09:34:40.251Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runtime",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Close scoped argument-validation/card/output-budget gaps first; existing v1 b…",
+          "to": "Confirmed by failing-first tests: nested JSON argument validation was shallow…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:34:40.251Z",
+      "by": "agent",
+      "type": "node",
+      "id": "desktop",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "User chooses source; no silent desktop capture. Compression bounded before at…",
+          "to": "No existing image backend despite attach control. Adding explicit consented b…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:34:40.251Z",
+      "by": "agent",
+      "type": "node",
+      "id": "chat",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Preserve identity and run controls. Stable scroll anchor; compact accessible …",
+          "to": "Baseline at build/rfx-ui-check-rVn8QYq5: stream had 400px desktop / 300px mob…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:56:37.801Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runtime",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Confirmed by failing-first tests: nested JSON argument validation was shallow…",
+          "to": "Runtimefailing-firstregressions coverrecursiveargs/bounds/enums, deliberateop…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:56:37.801Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dgv",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "One-shot engine adapter, no MCP; workspace graph context with freshness, insp…",
+          "to": "Native7talents use original @dgv/core directly, noMCP. Finalcross-check caugh…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:56:37.801Z",
+      "by": "agent",
+      "type": "node",
+      "id": "github",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Migrate installed reference pack into tested canonical source. Explicit path …",
+          "to": "GitHub2.0 11talents, explicitliteralstaging, typedboundedoutputs, expectednon…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:56:37.801Z",
+      "by": "agent",
+      "type": "node",
+      "id": "desktop",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "No existing image backend despite attach control. Adding explicit consented b…",
+          "to": "Explicitbrowserconsentpicker→oneframe→stoptracks→originalpixelcrop→boundedJPE…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:56:37.801Z",
+      "by": "agent",
+      "type": "node",
+      "id": "chat",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Baseline at build/rfx-ui-check-rVn8QYq5: stream had 400px desktop / 300px mob…",
+          "to": "Desktop1440x1000/mobile390x844fixtureQA passes contentgrowthfollowing+scrolla…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.113Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runtime",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Runtimefailing-firstregressions coverrecursiveargs/bounds/enums, deliberateop…",
+          "to": "Implemented and race-tested: recursive supported argument constraints (includ…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.113Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dgv",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Native7talents use original @dgv/core directly, noMCP. Finalcross-check caugh…",
+          "to": "DGV 0.1.0: seven native talents reuse original @dgv/core, without MCP. Guarde…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.113Z",
+      "by": "agent",
+      "type": "node",
+      "id": "github",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "GitHub2.0 11talents, explicitliteralstaging, typedboundedoutputs, expectednon…",
+          "to": "GitHub 2.0.0: eleven repository-bound talents, explicit literal staging, type…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.113Z",
+      "by": "agent",
+      "type": "node",
+      "id": "devcheck",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Local browser DOM/console/network facts and bounded screenshots; no arbitrary…",
+          "to": "DevCheck 0.1.0: bounded local DOM/console/network inspection, explicit elemen…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.113Z",
+      "by": "agent",
+      "type": "node",
+      "id": "desktop",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Explicitbrowserconsentpicker→oneframe→stoptracks→originalpixelcrop→boundedJPE…",
+          "to": "Implemented explicit consent-picker capture, single-frame stop, original-pixe…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.113Z",
+      "by": "agent",
+      "type": "node",
+      "id": "chat",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Desktop1440x1000/mobile390x844fixtureQA passes contentgrowthfollowing+scrolla…",
+          "to": "Desktop 1440x1000 and mobile 390x844 fixture QA pass: growing-content followi…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.113Z",
+      "by": "agent",
+      "type": "node",
+      "id": "release",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Race/vet/Vitest/Svelte checks, isolated pack tests and desktop/mobile inspect…",
+          "to": "Build-only host and native-pack builders implemented; unique output directori…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T15:36:16.446Z",
+      "by": "agent",
+      "type": "node",
+      "id": "release",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Build-only host and native-pack builders implemented; unique output directori…",
+          "to": "Installed at explicit user request on 2026-09-05. localhost:7700 serves 0.6.0…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:29:37.250Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dgv",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "DGV 0.1.0: seven native talents reuse original @dgv/core, without MCP. Guarde…",
+          "to": "Native pack unchanged. Harness planning now offers safe DGV reads under its b…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.587Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dgv",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Native pack unchanged. Harness planning now offers safe DGV reads under its b…",
+          "to": "Native DGV pack unchanged. Safe read operations now offered during bounded ha…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.136Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dgv",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Native DGV pack unchanged. Safe read operations now offered during bounded ha…",
+          "to": "Native pack unchanged; safe DGV planning reads now live under bounded harness…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.136Z",
+      "by": "agent",
+      "type": "node",
+      "id": "release",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed at explicit user request on 2026-09-05. localhost:7700 serves 0.6.0…",
+          "to": "Recovery installed: 0.6.0-alpha a3a8367-dirty-d706d2b3a3ab; crv/crvcli only. …"
+        }
+      ]
+    }
+  ]
+}

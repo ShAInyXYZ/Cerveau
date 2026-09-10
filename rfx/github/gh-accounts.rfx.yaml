@@ -1,0 +1,9 @@
+rfx: 1
+name: gh-accounts
+description: Read the active github.com account through gh; returns no credentials and cannot switch accounts
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-github, gh-accounts]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: [github.com, api.github.com], subprocess: true}

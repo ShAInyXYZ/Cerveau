@@ -1,0 +1,23 @@
+rfx: 1
+pack: devcheck
+version: 0.1.0
+author: shiny
+description: Bounded local-browser facts, declared checks and compact screenshot evidence
+icon: bug
+ui:
+  widgets:
+    - type: field
+      name: url
+      label: Local app URL
+    - type: button
+      label: Inspect app
+      run: devcheck-inspect
+      icon: search
+    - type: button
+      label: Capture viewport
+      run: devcheck-capture
+      args: {target: page}
+      icon: eye
+    - type: progress
+    - type: log
+      lines: 8

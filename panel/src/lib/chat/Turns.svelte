@@ -6,6 +6,7 @@
   import { tooltip } from '../../kit/tooltip.js';
   import { splitStreaming } from '../markdown-safe';
   import { Copy, Check, Pencil } from 'lucide-svelte';
+  import { isInlineImage } from './images';
 
   // Assistant turns that carry ONLY a tool call have empty text — their tool
   // call already shows in the working log, so an empty bubble is noise.
@@ -101,13 +102,14 @@
               {/if}
             </span>
             <button class="ebtn" onclick={cancelEdit}>Cancel</button>
-            <button class="ebtn go" disabled={!draft.trim()} onclick={() => commitEdit(m.id ?? '')}>
+            <button class="ebtn go" disabled={!draft.trim() && !m.payload?.images?.length} onclick={() => commitEdit(m.id ?? '')}>
               Send
             </button>
           </div>
         </div>
       {:else if user}
         <span class="utext">{m.payload?.text ?? ''}</span>
+        {#if Array.isArray(m.payload?.images) && m.payload.images.length}<div class="turn-images">{#each m.payload.images as image}{#if image && isInlineImage(image.data_url)}<img src={image.data_url} alt="Visual context attached to this message" loading="lazy" />{:else}<small>Image unavailable. Attach a new image to use visual context.</small>{/if}{/each}</div>{/if}
       {:else}
         {@const live = sessionStore.running && i === visible.length - 1}
         {@const md = live ? splitStreaming(m.payload?.text ?? '') : null}
@@ -144,6 +146,8 @@
 {/each}
 
 <style>
+  .turn-images { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .turn-images img { max-width:min(100%,320px); max-height:240px; object-fit:contain; border:1px solid var(--line2); border-radius:6px; }
   .void { margin: auto; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
   .void-mark { font-family: var(--font-mono); letter-spacing: .5em; font-size: 13px; color: var(--faint); }
 

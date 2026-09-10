@@ -34,7 +34,7 @@ export interface ChatMessage {
   id?: string;
   type: 'msg.user' | 'msg.assistant';
   ts: string;
-  payload?: { text?: string; tool_calls?: unknown[] };
+  payload?: { text?: string; tool_calls?: unknown[]; images?: { data_url: string; width?: number; height?: number; sha256?: string }[] };
   _optimistic?: boolean;
 }
 
@@ -69,6 +69,10 @@ export interface PlanReport {
   done: number;
   failed: number;
   skipped: number;
+  needs_reverify?: number;
+  pending?: number;
+  unverified?: number;
+  running?: number;
   handback?: boolean;
   finished_at?: string;
 }
@@ -110,9 +114,11 @@ export interface LiveStep {
 export type Mode = 'discussion' | 'autopilot' | 'brainstorming';
 
 export interface RunState {
+ kind?: string; reflex?: string;
  control_version: number;
  result?: ChatResult;
  id: string; status: string; phase?: string; tool?: string; step: number;
+ recovery_phase?: string;
  started: string; updated: string; reason?: string; calls: number;
  thinking_mode: string; thinking_effort: string; sampling: string;
 }
@@ -124,5 +130,5 @@ export interface SessionSnapshot {
 }
 export interface PlanState {
  plan_event_id: string; title: string; next: number; blocked: number; done: boolean;
- steps: {id: string; title: string; status: string; rev: number; attempts: number}[];
+ steps: {id: string; title: string; status: string; rev: number; attempts: number; reason?: string; verdict?: {pass: boolean; evidence?: string; check?: string; workspace_version?: string; evidence_event_id?: string; execution_stop?: string}}[];
 }

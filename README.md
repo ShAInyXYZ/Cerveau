@@ -7,7 +7,7 @@
     <img src="https://img.shields.io/badge/v0.6.0--alpha-LABRIG-C0304A?style=for-the-badge&labelColor=000000" alt="v0.6.0-alpha LABRIG"/>
   </p>
 
-  <p><strong>A local-first agentic coding harness — built from scratch to squeeze every drop out of the hardware you already own.</strong></p>
+  <p><strong>A local-first coding harness for the models and hardware you own.</strong></p>
 
   <p>
     <img src="https://img.shields.io/badge/Go-1.25-C0304A?style=flat-square&labelColor=17140F&logo=go&logoColor=F2E1DE" alt="Go 1.25"/>
@@ -18,16 +18,21 @@
     <img src="https://img.shields.io/badge/cloud-none-C0304A?style=flat-square&labelColor=17140F" alt="No cloud"/>
   </p>
 
-  <p>Your models. Your machine. Your memory. No cloud, no accounts, no telemetry.</p>
+  <p>Your models. Your machine. Your memory. No hosted Cerveau account required.</p>
 
-  <p><a href="https://cerveau.sh"><strong>cerveau.sh</strong></a> · <a href="#quick-start"><strong>Quick start ↓</strong></a></p>
+  <p><a href="#quick-start">Quick start</a> · <a href="#tested-models-and-results">Tested models</a> · <a href="#patch-notes">Patch notes</a> · <a href="docs/README.md">Documentation</a> · <a href="https://cerveau.sh">cerveau.sh</a></p>
 </div>
 
----
+Cerveau connects your local model to a workspace, tools and persistent memory. A Go harness owns the execution loop, checks and recovery; an embedded Svelte panel and CLI let you follow the work and control each run. Connect a tool-capable llama.cpp or vLLM endpoint to get started.
 
-## 📌 Patch notes
+## Patch notes
 
-### 🔬 v0.6.0-alpha — "LABRIG" · 2026-09-05
+Version 0.6 is expanded below. Open an earlier release to read its changes in their original release context.
+
+<details open>
+<summary><b>🔬 v0.6.0-alpha — "LABRIG" · 2026-09-05</b></summary>
+
+### v0.6: multi-GPU profiles and checked execution
 
 <p>
   <img src="https://img.shields.io/badge/lab_rig-4×_RTX_3090-C0304A?style=flat-square&labelColor=17140F" alt="four RTX 3090 lab rig"/>
@@ -35,12 +40,9 @@
   <img src="https://img.shields.io/badge/runs-stepwise_%2B_verified-C0304A?style=flat-square&labelColor=17140F" alt="stepwise runs with verification"/>
 </p>
 
-**Cerveau is now being developed against real lab-rig work.** LABRIG brings
-the multi-GPU experiments into installable Core profiles, and rebuilds the
-run lifecycle so the browser can report what the worker is actually doing.
-The single-card setup remains supported.
+LABRIG adds installable multi-GPU Core profiles and server-owned runs with step verification. The panel follows the worker's recorded state, and the single-card setup remains supported. Hardware configurations and measured outcomes are listed under [Tested models and results](#tested-models-and-results).
 
-**The lab rig**
+#### Core profiles
 
 - **Unquantized weights across four GPUs.** Qwen3.8-27B has been tested with
   **BF16 weights and TP=4 across 4× RTX 3090s**. Here, unquantized means
@@ -59,7 +61,7 @@ The single-card setup remains supported.
   Rebuilding that environment requires reapplying and checking its patches;
   this harness release does not silently upgrade or retune the Core.
 
-**The loop owns the work**
+#### Execution and recovery
 
 - **One owner per session and workspace.** The server accepts an identified
   run before execution. Retrying the same command does not start it twice,
@@ -83,7 +85,7 @@ The single-card setup remains supported.
   window. Sampling includes a `default` preset that leaves the model's
   generation settings alone; effective settings are captured when a run starts.
 
-**A panel that follows the server**
+#### Panel and run controls
 
 - **Run state, plan state and evidence share a journal snapshot.** The chat
   strip and Planner use the server's step states. The UI distinguishes
@@ -104,18 +106,28 @@ The single-card setup remains supported.
 - **The work since 0.5 is included.** Per-session token usage records,
   copy/edit-and-resend, sanitized Markdown and inline-code fixes, bundled
   fonts, a collapsible project rail, Android welcome/reachability polish,
-  `crv pair`, and a paired-device list with last-seen and revocation.
+  `crvcli pair`, and a paired-device list with last-seen and revocation.
   Security changes include resolved-address SSRF checks, cross-origin
   mutation rejection, required download checksums and tighter token-file
   permissions. These remain a safety floor, not an OS sandbox.
 
-**Alpha validation is separate from the rig experiments.** Earlier BF16/W8A16
-rig work and recorded prefix-cache checks are historical evidence, not a new
-throughput, thermal or full-model benchmark for this build. See the
-[0.6 LABRIG release record](docs/release-0.6-LABRIG.md) for this build's tests,
-remaining limitations and installation status.
+#### Native tools and follow-up changes
 
-### 🧠 v0.5 — "Cores" · 2026-08-19
+| Date | Change | Technical record |
+| --- | --- | --- |
+| Sep 5 | Native DGV graph tools, GitHub 2.0 explicit-file staging, DevCheck browser evidence, and consented image attachments. | [Native RFX](docs/rfx-native-0.6.md) · [Conversion recipe](docs/rfx-dgv-conversion.md) |
+| Sep 6 | Targeted reads with exact continuation, stale-source edit checks, and versioned evidence retained across retries. | [Targeted recovery](docs/targeted-file-recovery-2026-09-06.md) |
+| Sep 6 | Browser diagnostics distinguish missing evidence, timeouts and process failures. Owned-server probes check delivery and file identity. | [Browser recovery](docs/browser-recovery-tools-2026-09-06.md) |
+| Sep 7 | Native `browser_run`, `runtime_profile`, `run_checks` and `code_diagnostics` return bounded results with source and evidence references. | [Debugging tools](docs/native-debug-tools-2026-09-07.md) |
+
+See the [0.6 release record](docs/release-0.6-LABRIG.md) for validation and the [model results](#tested-models-and-results) for recorded runtime and recovery tests.
+
+</details>
+
+<details>
+<summary><b>🧠 v0.5 — "Cores" · 2026-08-19</b></summary>
+
+### v0.5: swappable inference engines
 
 <p>
   <img src="https://img.shields.io/badge/cores-llama.cpp_%2B_vLLM-C0304A?style=flat-square&labelColor=17140F" alt="two cores"/>
@@ -137,8 +149,8 @@ guessing.
   RAM, which is nearly free when only ~3B of 35B parameters activate per
   token — that Core runs a large mixture-of-experts model on a 24 GB card.
   vLLM keeps weights resident and batches continuously, so that Core runs
-  dense models with real throughput. Neither can do the other's job; that is
-  why there are two.
+  dense models with resident weights. These were the two deployment strategies
+  tested for this release, not exclusive limits of either engine.
 - **Switching Cores keeps the session.** Context lives in Typesense and the
   embedder, not in the engine's KV cache, so a swap carries a briefing rather
   than a memory. Switch at task boundaries, never mid-turn.
@@ -190,6 +202,8 @@ guessing.
   made worse by assistant messages during a build carrying no text at all,
   because the model is working rather than talking. Live sessions now pulse in
   the rail and stream their tool calls wherever they began.
+
+</details>
 
 <details>
 <summary><b>📱 v0.4 — "Pocket" · 2026-08-18</b></summary>
@@ -287,7 +301,7 @@ ignore; a rule in the core always runs.*
   big pages with `section=`/`start_index` drill-down sized to the 32K
   window. Honest UA (a test fails if it ever impersonates a browser);
   404/bot-blocks return as *facts to route around*, never burning the
-  error budget. Design record in `docs-private/WEBFETCH.md`.
+  error budget.
 - **Plans reach the plan card no matter what** — `commit_plan` accepts
   plain markdown (headings/lists/checkboxes become steps), and a plan
   written to a `.md` file is auto-committed as a structured plan event,
@@ -300,8 +314,8 @@ ignore; a rule in the core always runs.*
   (dev server → build once, serve the dist).
 - **Targeted editing** — line-numbered reads, `from_line`/`to_line`
   ranges, indent-tolerant matching, deletion via empty `new_string`,
-  nearest-match hints on a miss. The model lands edits on the first try
-  instead of re-reading whole files.
+  nearest-match hints on a miss. These tools let the model inspect and edit
+  specific regions instead of re-reading whole files.
 
 </details>
 
@@ -357,125 +371,88 @@ Drop a file into `~/.crv/rfx/` — it's a native tool on the next turn;
 group related reflexes into a *pack* (a folder with `pack.yaml`) and they
 travel together.
 
-**Why not MCP?** MCP was designed for frontier cloud models with giant
-context windows. On a small local model with a 32K window, its costs land
-exactly where it hurts:
+**RFX design choices.** Reflexes integrate with the harness registry, keeping tool dispatch and permissions in one place:
 
-| | MCP servers | RFX reflexes |
-|---|---|---|
-| **Context cost** | schemas + prose, always resident | name + GBNF grammar; zero prose |
-| **Arguments** | free-form JSON, hope for the best | malformed calls impossible by grammar |
-| **Permissions** | none in the protocol | capability card, enforced in Go |
-| **Verification** | none — tools rot silently | fuzz contract at install, loud refusal |
-| **Runtime** | a Node/Python process per server | composed steps or one-shot subprocess |
-| **Failure style** | retry loops | real stderr kept, self-correction wired in |
+| Concern | RFX approach |
+| --- | --- |
+| Context | Typed tool declarations instead of loading a prose skill for each action. |
+| Arguments | Schema validation at dispatch; generated grammars where the runtime supports them. |
+| Permissions | Capability cards and risk tiers enforced in Go. |
+| Verification | Install-time contracts and explicit tool results. |
+| Runtime | Composed steps, native handlers or subprocesses, depending on the pack. |
+| Failures | Preserve stderr and return evidence for diagnosis. |
 
 **Tooling:** `crvcli rfx` to list / show / install / remove / enable /
 disable / test / distill — write your own reflexes in minutes, or convert
 old prose skills with `crvcli rfx distill`. Prose skills keep working.
-*The brain deliberates — reflexes just fire.*
-
----
-
-Cerveau is a coding agent designed as a **harness from first principles** — not a
-chat UI with tools bolted on. A single Go binary owns the agent loop, the context
-window, tool dispatch and structural safety guards; the Svelte control panel is
-embedded inside it; the model is just a URL to your local `llama.cpp` server.
-
-It exists for one audience: **people who run models on their own metal** —
-homelabs, workstations, small servers — and refuse to let 90 % of their machine
-sit idle while a cloud subscription does the thinking.
-
-## Philosophy: the restrictions are the feature
-
-Most agent harnesses are Swiss-army knives — and rightly so, for their goal:
-they serve every provider, every model size, every deployment. But generality
-has a quiet cost. Machinery built to work with *any* model ends up implicitly
-designed around the *strongest* ones, and a small local model inherits
-scaffolding that assumes it won't fail — then fails in ways nothing catches.
-
-Cerveau makes the opposite trade. One target: **consumer-grade GPUs and
-professional workstations, lots of system RAM, small MoE models.** Because the
-target is fixed, every layer gets to assume it — output caps sized to what the
-model can actually emit, grammars constraining what it generates, recovery
-paths for the exact ways it breaks, a context discipline built for 32K rather
-than pretending 200K. Nothing is provider-agnostic, and that's the point.
-
-The result is not a smarter model — it's a harness that **absorbs the failure
-modes of modest models**, so a few billion active parameters deliver work that
-otherwise needs a much larger one. Specialization is what a general tool
-cannot offer; it's the entire reason Cerveau exists.
 
 </details>
 
-
 ## Why a harness for local hardware
 
-Most agent frontends assume an infinite, fast, cloud-hosted model. Local reality
-is different: your model is quantized, your VRAM is finite, your context window
-is precious, and every token has a real cost in seconds. Cerveau is engineered
-around exactly those constraints.
+Local inference has practical constraints: finite GPU memory, context capacity and generation speed. Cerveau targets homelabs and workstations with consumer GPUs, including both mixture-of-experts (MoE) and dense models.
 
-### 🧠 The whole machine, not just the GPU
+The approach is to put repeatable checks in the harness: validate tool calls, limit output to the available context, retain failure evidence, and verify work before advancing a plan. This helps a smaller model use its available capacity without relying on prompting alone.
 
-Modern MoE models (Qwen3-A3B, Mixtral-class) are *made* for hybrid hardware:
-only a few experts fire per token, so the hot path (attention, KV cache) lives
-in VRAM while the bulk expert weights stream from ordinary system RAM.
+### Using both GPU and system memory
 
-The original reference rig — one RTX 3090 (24 GB) + 16-core CPU + 128 GB DDR5 — runs a
-**35B-parameter MoE at 73–107 tok/s with a full 32K context and up to 8K tokens
-of output per call**. The same box, with the naive "everything the GPU can't
-hold goes to CPU" defaults, ran at **0.9 tok/s**. That gap is pure
-configuration, and the split is a *dial*, not a setting:
+With a MoE model, only a subset of experts is active for each token. llama.cpp's CPU expert offload lets you divide model storage between GPU memory and system RAM. Cerveau's original setup used this to leave GPU capacity available for other workloads. Dense-model tests used separate vLLM configurations, including four-GPU tensor parallelism.
 
-| Profile | `--n-cpu-moe` | Speed | VRAM left for other models |
-|---|---|---|---|
-| `shared` | 34 | ~73 tok/s | **~12 GB** — stack a TTS, draft model, image gen |
-| `fast` | 16 | ~98 tok/s | ~4 GB |
-| `max` | 10 | ~107 tok/s | ~1.4 GB — dedicated benchmark mode |
+## Tested models and results
 
-```bash
-llama-server -m model.gguf --host 127.0.0.1 --port 8080 \
-  -ngl 99 --n-cpu-moe 34 \    # split experts: hot layers in VRAM, rest in RAM
-  -t 16 \                     # PHYSICAL cores — hyperthreads fight for bandwidth
-  -c 32768 --cache-type-k q4_0 --cache-type-v q4_0 \
-  --no-mmap --jinja
-```
+These are recorded runs on the project's own hardware, not a standardized comparison between models. Runtime measurements and coding outcomes are listed separately.
 
-The all-in-VRAM configs people benchmark hit 110–140 tok/s — by giving the model
-the *entire* GPU and a cramped context. Cerveau's split means your 64–128 GB of
-RAM becomes model capacity, and your GPU stays *yours*: the `shared` profile
-runs the 35B agent **and** leaves 12 GB for whatever else you stack.
+### Model configurations
 
-LABRIG adds a separate **4× RTX 3090 TP=4** setup for Qwen3.8-27B, with
-unquantized BF16 and W8A16 + MTP Core profiles. Those configurations are
-documented in [Core profiles](deploy/profiles/README.md); the single-card
-MoE numbers above are not measurements of the four-GPU rig.
+| Tested model | Approach | Recorded outcome |
+| --- | --- | --- |
+| **Qwen3.6-35B-A3B · Q4_K_M** | llama.cpp; one RTX 3090, a 16-core CPU and 128 GB RAM. Tune CPU expert offload with a 32K context. | Historical profile measurements: approximately **73–107 tokens/s**. The shared profile left about **12 GB of GPU memory** available. |
+| **Qwen3.8-27B · W4A16** | Patched vLLM on one RTX 3090. Use an FP8 key/value (KV) cache and disable multi-token prediction (MTP) to fit a 96K serving window. | The 96K configuration started successfully. With more desktop GPU usage, a 90% allocation failed; reducing it to 88% allowed startup. |
+| **Qwen3.8-27B · BF16** | Patched vLLM; tensor parallelism across four RTX 3090s, BF16 weights and KV cache, vision enabled, three MTP draft tokens. | September 4 rig checks recorded **92.2 tokens/s** for a 700-token decode and a correct read of a 1280×800 image. Thinking was off and sampling was greedy. |
+| **Qwen3.8-27B · W8A16 + MTP** | Patched vLLM; four RTX 3090s, FP8 KV cache, prefix caching and three draft tokens. Test run controls in isolated workspaces with thinking off and Strict sampling. | Pause/resume, steering, interruption recovery, whole-plan and selected-step execution **passed** the [recorded acceptance cases](docs/release-0.6-LABRIG.md#real-w8a16-acceptance--post-release-follow-up). |
 
-### 📼 A context window treated like the scarce resource it is
+The model names above follow the project's recorded model and serving identifiers. The [Core profiles](deploy/profiles/README.md) and [engine-patch record](deploy/profiles/ENGINE-PATCHES.md) describe the four-GPU configurations. BF16 uses 16-bit weights; W4A16 and W8A16 are separate quantized configurations.
 
-Every session is an append-only `events.jsonl` — **memory is the state**, the
-window is only a projection of it. Tool outputs are capped at dispatch and age
-into event-pointers the model can re-pull on demand; the system prompt stays
-KV-cache-stable across turns. On a 32K local context, that discipline is the
-difference between an agent that works and one that forgets what it's doing.
+### Single-GPU offload measurements
 
-### 🔁 Built for small models that make mistakes
+The original Qwen3.6-35B-A3B measurements used Q4_K_M weights, a 32K context and these llama.cpp profiles:
 
-A 3B-active local model is not Opus, and Cerveau doesn't pretend it is:
+| Profile | CPU MoE layers (`--n-cpu-moe`) | Reported speed | GPU memory left |
+| --- | --- | --- | --- |
+| `shared` | 34 | ~73 tokens/s | ~12 GB |
+| `fast` | 16 | ~98 tokens/s | ~4 GB |
+| `max` | 10 | ~107 tokens/s | ~1.4 GB |
+
+These are historical profile measurements retained from the original README; raw benchmark receipts are not included in the repository. They do not measure the four-GPU setup or coding success.
+
+### Coding and recovery outcomes
+
+| Test | Approach | Outcome |
+| --- | --- | --- |
+| Regional repair with Qwen3.8-27B | Medium thinking, Default sampling, production context manager. Introduce a line-160 syntax defect, repair it, recheck the foundation and verify a continuation marker. | **3/3 steps passed**, one edit, six model requests, **24.294 seconds**. [Recorded result](docs/backlog-fixes-2026-09-07.md#verification). |
+| Voxel-world generation and recovery with Qwen3.8-27B | Stepwise Autopilot with committed checks for storage, lighting, meshing, physics and browser behavior. | The copied-session recovery attempt **failed without an edit**; its repeat remained **unverified**. No end-to-end voxel pass was established. [Recorded results](docs/targeted-file-recovery-2026-09-06.md). |
+
+## Context, recovery and memory
+
+### Persistent sessions and bounded context
+
+Each session has an append-only `events.jsonl` journal; the model's context window contains a selection of that history. Tool outputs are capped, and older evidence can be retrieved by event reference. Compaction preserves a briefing of the request, plan and recorded work rather than treating the remaining window as the whole session.
+
+### Recovery from failed actions
+
+Cerveau records failures and uses them to guide the next attempt:
 
 - Failed commands return their **real stdout/stderr** to the model, so it reads
   the actual error and self-corrects (verified: it debugged its own Tailwind v4
   migration).
-- Loop detection is **result-aware** — re-running `npm run build` while fixing
-  things is progress, not a loop; identical output twice is.
-- Truncated tool calls are detected and fed back as "split the write" instead of
-  dying — and a poisoned history can never break future turns (replayed calls
-  are sanitized).
+- Loop detection considers source changes and check results. Repeated reads or
+  a different error message alone do not establish progress.
+- Truncated tool calls trigger bounded retries with smaller actions. Replay
+  validation keeps tool calls and results paired; missing results remain unknown.
 - The agent knows its **workspace path, its reserved ports, and its model's
   actual modalities** — introspected at runtime, never assumed.
 
-### 🛡️ Safety that is structural, not prompted
+### Safety at tool dispatch
 
 A dispatch guard pattern-matches tool *arguments* before execution and catches
 the common footguns: `rm -rf /`, force-pushes, `DROP TABLE`, piping a remote
@@ -483,94 +460,75 @@ script into a shell. Destructive `mv` is auto-rewritten to copy-verify-delete.
 The file tools (`read`/`write`/`edit`) are additionally jailed to the workspace —
 lexically *and* through symlinks, enforced in Go, not prompted.
 
-This is a **safety floor, not a sandbox.** The guard is pattern-based: an
-obfuscated command can evade it, and `bash` itself is not yet OS-sandboxed (a
-Landlock jail is on the roadmap). Treat API access as shell access to your
-machine — run Cerveau as an unprivileged user, and see [SECURITY.md](SECURITY.md)
-for the full threat model.
+This is a **safety floor, not a general sandbox.** Ordinary shell calls run with your OS user's permissions; a pattern-based guard can miss obfuscated commands. Recovery and native checks use separate Bubblewrap restrictions. Run Cerveau as an unprivileged user and read [SECURITY.md](SECURITY.md) for the threat model.
 
-### 🧩 Five memory systems, zero ceremony
+### Five memory systems
 
 | Memory | Store | Role |
 |---|---|---|
 | Working | the live window | what the model sees this turn |
 | Episodic | `events.jsonl` | append-only source of truth, crash-safe |
 | Semantic | Typesense (managed) | curated cross-session facts, deduped, with provenance |
-| Codebase | SQLite graph | symbols + call edges, ~10× cheaper than grep for structure |
+| Codebase | SQLite graph | symbols and call edges for structural queries |
 | Procedural | `~/.crv/skills/*.md` | markdown skills, loaded on trigger |
 
-Recall is **system-owned**: relevant facts and past events are pulled into every
-turn automatically. The agent never has to remember to remember.
+The harness selects relevant facts and past events for recall. Typesense supports searchable memory; the optional Nemotron embedder adds vector retrieval. When configured retrieval is unavailable, eligible paths can use lexical search or local journal evidence. See [memory and embedding conventions](docs/memory-embedding-conventions.md).
 
-## How Cerveau compares
+## Where Cerveau fits
 
-There are excellent tools in this space, and Cerveau borrows no code from any of
-them. Where they sit:
+Cerveau focuses on local model execution, checked plans and inspectable recovery. Its main design choices are:
 
-- **Chat UIs for local models** (Open WebUI, LM Studio, Jan) — great for
-  conversation and RAG; they are not agentic harnesses. No autonomous tool
-  loops, no plan execution, no structural guards.
-- **IDE / terminal coding agents** (Aider, Cline, Continue) — strong coding
-  agents, mostly designed around frontier cloud models, with the local case as
-  a fallback.
-- **Agent frameworks** (OpenHands, Goose) — powerful and general, typically
-  heavier deployments and, again, tuned for models that rarely fail.
+- A Go harness with an embedded Svelte panel and a CLI using the same API.
+- A model endpoint you operate, with separate llama.cpp and vLLM deployment profiles.
+- Append-only session journals, bounded context and optional searchable memory.
+- Native tools and RFX packs that share the harness's dispatch rules.
 
-Cerveau's niche is narrower and deliberate: **an agent harness engineered
-around how small local models actually fail.** Truncated tool calls, poisoned
-histories, blind retries, hallucinated paths and ports — the recovery machinery
-for those lives in the Go core, because a 3B-active model needs it on every
-session. Add the event-sourced memory, the compiled-in safety guard, and the
-single-binary deployment, and the result isn't a claim of novelty for its
-parts — the loop, the tools, the vector store are all well-trodden ideas —
-but of an ecosystem built coherently, from scratch, for one job: making modest
-hardware do serious agentic work.
+Choose it when you want to operate the model and inspect the execution loop on your own machine.
 
 ## Requirements
 
-| | |
-|---|---|
+Cerveau targets Linux. Model weights and the inference engine are installed separately.
+
+| Component | Requirement |
+| --- | --- |
 | **Go** | 1.25+ |
-| **Node** | 20+ (build the panel once) |
-| **Brain Core** | llama.cpp + a GGUF model, or an OpenAI-compatible vLLM Core |
-| **Python** | 3.10+ — optional, only for the embedder sidecar |
+| **Node.js** | 24 recommended; supported older versions are 20.19+ and 22.12+. Used for the panel build and JavaScript tools. |
+| **Brain Core** | A tool-capable llama.cpp or vLLM endpoint. |
+| **Bubblewrap** | Working `bwrap` for JavaScript mutation checks, recovery isolation and native debugging tools. |
+| **Python** | 3.10+, optional for the embedding sidecar. |
+| **Browser tools** | Installed Playwright and Chromium; see [setup requirements](docs/GETTING_STARTED.md#optional-memory-and-debugging-dependencies). |
 
-**Platform:** Linux (x86-64 / ARM64) today. macOS is close (core + syscalls work; the system monitor and folder picker need platform shims). A **Windows version is planned** — see the roadmap.
+Typesense does not need a separate manual installation in the default setup: Cerveau downloads and manages an instance. Provision it and any optional dependencies before expecting offline operation.
 
-> **Security:** Cerveau binds to `127.0.0.1` by default. The API is
-> unauthenticated and can run shell commands (autopilot) — do **not**
-> expose it to a network without your own auth or tunnel in front.
-
-Typesense is **not** a prerequisite — Cerveau downloads and manages its own
-instance on first run, on its own port, without touching any existing install.
+> Keep the API bound to `127.0.0.1`. Ordinary shell tools run with your OS user's permissions. Read [SECURITY.md](SECURITY.md) before setting up remote access.
 
 ## Quick start
 
-```bash
-# 1. build the panel (embedded into the binary via go:embed)
-cd panel && npm install && npm run build && cd ..
-
-# 2. build the binary
-go build -o ~/.local/bin/crv ./cmd/crv
-
-# 3. serve a model (flags above). Reference model — the one all benchmarks
-#    in this README were measured on: Qwen3.6-35B-A3B, Q4_K_M quant (~22 GB)
-llama-server -m Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --host 127.0.0.1 --port 8080 --jinja
-
-# 4. run
-crv
-```
-
-Open **http://localhost:7700**. Optionally start hybrid vector recall:
+Build the panel first so Go can embed its output:
 
 ```bash
-python3 sidecars/nemotron_embed.py   # OpenAI-compatible /v1/embeddings on :8081
+git clone https://github.com/ShAInyXYZ/Cerveau.git
+cd Cerveau
+npm --prefix panel ci
+npm --prefix panel run build
+mkdir -p build
+go build -o build/crv ./cmd/crv
+go build -o build/crvcli ./cmd/crvcli
 ```
 
-> **Reasoning models:** configure thinking scope and effort in the panel.
-> Cerveau budgets reasoning separately from the answer and steps effort down
-> on overflow. The active run keeps its captured settings; changing the
-> defaults applies to future runs.
+Start your separately installed model server with tool calling enabled. Before launching Cerveau, create `~/.config/cerveau/config.json` using the [configuration example](#configuration), pointing at your model and workspace.
+
+From the repository root, start the application:
+
+```bash
+./build/crv
+```
+
+Open [Cerveau on 127.0.0.1:7700](http://127.0.0.1:7700), choose your workspace and select a mode. For a first Autopilot task, ask it to create a small function, add assertions and run them.
+
+The [Getting started guide](docs/GETTING_STARTED.md) covers model endpoints, optional memory services, browser dependencies and troubleshooting.
+
+> **Reasoning models:** configure thinking scope and effort in the panel. The active run keeps its captured settings; changing defaults applies to future runs.
 
 ## The three modes
 
@@ -578,36 +536,35 @@ python3 sidecars/nemotron_embed.py   # OpenAI-compatible /v1/embeddings on :8081
 |---|---|
 | **Discussion** | ultra-concise planning; writes limited to design artifacts; crystallizes into a committed plan |
 | **Brainstorming** | deep research, web + code tools + memory, findings externalized to notes |
-| **Autopilot** | full autonomy end-to-end; re-plans on failure; hands back only when truly blocked |
+| **Autopilot** | executes a committed plan, checks results and attempts bounded repairs; pauses when it needs a decision or exhausts its budget |
 
-Live tool cards show the real command and its real output as it runs. Errors
-surface as actionable cards with the reason expanded — never a silent spinner,
-never a log wall.
+Tool cards expose commands, results and evidence. Run controls let you pause, resume, stop or steer the active run. Failed steps retain their latest check and recovery history.
 
 ## Configuration
 
-Created on first run at `~/.config/cerveau/config.json`:
+The configuration lives at `~/.config/cerveau/config.json`. Create it before a customized first launch; replace the workspace with an existing absolute path:
 
 ```json
 {
-  "addr": ":7700",
-  "workspace": "/path/to/your/project",
+  "project": "cerveau",
+  "addr": "127.0.0.1:7700",
+  "workspace": "/absolute/path/to/your/project",
   "model_ctx": 32768,
   "endpoints": {
-    "model":     "http://localhost:8080",
-    "embedder":  "http://localhost:8081",
-    "typesense": "http://localhost:8189"
+    "model": "http://127.0.0.1:8080"
   }
 }
 ```
 
-Anything can be overridden via `CRV_*` environment variables. All runtime data
-lives under `~/.crv/` — your project directories are never touched except by the
-file edits you ask for.
+Use your model server's base URL **without `/v1`**, and a context capacity it supports. Existing configuration files do not need to be overwritten.
+
+Supported `CRV_*` variables override corresponding fields when an existing configuration is loaded; they are not all applied during first-time file creation. Session journals and managed memory live under `~/.crv/`; tools may also create evidence directories in the project. See [configuration and default endpoints](docs/GETTING_STARTED.md#2-configure-a-workspace-and-model-endpoint).
 
 ## Architecture
 
-```
+The panel and CLI share the Go API; model execution and memory services are separate processes.
+
+```text
   Svelte panel ──HTTP──▶ Go core ──OpenAI API──▶ Brain Core (llama.cpp / vLLM)
    (go:embed)             │
                           ├─▶ events.jsonl        episodic — source of truth
@@ -616,26 +573,31 @@ file edits you ask for.
                           └─▶ skills/             procedural, plain markdown
 ```
 
-Tools are declared once in a registry — JSON schema, risk tier, per-mode
-availability, ingress cap — and their grammars are generated, never
-hand-written. A release is a **single static binary**.
+Tools declare their JSON schema, risk tier, mode availability and input limits in a shared registry. The Go executable embeds the panel and built-in Planner. Model runtimes, memory services and optional tool dependencies remain separate.
 
 ## CLI
 
-```bash
-go build -o ~/.local/bin/crvcli ./cmd/crvcli
+The CLI uses the same local API as the panel. From the repository root:
 
-crvcli ask "explain the window manager"   # one-shot, scriptable
-crvcli sessions
-crvcli health
+```bash
+./build/crvcli ask "explain the window manager"
+./build/crvcli sessions
+./build/crvcli health
 ```
+
+Global flags precede the command, for example `crvcli -addr http://127.0.0.1:7700 health`.
 
 ## Development
 
+After building the panel, run the local checks:
+
 ```bash
-go test ./...               # full Go suite
-cd panel && npm run dev     # panel with HMR on :5171, proxying to :7700
+go test ./...
+go vet ./...
+(cd panel && npm exec -- vitest run)
 ```
+
+For panel hot reload, run `npm --prefix panel run dev` alongside the Go API. Optional integration tests need their documented external prerequisites.
 
 ## Contributing
 
@@ -648,15 +610,15 @@ git commit -s -m "your change"
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Status
+## Documentation
 
-**v0.6.0-alpha — LABRIG, early and daily-driven.** Cerveau is developed on
-single-card workstations and a four-GPU lab rig. Historical measurements keep
-their original hardware and configuration context; they are not performance
-promises for this release. The loop and UI changes have a separate
-[validation and limitations record](docs/release-0.6-LABRIG.md). It is still
-an alpha: expect rough edges, and inspect verification evidence before
-trusting a generated project's completion claim.
+- [Getting started](docs/GETTING_STARTED.md)
+- [Core profiles](deploy/profiles/README.md) and [engine patches](deploy/profiles/ENGINE-PATCHES.md)
+- [Native debugging tools](docs/native-debug-tools-2026-09-07.md)
+- [Memory and embedding conventions](docs/memory-embedding-conventions.md)
+- [RFX implementation](docs/rfx-native-0.6.md) and [conversion recipe](docs/rfx-dgv-conversion.md)
+- [0.6 release record](docs/release-0.6-LABRIG.md)
+- [Documentation index](docs/README.md)
 
 ## License
 

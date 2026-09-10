@@ -19,10 +19,12 @@ import (
 )
 
 type PlanStep struct {
-	Title  string   `json:"title"`
-	Detail string   `json:"detail"`
-	Files  []string `json:"files"`
-	Risk   string   `json:"risk"`
+	ID          string   `json:"id,omitempty"`
+	MilestoneID string   `json:"milestone_id,omitempty"`
+	Title       string   `json:"title"`
+	Detail      string   `json:"detail"`
+	Files       []string `json:"files"`
+	Risk        string   `json:"risk"`
 
 	// Verify is the check that proves this step done. Legacy plans without a
 	// valid check remain unverified; file existence is not completion evidence.
@@ -30,9 +32,13 @@ type PlanStep struct {
 }
 
 type Plan struct {
-	Title          string     `json:"title"`
-	Steps          []PlanStep `json:"steps"`
-	AutonomyBudget string     `json:"autonomy_budget"`
+	Title          string                 `json:"title"`
+	Steps          []PlanStep             `json:"steps"`
+	AutonomyBudget string                 `json:"autonomy_budget"`
+	Delivery       *plan.DeliveryContract `json:"delivery_contract,omitempty"`
+	Revision       string                 `json:"revision,omitempty"`
+	Guidance       map[string]string      `json:"implementation_guidance,omitempty"`
+	Amendments     []PlanAmendment        `json:"amendments,omitempty"`
 }
 
 // AsGuidance renders the plan as a guidance block for the autopilot system prompt.
@@ -59,17 +65,11 @@ func LatestPlan(eventsPath string) (*Plan, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Type != episodic.Plan {
-			continue
-		}
-		var p Plan
-		if err := json.Unmarshal(events[i].Payload, &p); err != nil {
-			return nil, "", fmt.Errorf("bad plan payload: %w", err)
-		}
-		return &p, events[i].ID, nil
+	s, id, err := ReducePlan(events)
+	if err != nil {
+		return nil, "", err
 	}
-	return nil, "", fmt.Errorf("no committed plan in this session — agree one in Discussion and call commit_plan")
+	return s.Plan, id, nil
 }
 
 type StepResult struct {
@@ -117,7 +117,22 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 	}
 	defer func() { finish(result, runErr) }()
 	wr := h.writer
+	if _, err := requireCurrentPlan(l.path(sessionID), plan); err != nil {
+		return nil, err
+	}
 	original := taskBrief(l.path(sessionID))
+	deliveryBoundary, err := planDeliveryAdmission(l.path(sessionID), plan, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if deliveryBoundary != "" {
+		if _, err := wr.Append(episodic.Note, map[string]string{"kind": "legacy_delivery_order_unvalidated", "text": deliveryBoundary}); err != nil {
+			return nil, err
+		}
+	}
+	// The same effective snapshot is refreshed in place after a guidance
+	// amendment; neither the supervisor nor the running recovery budgets restart.
+	sup.Plan = plan
 	_, notes, err := l.prepareRunRegistry(ctx, sessionID, original)
 	if err != nil {
 		return nil, err
@@ -165,7 +180,8 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 			// Revisions may invalidate dependencies after admission. Never
 			// silently widen the selection to repair that changed foundation.
 			for j := 0; j < idx; j++ {
-				if sup.Steps[j].Status != "passed" {
+				repairingSelected := sup.Steps[j].Status == "needs_reverify" && scope.includes(j) && st.Verdict != nil && !st.Verdict.Pass
+				if sup.Steps[j].Status != "passed" && !repairingSelected {
 					st.Reason = fmt.Sprintf("Selected execution paused: step %d needs unfinished step %d first.", idx+1, j+1)
 					handback = true
 					break
@@ -188,19 +204,58 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 		h.mu.Lock()
 		h.state.Step = idx
 		h.mu.Unlock()
+		if st.Status == "needs_reverify" {
+			// Reopening a saved run must not ask the model to rebuild work
+			// merely because its evidence was invalidated before interruption.
+			rv := l.verifyStep(ctx, wr, sessionID, idx, plan.Steps[idx].Verify)
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			st.Verdict = &rv
+			if rv.Pass {
+				st.Status = "passed"
+			} else {
+				st.Status = "blocked"
+				st.Reason = "Stale evidence recheck failed: " + rv.Evidence
+				handback = true
+			}
+			if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+				return nil, err
+			}
+			if handback || single {
+				break
+			}
+			continue
+		}
 		st.Status = "running"
+		baseRegistry := h.registry
+		attemptCtx, recoveryBrief, err := l.prepareRecovery(ctx, sessionID, plan, sup, idx)
+		if err != nil {
+			return nil, err
+		}
+		// A step may modify a shared source even if it subsequently crashes.
+		// Invalidate the old evidence before model execution, not after success.
+		stale := invalidateSharedEvidence(sup, idx)
 		if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
 			return nil, err
 		}
-		summary, stepErr := l.runStep(ctx, wr, sessionID, systemPrompt, ModeByName("autopilot"), plan, idx, pulls,
+		summary, stepErr := l.runStep(attemptCtx, wr, sessionID, systemPrompt, ModeByName("autopilot"), plan, idx, pulls,
 			StepPrompt{Index: idx, Rev: st.Rev, Step: plan.Steps[idx], Verify: plan.Steps[idx].Verify,
-				Context: stepRunContext(sup, idx, steer) + "\n" + st.Reason})
+				Context:         stepRunContext(sup, idx, steer) + "\n" + st.Reason + "\n" + recoveryBrief,
+				RecoveryCanSkip: steer == "" && st.Rev == 0 && st.Verdict != nil && !st.Verdict.Pass && st.Verdict.VerificationReview == nil && st.Verdict.Check != "revision requested"})
+		h.registry = baseRegistry
+		var snapshotFailure *planSnapshotError
+		if errors.As(stepErr, &snapshotFailure) {
+			return nil, stepErr
+		}
 		if ctx.Err() != nil || h.killed.Load() {
 			st.Status = "pending"
 			_ = l.saveSupervisor(wr, sessionID, sup)
 			return &Result{StopReason: "cancelled", Reply: "Cancelled; completed files are retained."}, ctx.Err()
 		}
 		var requested *revisionRequest
+		var reviewRequested *verificationReviewRequest
+		errors.As(stepErr, &reviewRequested)
 		needs := -1
 		if errors.As(stepErr, &requested) {
 			needs = requested.target
@@ -217,9 +272,14 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 			if err := h.boundary(ctx); err != nil {
 				return nil, err
 			}
-			verdict = l.verifyStep(ctx, wr, sessionID, idx, plan.Steps[idx].Verify)
-			if stepErr != nil {
-				verdict.Evidence = "Execution stopped: " + stepErr.Error() + "\n" + verdict.Evidence
+			verdict = l.verifyStep(attemptCtx, wr, sessionID, idx, plan.Steps[idx].Verify)
+			if reviewRequested != nil {
+				if err := persistVerificationReview(wr, reviewRequested, verdict); err != nil {
+					return nil, err
+				}
+				verdict.VerificationReview = reviewRequested.Review
+			} else {
+				withExecutionStop(&verdict, stepErr)
 			}
 		}
 		if ctx.Err() != nil {
@@ -228,6 +288,50 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 			return nil, ctx.Err()
 		}
 		dec := sup.Record(idx, verdict, needs)
+		var amendmentStop *planAmendmentLimit
+		if errors.As(stepErr, &amendmentStop) {
+			st.Status, st.Reason = "blocked", amendmentStop.Error()
+			dec.HandBack, dec.Action = true, "blocked"
+		}
+		var boundedRecoveryStop *recoveryCycleStop
+		if errors.As(stepErr, &boundedRecoveryStop) && !verdict.Pass {
+			// The checkpoint policy already consumed its bounded repair cycles.
+			// A fresh automatic attempt would erase that limit and repeat the
+			// investigation. Retain evidence and await explicit user recovery.
+			st.Status = "blocked"
+			dec.HandBack = true
+			dec.Action = "blocked"
+		}
+		if dec.Action == "retry" {
+			first = idx
+		}
+		if verdict.Pass && needs < 0 && reviewRequested == nil {
+			for _, prior := range stale {
+				if selected && !scope.includes(prior) {
+					dec.HandBack = true
+					st.Reason = "Shared-file evidence is stale outside the selected scope; run the whole plan to recheck it."
+					continue
+				}
+				if err := h.boundary(ctx); err != nil {
+					return nil, err
+				}
+				rv := l.verifyStep(attemptCtx, wr, sessionID, prior, plan.Steps[prior].Verify)
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				sup.Steps[prior].Verdict = &rv
+				if rv.Pass {
+					sup.Steps[prior].Status = "passed"
+				} else {
+					sup.Steps[prior].Status = "blocked"
+					sup.Steps[prior].Reason = "Recovery shared-file check failed: " + rv.Evidence
+					dec.HandBack = true
+				}
+				if err := l.saveSupervisor(wr, sessionID, sup); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if selected && needs >= 0 && !scope.includes(needs) {
 			// Record has invalidated the target and downstream evidence. Leave
 			// that truth persisted, but require a new explicit scope to fix it.
@@ -284,6 +388,11 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 			handback = true
 			break
 		}
+		if recoveryBrief != "" && verdict.Pass && !single {
+			if err := h.recoveryPhase("continuing"); err != nil {
+				return nil, err
+			}
+		}
 		if single {
 			break
 		}
@@ -296,10 +405,7 @@ func (l *Loop) runPlanFrom(ctx context.Context, sessionID string, plan *Plan, su
 	}
 	results := make([]StepResult, len(plan.Steps))
 	for i, st := range sup.Steps {
-		results[i] = StepResult{Step: st.Title, Status: statusFor(st.Status), Summary: st.Reason}
-		if st.Verdict != nil {
-			results[i].Summary = summaryFor(*st.Verdict, "")
-		}
+		results[i] = StepResult{Step: st.Title, Status: statusFor(st.Status), Summary: stepSummary(st)}
 	}
 	report := renderReport(plan, results, handback)
 	if selected {
@@ -334,12 +440,76 @@ type revisionRequest struct {
 func (r *revisionRequest) Error() string { return r.reason }
 
 func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sid, systemPrompt string, mode Mode, p *Plan, idx int, pulls []memory.Pull, sp StepPrompt) (string, error) {
+	// Every step/retry builds a fresh model window. Its first unqualified
+	// read must start at the beginning, without resetting other run owners.
+	ctx = tools.WithFreshReadCursor(ctx)
 	h := handleOf(ctx)
 	reg := h.registry
-	goal := sp.Text()
+	events, err := episodic.Replay(l.path(sid))
+	if err != nil {
+		return "", err
+	}
+	planID := ""
+	for n := len(events) - 1; n >= 0; n-- {
+		if events[n].Type == episodic.Plan {
+			planID = events[n].ID
+			break
+		}
+	}
+	snapshot, snapshotID, err := ReducePlan(events)
+	if err != nil {
+		return "", err
+	}
+	if snapshotID != planID {
+		return "", &planSnapshotError{"plan snapshot changed before step execution"}
+	}
+	if !samePlanSnapshot(p, snapshot.Plan) {
+		return "", &planSnapshotError{"step plan does not match the current committed snapshot"}
+	}
+	reader, err := newPlanStepReader(planID, p, snapshot.Steps)
+	if err != nil {
+		return "", err
+	}
+	reg, err = reg.WithScopedEntry(tools.Entry{Tool: reader, RiskTier: tools.RiskSafe, Modes: []string{tools.ModeAutopilot}})
+	if err != nil {
+		return "", err
+	}
+	reviewTool := &verificationReviewDispatcher{path: l.path(sid), sessionID: sid, runID: h.state.ID, planID: planID, index: idx}
+	if p.Steps[idx].Verify != nil {
+		reviewTool.original = *p.Steps[idx].Verify
+		reg, err = reg.WithScopedEntry(tools.Entry{Tool: reviewTool, RiskTier: tools.RiskSafe, Modes: []string{tools.ModeAutopilot}})
+		if err != nil {
+			return "", err
+		}
+	}
+	baseRegistry := h.registry
+	adaptationTool := &planAdaptationDispatcher{writer: wr, sessionID: sid, runID: h.state.ID, planID: planID, index: idx, workspace: h.state.Workspace, current: p}
+	reg, err = reg.WithScopedEntry(tools.Entry{Tool: adaptationTool, RiskTier: tools.RiskSafe, Modes: []string{tools.ModeAutopilot}})
+	if err != nil {
+		return "", err
+	}
+	h.registry = reg
+	defer func() { h.registry = baseRegistry }()
+	progress := restoreRecoveryProgress(events, h.state.Workspace, planID, idx, p.Steps[idx])
+	h.mu.Lock()
+	recovering := h.state.RecoveryPhase != ""
+	h.mu.Unlock()
+	goal := effectiveStepPrompt(sp, p, idx, planID, h.state.Workspace)
 	items := []window.Item{
 		{Msg: llm.Message{Role: "system", Content: systemPrompt}, Kind: "system"},
 		{Msg: llm.Message{Role: "user", Content: "Task constraints (do only the active step):\n" + h.brief + "\nPlan: " + p.Title + "\n" + goal}, Kind: "pinned"},
+	}
+	if recovering {
+		if memory := progress.brief(); memory != "" {
+			items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: memory}, Kind: "pinned"})
+		}
+	}
+	planImages, imageErr := taskImages(l.path(sid))
+	if imageErr != nil {
+		return "", imageErr
+	}
+	if len(planImages) > 0 {
+		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: "Images supplied with the planning request:", Images: planImages}, Kind: "pinned"})
 	}
 	if text := wrapReminder(memory.FormatPulls(pulls)); text != "" {
 		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pulls"})
@@ -347,6 +517,39 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sid, systemProm
 	g := newTurnGuardBudget(0, maxStepTime)
 	work := newWorkTracker(h.state.Workspace)
 	extFP, _ := work.fingerprint()
+	initialFP := extFP
+	shapeRetries, inspectionRounds := 0, 0
+	coached := false
+	inspectionExtended := false
+	var cycle *recoveryCycle
+	checkItem := -1
+	focus := newRecoveryFocus()
+	focusItem := -1
+	if recovering && p.Steps[idx].Verify.Validate() == nil {
+		version := recoveryStepVersion(h.state.Workspace, p.Steps[idx])
+		cycle = newRecoveryCycle(version)
+		baseline := l.verifyStep(ctx, wr, sid, idx, p.Steps[idx].Verify)
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		cycle.checked(version, baseline, true)
+		if baseline.Pass && sp.RecoveryCanSkip {
+			return "The current committed check already passes; no repair was needed. Continue only after required shared-file rechecks.", nil
+		}
+		checkItem = len(items)
+		items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: recoveryCheckPrompt(baseline, p.Steps[idx].Verify, true)}, Kind: "pinned"})
+		if !baseline.Pass {
+			text, err := l.focusRecovery(ctx, wr, sid, reg, progress, focus, p.Steps[idx], baseline)
+			if err != nil {
+				return "", err
+			}
+			focusItem = len(items)
+			items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pinned"})
+		}
+		if err := h.recoveryPhase("diagnosing"); err != nil {
+			return "", err
+		}
+	}
 	level := h.thinkingFor(mode.Name, false)
 	seenSteer := map[string]bool{}
 	if events, err := episodic.Replay(l.path(sid)); err == nil {
@@ -368,24 +571,113 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sid, systemProm
 					continue
 				}
 				seenSteer[ev.ID] = true
-				var msg struct{ Text string }
+				var msg UserMessage
 				if json.Unmarshal(ev.Payload, &msg) == nil {
-					items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: msg.Text}, Kind: "pinned", EvtID: ev.ID})
+					images, imageErr := llm.ValidateImages(msg.Images)
+					if imageErr != nil {
+						return "", imageErr
+					}
+					items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: msg.Text, Images: images}, Kind: "pinned", EvtID: ev.ID})
 				}
 			}
 		}
 		fp, _ := work.fingerprint()
 		g.observeWorkspace(fp)
-		if i > g.maxIter+g.iterExts*g.maxIter && fp != extFP && g.extendIter() {
+		boundary := i > g.maxIter+g.iterExts*g.maxIter
+		if cycle != nil {
+			version := recoveryStepVersion(h.state.Workspace, p.Steps[idx])
+			if cycle.due(version, i, boundary) {
+				verdict := l.verifyStep(ctx, wr, sid, idx, p.Steps[idx].Verify)
+				if err := ctx.Err(); err != nil {
+					return "", err
+				}
+				cycle.checked(version, verdict, false)
+				// Keep exactly one pinned check, placed AFTER the repair group.
+				// Replacing the old prompt in place left later obsolete tool
+				// failures looking newer than the authoritative checkpoint.
+				items[checkItem].Kind = "dropped"
+				checkItem = len(items)
+				items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: recoveryCheckPrompt(verdict, p.Steps[idx].Verify, false)}, Kind: "pinned"})
+				text := fmt.Sprintf("Repair check %d/3 still fails: %s. Investigate this result before the next repair; changed output is not proof of improvement.", cycle.failedCycles, clipEvidence(verdict.Evidence))
+				if verdict.Pass {
+					text = "Repair passed the committed check. Required shared-file rechecks, including previously passed later steps, still decide whether the plan continues."
+				}
+				if _, err := wr.Append(episodic.Note, map[string]any{"kind": "recovery_check_checkpoint", "index": idx, "failed_cycles": cycle.failedCycles, "verdict": verdict, "text": text}); err != nil {
+					return "", err
+				}
+				if verdict.Pass {
+					return "Repair passed the committed check; required shared-file rechecks still decide continuation.", nil
+				}
+				if cycle.exhausted() {
+					return "", &recoveryCycleStop{progress.stopDetail("3 repair/check cycles did not pass the committed check; automatic retry paused. Resume retains the evidence and must investigate the latest check")}
+				}
+				focusText, err := l.focusRecovery(ctx, wr, sid, reg, progress, focus, p.Steps[idx], verdict)
+				if err != nil {
+					return "", err
+				}
+				if focusItem >= 0 {
+					items[focusItem].Kind = "dropped"
+				}
+				focusItem = len(items)
+				items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: focusText}, Kind: "pinned"})
+				if err := h.recoveryPhase("diagnosing"); err != nil {
+					return "", err
+				}
+			}
+		}
+		if boundary && cycle != nil && cycle.takeCredit() && g.extendIter() {
+			extFP = fp
+			text := "A changed source version produced a new committed-check result, not a pass. Granting one bounded diagnostic slice; failed repair/check cycles are not reset."
+			items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pinned"})
+			if _, err := wr.Append(episodic.Note, map[string]string{"kind": "recovery_checked_continuation", "text": text}); err != nil {
+				return "", err
+			}
+		}
+		if boundary && !recovering && fp != extFP && g.extendIter() {
 			extFP = fp
 			wr.Append(episodic.Note, map[string]string{"kind": "iteration_checkpoint", "text": "Workspace changed; granting one bounded additional attempt budget."})
+		}
+		if recovering && !inspectionExtended && (cycle == nil || cycle.failedCycles == 0) && i > g.maxIter+g.iterExts*g.maxIter {
+			// Actual newly inspected source can require more than eight calls
+			// before the first safe repair. Keep that same window ONCE, using
+			// one existing extension slot; repeated or stale ranges earn zero.
+			// This is inspection continuity, not a claim of repair progress.
+			if bytes := progress.coverage.freshBytes(); bytes >= 1024 && g.extendIter() {
+				inspectionExtended = true
+				extFP = fp
+				text := fmt.Sprintf("RECOVERY SOURCE CONTINUATION: %d new, current source bytes inspected. Keeping this window for one bounded %d-call slice using an existing extension slot. Do not restart diagnosis; use the acquired source for a targeted repair and verification, or report the precise blocker. Further extensions require changed declared source plus a newly observed committed-check result; all other guards remain active.", bytes, g.maxIter)
+				items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pinned"})
+				if _, err := wr.Append(episodic.Note, map[string]any{"kind": "recovery_source_continuation", "new_source_bytes": bytes, "text": text}); err != nil {
+					return "", err
+				}
+			}
 		}
 		if g.tokensExhausted() && g.extendTokens() {
 			wr.Append(episodic.Note, map[string]string{"kind": "token_checkpoint", "text": "Continuing with an additional bounded token slice."})
 		}
 		if _, detail, tripped := g.preThink(i); tripped {
+			if recovering {
+				detail = progress.stopDetail(detail)
+				return "", &recoveryCycleStop{detail}
+			}
 			return "", fmt.Errorf("guard: %s", detail)
 		}
+		if recovering && !coached && inspectionRounds >= 4 && fp == initialFP {
+			if len(progress.entries) > 0 && progress.newFacts == 0 {
+				return "", &recoveryCycleStop{progress.stopDetail("four recovery rounds repeated retained evidence without new information or a workspace change")}
+			}
+			text := "RECOVERY CHECKPOINT: four model rounds without a workspace change. Acquired evidence is retained across retries. Use the evidence already read. Make one small, targeted structured repair if supported, then check it; otherwise report the exact missing evidence or blocker. Use read's actual returned coverage and next cursor, not the requested range. For edit, use a unique raw source fragment with expected_sha256 from a current read; line-number prefixes are not source. Do not keep rereading the same source or attempt a whole-module rewrite. An identical-current snapshot cannot recover missing code; use recovery_read query to find older recorded source if needed. Do not weaken the committed check."
+			items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pinned"})
+			if _, err := wr.Append(episodic.Note, map[string]string{"kind": "recovery_checkpoint", "text": text}); err != nil {
+				return "", err
+			}
+			coached = true
+		}
+		// Refresh the effective frame without restarting this model window or
+		// its budgets. Include the harness note receipt (not just its child
+		// tool-result ID) so command checks can be cited without journal spelunking.
+		goal = effectiveStepPrompt(sp, p, idx, planID, h.state.Workspace) + adaptationTool.evidencePrompt()
+		items[1].Msg.Content = "Task constraints (do only the active step):\n" + h.brief + "\nPlan: " + p.Title + "\n" + goal
 		msgs, _ := l.compress(ctx, items)
 		specs := reg.Specs(mode.Name)
 		filtered := specs[:0:0]
@@ -399,24 +691,41 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sid, systemProm
 			specs = append(specs, llm.ToolSpec{Type: "function", Function: llm.FunctionSpec{Name: "request_revision", Description: "Stop this step and request a correction to an earlier step. Zero-based target; explain exactly what must change.", Parameters: map[string]any{"type": "object", "properties": map[string]any{"target": map[string]any{"type": "integer", "minimum": 0, "maximum": idx - 1}, "reason": map[string]any{"type": "string"}}, "required": []string{"target", "reason"}}}})
 		}
 		reply, usage, err := l.completeWithRetry(llm.WithThinking(ctx, level), wr, msgs, specs, "", mode.ProseCap)
+		g.addUsage(usage) // retain completed decode effort even if a steer/pause discards the reply
 		if errors.Is(err, errControl) {
 			h.steered.Store(false)
 			i--
 			g.progress()
 			continue
 		}
-		g.addTokens(usage.AnswerTokens())
 		if err != nil {
 			return "", err
 		}
 		if _, err := wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage)); err != nil {
 			return "", err
 		}
-		if reply.Truncated() && level != llm.ThinkingOff {
-			level = llm.StepDown(level)
-			wr.Append(episodic.Note, map[string]string{"kind": "self_correct", "text": "Reasoning budget exhausted; next call uses " + level})
+		if reply.Truncated() {
+			// Empty length-stopped output contains no executable action. Reissue
+			// once without spending the remaining action iterations. Repeating
+			// another long reasoning-only decode cannot repair source.
+			// Token/time guards and the overall model-call telemetry still count.
+			if shapeRetries >= 1 || level == llm.ThinkingOff {
+				if recovering {
+					return "", &recoveryCycleStop{progress.stopDetail("model output limit reached without an answer or tool call; bounded output recovery exhausted")}
+				}
+				return "", fmt.Errorf("model output limit reached without an answer or tool call; bounded output recovery exhausted")
+			}
+			shapeRetries++
+			level = llm.ThinkingOff
+			text := fmt.Sprintf("Output limit reached before an answer or tool call; no action was executed. Bounded output retry %d/1 uses %s thinking. Reasoning and output both count toward the total effort budget. Make one small tool call or complete targeted helper/hunk, not a whole-module reconstruction; if the evidence is insufficient, report a precise blocker.", shapeRetries, level)
+			if _, err := wr.Append(episodic.Note, map[string]string{"kind": "output_retry", "text": text}); err != nil {
+				return "", err
+			}
+			items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: text}, Kind: "pinned"})
+			i--
 			continue
 		}
+		inspectionRounds++
 		if len(reply.ToolCalls) == 0 {
 			if strings.TrimSpace(reply.Content) == "" {
 				return "", fmt.Errorf("model returned no answer or tool call")
@@ -439,21 +748,70 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sid, systemProm
 					return "", &revisionRequest{*r.Target, r.Reason}
 				}
 			}
+			beforeVersion := ""
+			if cycle != nil {
+				beforeVersion = recoveryStepVersion(h.state.Workspace, p.Steps[idx])
+			}
 			out, execErr, eventID := l.executeCall(ctx, wr, reg, specs, mode.Name, tc)
-			items = append(items, window.Item{Msg: llm.Message{Role: "tool", ToolCallID: tc.ID, Content: out}, Kind: "tool", EvtID: eventID})
+			if adaptationTool.stopped != nil {
+				return "", adaptationTool.stopped
+			}
+			if reviewTool.requested != nil {
+				if execErr != nil {
+					return "", execErr
+				}
+				return "", reviewTool.requested
+			}
+			// Retain observations even on the initial attempt: a later retry must
+			// not lose source acquired before the first failure. The journal is
+			// authoritative; this note only indexes bounded, versioned evidence.
+			if err := progress.observe(wr, tc, eventID, out, execErr); err != nil {
+				return "", err
+			}
+			visible := out
+			if eventID != "" {
+				visible = "Evidence receipt: " + eventID + " (journal reference, not source text)\n" + out
+			}
+			items = append(items, window.Item{Msg: llm.Message{Role: "tool", ToolCallID: tc.ID, Content: visible}, Kind: "tool", EvtID: eventID})
+			if adaptationTool.applied != nil {
+				// Refresh exactly the pinned frame and read-only plan snapshot.
+				// g, progress, cycle, model/time budgets and tool history stay live.
+				fresh := adaptationTool.applied
+				*p = *fresh.Plan
+				updated, err := newPlanStepReader(planID, p, fresh.Steps)
+				if err != nil {
+					return "", err
+				}
+				reader.steps = updated.steps
+				adaptationTool.applied = nil
+			}
 			fp, _ = work.fingerprint()
 			g.observeWorkspace(fp)
+			if cycle != nil {
+				// Recovery bash is read-only, but observe content for every tool:
+				// alternate tool names may not bypass the repair/check discipline.
+				version := recoveryStepVersion(h.state.Workspace, p.Steps[idx])
+				if version != beforeVersion {
+					cycle.repair(version, i)
+				}
+			}
 			if execErr != nil {
 				if detail, tripped := g.toolError(tc.Function.Name, out); tripped {
+					if recovering {
+						return "", &recoveryCycleStop{progress.stopDetail(detail)}
+					}
 					return "", fmt.Errorf("%s: %s", detail, out)
 				}
 			} else {
 				g.toolOK(tc.Function.Name)
-				if !g.seenBefore(tc.Function.Name, json.RawMessage(tc.Function.Arguments), out) {
+				if tc.Function.Name != planAdaptationName && !g.seenBefore(tc.Function.Name, json.RawMessage(tc.Function.Arguments), out) {
 					g.progress()
 				}
 			}
 			if detail, tripped := g.repeatedResult(tc.Function.Name, json.RawMessage(tc.Function.Arguments), out); tripped {
+				if recovering {
+					return "", &recoveryCycleStop{progress.stopDetail(detail)}
+				}
 				return "", fmt.Errorf("guard: %s", detail)
 			}
 		}
@@ -463,24 +821,31 @@ func (l *Loop) runStep(ctx context.Context, wr *episodic.Writer, sid, systemProm
 func renderReport(plan *Plan, results []StepResult, handback bool) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Autopilot report — %s\n\n", plan.Title)
-	done, failed, skipped := 0, 0, 0
+	counts := map[string]int{}
 	for i, r := range results {
 		icon := "✓"
 		switch r.Status {
 		case "failed", "blocked":
 			icon = "✗"
-			failed++
+			counts["blocked"]++
 		case "skipped", "pending", "needs_reverify", "unverified":
 			icon = "·"
-			skipped++
+			counts[r.Status]++
 		case "done":
-			done++
+			counts["done"]++
 		default:
 			icon = "·"
+			counts[r.Status]++
 		}
-		fmt.Fprintf(&sb, "%s %d. %s — %s\n   %s\n", icon, i+1, r.Step, r.Status, strings.TrimSpace(r.Summary))
+		fmt.Fprintf(&sb, "%s %d. %s — %s\n   %s\n", icon, i+1, r.Step, planStatusLabel(r.Status), strings.TrimSpace(r.Summary))
 	}
-	fmt.Fprintf(&sb, "\n%d done · %d failed · %d skipped", done, failed, skipped)
+	var totals []string
+	for _, status := range []string{"done", "needs_reverify", "blocked", "running", "verifying", "pending", "unverified", "skipped"} {
+		if counts[status] > 0 {
+			totals = append(totals, fmt.Sprintf("%d %s", counts[status], planStatusLabel(status)))
+		}
+	}
+	sb.WriteString("\n" + strings.Join(totals, " · "))
 	if handback {
 		sb.WriteString("\nWork is paused for a decision. Inspect the failed check or budget stop before retrying or revising the plan.")
 	}
@@ -682,7 +1047,10 @@ func stepRunContext(sup *Supervisor, idx int, steer string) string {
 	if st := sup.Steps[idx]; st.Verdict != nil && !st.Verdict.Pass {
 		parts = append(parts, "Your previous attempt at this step FAILED its check: "+st.Verdict.Check+
 			"\nWhat was observed: "+clipEvidence(st.Verdict.Evidence)+
-			"\nFix that before anything else, then run the check yourself before you stop.")
+			"\nInvestigate this result first. Use read_plan_step for exact saved contracts. Repair the implementation and rerun the unchanged check; if evidence shows the generated criterion conflicts with the task or fixture, use request_verification_review rather than distorting the fixture or metrics.")
+	}
+	if st := sup.Steps[idx]; st.Verdict != nil && st.Verdict.VerificationReview != nil {
+		parts = append(parts, verificationReviewSummary(*st.Verdict)+"\nRetry is not approval of the proposal. The original committed check remains authoritative.")
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -730,6 +1098,9 @@ func statusFor(s string) string {
 // summaryFor prefers what was OBSERVED over what was claimed. The model's own
 // sentence is kept as context, never as the verdict.
 func summaryFor(v Verdict, modelSummary string) string {
+	if v.VerificationReview != nil {
+		return verificationReviewSummary(v)
+	}
 	if v.Pass {
 		if v.Check == "no check declared" {
 			return modelSummary
@@ -737,7 +1108,14 @@ func summaryFor(v Verdict, modelSummary string) string {
 		return "verified: " + v.Check
 	}
 	if v.Evidence != "" {
-		return "check failed (" + v.Check + "): " + clipEvidence(v.Evidence)
+		text := "check failed (" + v.Check + "): " + clipEvidence(v.Evidence)
+		if v.EvidenceEventID != "" {
+			text += "\nFull check evidence: " + v.EvidenceEventID
+		}
+		if v.ExecutionStop != "" {
+			text += "\nExecution stop (separate from the check): " + clipEvidence(v.ExecutionStop)
+		}
+		return text
 	}
 	return "check failed: " + v.Check
 }
@@ -745,7 +1123,14 @@ func summaryFor(v Verdict, modelSummary string) string {
 func clipEvidence(s string) string {
 	s = strings.TrimSpace(s)
 	if len(s) > 300 {
-		return s[:297] + "…"
+		// Prefer an actual diagnostic over a long echoed node -e command.
+		for _, line := range strings.Split(s, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "Error:") || strings.HasPrefix(line, "AssertionError") || strings.HasPrefix(line, "SyntaxError:") || strings.HasPrefix(line, "TypeError:") || strings.HasPrefix(line, "ReferenceError:") {
+				return recoveryExcerpt(line, 300)
+			}
+		}
+		return recoveryExcerpt(s, 300)
 	}
 	return s
 }

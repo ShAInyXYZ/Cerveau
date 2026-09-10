@@ -1,7 +1,6 @@
 package api
 
 import (
-	"cerveau/internal/cores"
 	"cerveau/internal/llm"
 	"context"
 	"crypto/sha1"
@@ -33,17 +32,19 @@ const Version = "0.6.0-alpha"
 var BuildRevision = "development"
 
 type API struct {
-	cfgMu      sync.RWMutex
-	cfg        *config.Config
-	configPath string
-	sess       session.Store
-	http       *http.Client
-	chat       *loop.Loop
-	sctx       *tools.SessionContext
-	ci         *codeintel.Indexer
-	mem        *memory.TSClient
-	started    time.Time
-	idle       *idle.Tracker
+	cfgMu         sync.RWMutex
+	cfg           *config.Config
+	configPath    string
+	sess          session.Store
+	http          *http.Client
+	chat          *loop.Loop
+	sctx          *tools.SessionContext
+	ci            *codeintel.Indexer
+	mem           *memory.TSClient
+	started       time.Time
+	idle          *idle.Tracker
+	idleObserveMu sync.Mutex
+	idleCoreState func(context.Context) idle.State
 
 	wmu     sync.Mutex
 	writers map[string]*episodic.Writer
@@ -193,7 +194,17 @@ type ComponentStatus struct {
 
 func (a *API) Health(w http.ResponseWriter, r *http.Request) {
 	cfg := a.ConfigSnapshot()
-	model := a.ping("model", cfg.Endpoints.Model, "/health")
+	state := a.RefreshIdle(r.Context())
+	model := ComponentStatus{Name: "model", URL: cfg.Endpoints.Model, Detail: "Core is " + string(state)}
+	if a.idle != nil && state == "" {
+		model.Detail = "Core state unknown; model health probe skipped"
+	}
+	// Wired idle tracking requires fresh confirmation that the service is
+	// active. Its remembered display state must not wake a parked socket when
+	// current metadata is unavailable. Unwired deployments retain HTTP probes.
+	if a.idle == nil || state == idle.Active {
+		model = a.ping("model", cfg.Endpoints.Model, "/health")
+	}
 	if model.OK {
 		model.Info = a.probeModelName(cfg.Endpoints.Model)
 		if a.ctxSync != nil {
@@ -219,9 +230,8 @@ func (a *API) Health(w http.ResponseWriter, r *http.Request) {
 	if !a.started.IsZero() {
 		up = time.Since(a.started).Round(time.Second).String()
 	}
-	// What input types the loaded model actually accepts — read straight from the
-	// server's /props (authoritative), not guessed from the model name. Lets the UI
-	// show an attach button only when the model can use the attachment.
+	// Only successful /props reports establish non-text capabilities. Missing
+	// keys mean unknown, not unsupported; model names are not live evidence.
 	var modalities map[string]bool
 	if model.OK {
 		modalities = a.probeModalities(cfg.Endpoints.Model)
@@ -232,7 +242,7 @@ func (a *API) Health(w http.ResponseWriter, r *http.Request) {
 		"modes":      []string{"discussion", "brainstorming", "autopilot"},
 		"model": map[string]any{
 			"name":       model.Info,
-			"modalities": modalities, // {text:true, vision:bool, audio:bool, video:bool}
+			"modalities": modalities, // absent vision/audio/video = unconfirmed
 		},
 		"system": map[string]any{
 			"version":   Version,
@@ -254,38 +264,43 @@ func coreAuth(req *http.Request) {
 	}
 }
 
-// probeModalities reads llama.cpp's /props and reports which input modalities the
-// loaded model supports. Text is always true. Vision/audio/video require the model
-// to have been loaded with the matching projector (--mmproj), which /props reflects.
+// probeModalities preserves true/false only when the running server explicitly
+// reports a boolean in a successful /props response. Missing, null, malformed,
+// unsupported endpoints and transport errors leave capability UNKNOWN (absent).
+// A configured profile or model name does not establish live vision support.
 func (a *API) probeModalities(base string) map[string]bool {
-	out := map[string]bool{"text": true, "vision": false, "audio": false, "video": false}
+	out := map[string]bool{"text": true}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/props", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/props", nil)
+	if err != nil {
+		return out
+	}
 	coreAuth(req)
 	resp, err := a.http.Do(req)
 	if err != nil {
 		return out
 	}
 	defer resp.Body.Close()
-	var props struct {
-		Modalities map[string]bool `json:"modalities"`
-	}
-	if json.NewDecoder(resp.Body).Decode(&props) == nil && len(props.Modalities) > 0 {
-		for k, v := range props.Modalities {
-			out[k] = v
-		}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return out
 	}
-	// No /props (vLLM): the Core's registry entry says whether its vision
-	// tower is loaded — VISION=1 in its profile parameters, or `vision` in
-	// its notes for a hand-written entry. Verified 2026-09-04: this endpoint
-	// read text-only for a Core that was answering image requests.
-	if reg, err := cores.Load(cores.DefaultPath()); err == nil {
-		if c := reg.ByEndpoint(base); c != nil {
-			if c.Params["VISION"] == "1" || strings.Contains(strings.ToLower(c.Model), "vision") {
-				out["vision"] = true
-			}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
+	if err != nil || len(raw) > 64<<10 {
+		return out
+	}
+	var props struct {
+		Modalities map[string]json.RawMessage `json:"modalities"`
+	}
+	if json.Unmarshal(raw, &props) != nil {
+		return out
+	}
+	for _, key := range []string{"vision", "audio", "video"} {
+		value := strings.TrimSpace(string(props.Modalities[key]))
+		if value == "true" {
+			out[key] = true
+		} else if value == "false" {
+			out[key] = false
 		}
 	}
 	return out
@@ -534,14 +549,28 @@ func (a *API) SessionEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) AppendEvent(w http.ResponseWriter, r *http.Request) {
+	if !requireJSON(w, r) {
+		return
+	}
 	id := r.PathValue("id")
 	var body struct {
 		Type    episodic.EventType `json:"type"`
 		Payload json.RawMessage    `json:"payload"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Type == "" {
+	if !decodeBoundedCommand(w, r, &body) {
+		return
+	}
+	if body.Type == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type and payload required"})
 		return
+	}
+	if body.Type == episodic.MsgUser {
+		normalized, err := normalizeUserEventImages(r.Context(), body.Payload)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		body.Payload = normalized
 	}
 	wr, err := a.writer(id)
 	if err != nil {
@@ -612,8 +641,9 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 	// under itself mid-run.
 
 	var body struct {
-		Text string `json:"text"`
-		Mode string `json:"mode"`
+		Text   string      `json:"text"`
+		Mode   string      `json:"mode"`
+		Images []llm.Image `json:"images,omitempty"`
 		// a supervised plan step (RFX_UI planner) is a build task — it runs
 		// on the long turn budget, not the conversational one
 		Step bool `json:"step"`
@@ -622,11 +652,10 @@ func (a *API) Chat(w http.ResponseWriter, r *http.Request) {
 		// changing it needs a restart.
 		Sampling string `json:"sampling,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text required"})
+	if !decodeBoundedCommand(w, r, &body) {
 		return
 	}
-	a.waitCommand(w, r, loop.Command{Kind: "chat", Text: body.Text, Mode: body.Mode, Sampling: body.Sampling})
+	a.waitCommand(w, r, loop.Command{Kind: "chat", Text: body.Text, Images: body.Images, Mode: body.Mode, Sampling: body.Sampling})
 }
 
 func (a *API) Autopilot(w http.ResponseWriter, r *http.Request) {

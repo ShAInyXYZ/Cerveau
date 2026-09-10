@@ -88,7 +88,7 @@ func TestAutopilotFreshWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(res.Reply, "Autopilot report") || !strings.Contains(res.Reply, "1 done") {
+	if !strings.Contains(res.Reply, "Autopilot report") || !strings.Contains(res.Reply, "1 verified") {
 		t.Fatalf("reply = %q", res.Reply)
 	}
 	if firstReq == nil {
@@ -166,7 +166,7 @@ func TestAutopilotHandbackOnFailure(t *testing.T) {
 	if res.StopReason != "plan_blocked" {
 		t.Fatalf("stop = %s", res.StopReason)
 	}
-	if !strings.Contains(res.Reply, "1 failed") || !strings.Contains(res.Reply, "1 skipped") {
+	if !strings.Contains(res.Reply, "1 blocked") || !strings.Contains(res.Reply, "1 not started") {
 		t.Fatalf("reply = %q", res.Reply)
 	}
 }
@@ -320,11 +320,11 @@ func TestAutopilotStopsWhenAStepsOwnCheckFails(t *testing.T) {
 	}
 
 	// It must NOT claim three done just because the model said so each time.
-	if strings.Contains(res.Reply, "3 done") {
+	if strings.Contains(res.Reply, "3 verified") {
 		t.Errorf("a failing check must not read as done:\n%s", res.Reply)
 	}
 	// And it must stop rather than march on to step 3.
-	if !strings.Contains(res.Reply, "1 done") {
+	if !strings.Contains(res.Reply, "1 verified") {
 		t.Errorf("step 1 passed its real check, so it should be done:\n%s", res.Reply)
 	}
 

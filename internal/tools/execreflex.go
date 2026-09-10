@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,7 +36,48 @@ func (t *ExecReflexTool) Schema() map[string]any {
 
 const execDefaultTimeout = 60 * time.Second
 
+// Capture limits protect host memory, independently of the smaller model
+// ingress cap. Drain excess bytes so a child cannot deadlock on a full pipe.
+const execCaptureLimit = 1 << 20
+
+type execCapture struct {
+	buffer   bytes.Buffer
+	exceeded bool
+}
+
+func (b *execCapture) Len() int       { return b.buffer.Len() }
+func (b *execCapture) Bytes() []byte  { return b.buffer.Bytes() }
+func (b *execCapture) String() string { return b.buffer.String() }
+
+func (b *execCapture) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := execCaptureLimit - b.Len()
+	if len(p) > remaining {
+		b.exceeded = true
+		p = p[:remaining]
+	}
+	_, _ = b.buffer.Write(p)
+	return n, nil
+}
+
 func (t *ExecReflexTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
+	allow := append([]string(nil), t.def.Card.Env...)
+	parents, _ := ctx.Value(reflexCardsKey{}).([]rfx.Card)
+	for _, parent := range parents {
+		if !parent.Subprocess {
+			return "", fmt.Errorf("card violation: parent Reflex does not permit exec subprocesses")
+		}
+		var intersection []string
+		for _, name := range allow {
+			for _, permitted := range parent.Env {
+				if name == permitted {
+					intersection = append(intersection, name)
+					break
+				}
+			}
+		}
+		allow = intersection
+	}
 	params := map[string]any{}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &params); err != nil {
@@ -66,14 +109,17 @@ func (t *ExecReflexTool) Execute(ctx context.Context, args json.RawMessage) (str
 
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = t.dir
-	cmd.Env = scrubbedEnv(t.def.Card.Env)
+	cmd.Env = scrubbedEnv(allow)
+	if HumanApproved(ctx) {
+		cmd.Env = append(cmd.Env, "CRV_RFX_HUMAN_APPROVED=1")
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // same kill-tree discipline as bash
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return "", fmt.Errorf("exec %s: stdin: %w", t.def.Name, err)
 	}
-	var stdout, stderr bytes.Buffer
+	var stdout, stderr execCapture
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -110,6 +156,9 @@ func (t *ExecReflexTool) Execute(ctx context.Context, args json.RawMessage) (str
 	}
 
 	out := parseExecOutput(stdout.Bytes())
+	if stdout.exceeded || stderr.exceeded {
+		return out + stderr.String(), fmt.Errorf("exec %s: output limit exceeded (stdout/stderr capped at %d bytes each); inspect effects before retrying", t.def.Name, execCaptureLimit)
+	}
 	if timedOut {
 		return out, fmt.Errorf("exec %s: timed out after %s (killed the whole process group)", t.def.Name, timeout)
 	}
@@ -144,7 +193,24 @@ func parseExecOutput(raw []byte) string {
 func scrubbedEnv(allow []string) []string {
 	names := append([]string{"PATH", "HOME", "LANG"}, allow...)
 	var env []string
+	seen := map[string]bool{}
 	for _, n := range names {
+		// Host-control metadata can never be supplied by ambient environment
+		// or a pack's allowlist. The approved context is the sole source.
+		if strings.HasPrefix(n, "CRV_RFX_") || seen[n] {
+			continue
+		}
+		seen[n] = true
+		if n == "PATH" {
+			// Operator-installed helpers sit beside the host executable. Never
+			// search the session workspace or a pack-provided directory first.
+			path := os.Getenv("PATH")
+			if executable, err := os.Executable(); err == nil {
+				path = filepath.Dir(executable) + string(os.PathListSeparator) + path
+			}
+			env = append(env, "PATH="+path)
+			continue
+		}
 		if v, ok := os.LookupEnv(n); ok {
 			env = append(env, n+"="+v)
 		}

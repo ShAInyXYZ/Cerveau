@@ -3,10 +3,11 @@
   import { tooltip } from '../../kit/tooltip.js';
   import { sessionStore } from '../stores/session.svelte.ts';
   import { ListChecks, ChevronRight, ChevronDown } from 'lucide-svelte';
+  import { planCounts, planStatusLabel } from './planStatus';
 
   let planOpen = $state(true);
  const report=$derived(sessionStore.report);
- const pending=$derived(report?report.steps.filter(s=>s.status!=='done'&&s.status!=='failed'&&s.status!=='blocked').length:0);
+ const counts=$derived(planCounts(report?.steps??[]));
  const finished=$derived(!!report&&report.steps.length>0&&report.done===report.steps.length);
   function stepTone(status: string): 'ok' | 'err' | 'warn' | 'off' {
     if (status === 'done') return 'ok';
@@ -24,23 +25,21 @@
           use:tooltip={planOpen ? 'collapse the plan' : 'show the plan steps'}>
           <ListChecks size={12} />
           <span class="ps-title">{report.title}</span>
-          <span class="ps-counts mono">
-            <span class="c ok">{report.done}</span>
-            {#if report.failed}<span class="c err">{report.failed}</span>{/if}
-            {#if pending}<span class="c dim">{pending}</span>{/if}
-          </span>
-          {#if report.handback}<span class="ps-chip warn">handback</span>{/if}
+          {#if report.handback}<span class="ps-chip warn">needs review</span>{/if}
           {#if planOpen}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
+          <span class="ps-counts">
+            {#each counts as c}<span class="c" class:ok={c.status==='done'} class:err={c.status==='blocked'} class:warn={c.status==='needs_reverify'}>{c.count} {c.label}</span>{/each}
+          </span>
         </button>
         {#if planOpen}
           <ol class="ps-steps">
             {#each report.steps as s, i}
               <li class="ps-step" class:on={s.status === 'done'} class:bad={s.status === 'failed' || s.status === 'blocked'}
-                class:part={s.status === 'partial'}>
+                class:part={s.status === 'needs_reverify'}>
                 <Dot tone={stepTone(s.status)} size={5} />
                 <span class="rnum tag">{String(i + 1).padStart(2, '0')}</span>
                 <span class="ps-name">{s.title}</span>
-                <span class="rstatus label">{s.status}</span>
+                <span class="rstatus" use:tooltip={s.status==='needs_reverify'?'Previously passed; shared-file work requires a fresh check.':s.summary||planStatusLabel(s.status)}>{planStatusLabel(s.status)}</span>
               </li>
             {/each}
           </ol>
@@ -63,10 +62,10 @@
     border-radius: 10px; overflow: hidden;
     background: var(--s1); box-shadow: inset 0 0 0 1px var(--line);
   }
-  .planstrip.done { opacity: .72; }
+  .planstrip.done { background: transparent; box-shadow: none; }
 
   .ps-head {
-    display: flex; align-items: center; gap: 8px; width: 100%;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%;
     padding: 7px 11px; border: none; cursor: pointer;
     background: transparent; color: var(--dim); text-align: left;
   }
@@ -75,8 +74,10 @@
     flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--text);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .ps-counts { display: flex; gap: 6px; font-size: 10px; }
-  .c.ok { color: var(--ok); } .c.err { color: var(--err); } .c.dim { color: var(--dim); }
+  .ps-counts { display: flex; flex-wrap: wrap; gap: 4px 10px; width: 100%; font-size: 11px; color: var(--muted); }
+  .c.ok { color: var(--ok); } .c.err { color: var(--err); } .c.warn { color: var(--warn); }
+  .rstatus { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .ps-step.part .rstatus { color: var(--warn); }
   .ps-chip {
     font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase;
     padding: 2px 6px; border-radius: 4px;
@@ -100,9 +101,9 @@
     flex: 1; min-width: 0; color: var(--muted);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .ps-step.on .ps-name { color: var(--text); }
+  .ps-step.on .ps-name { color: var(--muted); }
   .ps-step.bad .ps-name { color: color-mix(in srgb, var(--err) 80%, var(--text)); }
-  .ps-step.part .ps-name { color: var(--warn); }
+  .ps-step.part .ps-name { color: var(--muted); }
 
   @media (max-width: 640px) {
     /* knobs stack below the bar on narrow screens; the strip goes full width */

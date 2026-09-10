@@ -135,7 +135,7 @@ export const api = {
 };
 
 export type IdleStatus = {
-  state: 'active' | 'warning' | 'parked' | 'waking';
+  state: 'active' | 'warning' | 'parked' | 'waking' | 'unavailable';
   idle_seconds: number;
   park_in_seconds: number;
   enabled: boolean;

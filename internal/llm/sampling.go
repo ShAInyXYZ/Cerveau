@@ -8,12 +8,9 @@ import "strings"
 // temperature meant editing a systemd drop-in and restarting — for a field the
 // API accepts on every single request.
 //
-// The values are measured, not chosen. 0.2 is what every good benchmark run in
-// this project used; a "strict" preset of 0.4, taken from Qwen's chat guidance
-// rather than from anything tested here, lost visibly on all four benchmark
-// projects. Neutral and Creative are deliberately above it for work where the
-// answer is not a single correct one — they have NOT been benchmarked, and are
-// offered as a choice rather than a recommendation.
+// Default defers to the Core. Explicit presets are optional overrides, not
+// proven quality rankings: historical comparisons changed both sampling and
+// harness code, so they cannot isolate sampling's effect.
 type Sampling struct {
 	Name string
 	Temp float64
@@ -21,8 +18,8 @@ type Sampling struct {
 }
 
 // Unset means "send no sampling field at all", so the Core applies the
-// model's own generation_config (Qwen3.8-27B: temperature 1.0, top_p 0.95,
-// top_k 20). It is not the same as temperature 0 — that would be greedy.
+// configured sampling defaults for the served model. Effective values depend
+// on the Core's configuration. This is not temperature 0 (greedy decoding).
 const Unset = -1
 
 var presets = map[string]Sampling{
@@ -34,18 +31,17 @@ var presets = map[string]Sampling{
 	"creative": {"creative", 0.7, 0.9},
 }
 
-// Preset resolves a name. Anything unrecognised falls back to strict: an
-// unknown name is a bug or a typo, and inventing a temperature from it would
-// silently change how the model writes code.
+// Preset resolves a name. Empty or unknown names defer to the Core instead of
+// silently imposing a harness-specific temperature. The settings API rejects
+// unknown names before persistence.
 func Preset(name string) Sampling {
 	if p, ok := presets[strings.ToLower(strings.TrimSpace(name))]; ok {
 		return p
 	}
-	return presets["strict"]
+	return presets["default"]
 }
 
-// PresetNames lists the presets in the order a UI should show them: tightest
-// first, since that is the default and the one that writes code.
+// PresetNames lists Core defaults first, followed by optional overrides.
 func PresetNames() []string { return []string{"default", "strict", "neutral", "creative"} }
 
 // samplingFor applies a per-request override, falling back to the client's

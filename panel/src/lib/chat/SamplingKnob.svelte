@@ -15,8 +15,8 @@
   let open = $state(false);
 
   const TIP: Record<string, string> = {
-    default:  "the model's own settings — nothing sent (temperature 1.0, top_p 0.95, top_k 20)",
-    strict:   'temperature 0.2 — the measured default. Best for code.',
+    default:  'No temperature or top_p override — the Core supplies its configured defaults for this model.',
+    strict:   'temperature 0.2, no top_p override. Optional preset; not proven best for code.',
     neutral:  'temperature 0.55 — looser, for drafting.',
     creative: 'temperature 0.7 — widest spread, when there is no single right answer.'
   };
@@ -73,16 +73,16 @@
   .menu {
     position: absolute; bottom: calc(100% + 7px); left: 0; z-index: var(--z-dropdown);
     min-width: 148px; padding: 4px;
-    background: var(--s2); border: 1px solid var(--line2);
+    background: var(--floating-surface); backdrop-filter: var(--floating-blur); border: 1px solid var(--line2);
     border-radius: 9px; box-shadow: 0 10px 24px -10px rgba(0,0,0,.75);
   }
   .item {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     width: 100%; padding: 7px 9px; border: 0; border-radius: 6px;
-    background: none; color: var(--dim); font: inherit; font-size: 12.5px;
+    background: none; color: var(--muted); font: inherit; font-size: 12.5px;
     cursor: pointer; text-transform: capitalize; text-align: left;
   }
-  .item:hover { background: var(--panel); color: var(--text); }
+  .item:hover { background: var(--s3); color: var(--text); }
   .item.sel { color: var(--accent); }
   .def {
     font-size: 9px; letter-spacing: .07em; text-transform: uppercase;

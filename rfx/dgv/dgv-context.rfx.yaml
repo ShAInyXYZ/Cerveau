@@ -1,0 +1,18 @@
+rfx: 1
+name: dgv-context
+description: Read bounded graph context and hash its mapped source files; changed or incomplete coverage requires source inspection.
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-dgv, context]
+timeout: 25s
+ingress_cap: 25000
+card: {fs: [workspace], network: none, env: [RFX_DGV_CORE], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    name: {type: string, maxLength: 100, description: Graph name from dgv-list.}
+    focus: {type: string, maxLength: 100, description: Optional node ID plus immediate neighbors, or frame ID and members.}
+    limit: {type: integer, minimum: 1, maximum: 30, description: Maximum nodes; defaults to 12.}
+    observed_hash: {type: string, pattern: '^[a-f0-9]{64}$', description: Prior freshness fingerprint for this exact focus and limit; omit on first observation.}
+  required: [name]

@@ -18,6 +18,37 @@ vi.mock('./health.svelte.ts', () => ({
 }));
 
 const settle = () => new Promise(resolve => setTimeout(resolve,0));
+
+test('plan retry explicitly requests recovery and continuation, unlike single step', async () => {
+  const { sessionStore: s } = await import('./session.svelte.ts');
+  api.sessionState.mockResolvedValue({ run: { id: 'old', status: 'suspended' }, plan_state: { done: false, blocked: 2, plan_event_id: 'p1' }, running: false });
+  api.command.mockResolvedValue({ run: { id: 'new', status: 'completed' } });
+  s.select('A'); await settle();
+  await s.retry('old task');
+  expect(api.command).toHaveBeenLastCalledWith('A', expect.objectContaining({ kind: 'step', step: 2, plan_event_id: 'p1', continue_plan: true }));
+  await s.runStep(2);
+  expect(api.command).toHaveBeenLastCalledWith('A', expect.not.objectContaining({ continue_plan: true }));
+});
+
+test('image context is preserved by edit-resend and message retry', async () => {
+  const { sessionStore: s } = await import('./session.svelte.ts');
+  const images = [{ data_url: 'data:image/png;base64,fixture' }];
+  api.sessionState.mockResolvedValue({ messages: [{ id: 'visual', type: 'msg.user', payload: { text: 'look', images } }], running: false });
+  api.rewind.mockResolvedValue({ ok: true }); api.command.mockResolvedValue({ run: { id: 'new', status: 'completed' } });
+  s.select('A'); await settle();
+  await s.editAndResend('visual', 'look closer');
+  expect(api.command).toHaveBeenLastCalledWith('A', expect.objectContaining({ text: 'look closer', images }));
+  await s.retry('look again');
+  expect(api.command).toHaveBeenLastCalledWith('A', expect.objectContaining({ text: 'look again', images }));
+});
+
+test('a manual Reflex incident cannot rerun a completed plan or chat prompt', async () => {
+  const { sessionStore: s } = await import('./session.svelte.ts');
+  api.sessionState.mockResolvedValue({ run: { id: 'rfx', kind: 'reflex', status: 'failed' }, plan_state: { done: true }, running: false });
+  s.select('A'); await settle();
+  expect(await s.retry('old task')).toBe(false);
+  expect(api.command).not.toHaveBeenCalled();
+});
 beforeEach(() => {
   vi.resetModules(); vi.resetAllMocks(); vi.useRealTimers();
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() });

@@ -23,6 +23,14 @@ type Bash struct {
 	dir string
 }
 
+type recoveryShellKey struct{}
+
+// WithRecoveryShell makes built-in bash (including recipes/skills delegating
+// to it) read-only. It is not a sandbox for arbitrary native extension tools.
+func WithRecoveryShell(ctx context.Context) context.Context {
+	return context.WithValue(ctx, recoveryShellKey{}, true)
+}
+
 func NewBash(workspaceRoot string) *Bash {
 	return &Bash{dir: newJail(workspaceRoot).root}
 }
@@ -31,6 +39,7 @@ func (t *Bash) Name() string { return "bash" }
 
 func (t *Bash) Description() string {
 	return "Run a one-shot shell command in the workspace (30s–3min, output capped). " +
+		"Pipelines use pipefail so a failing check stays failed when output is filtered. " +
 		"Do NOT start long-lived servers here (npm run dev, vite, watchers) — they never " +
 		"return; the call will time out and be killed. Build/one-shot commands only."
 }
@@ -61,7 +70,21 @@ func (t *Bash) Execute(ctx context.Context, args json.RawMessage) (string, error
 		return "", fmt.Errorf("refused: bash cannot host servers (the process group is killed when the call ends). For a STATIC site: use the serve tool. For a vite/npm DEV server: build once with bash (e.g. npx vite build), then serve the output with the serve tool: serve {\"action\":\"start\",\"dir\":\"<project>/dist\"}")
 	}
 
-	cmd := exec.Command("bash", "-c", a.Command)
+	// Preserve a check's failure when its output is piped through tail/tee.
+	// Share these arguments with recovery so both paths report the same status.
+	shellArgs := []string{"-o", "pipefail", "-c", a.Command}
+	cmd := exec.Command("bash", shellArgs...)
+	if protected, _ := ctx.Value(recoveryShellKey{}).(bool); protected {
+		isolation, err := exec.LookPath("bwrap")
+		if err != nil {
+			return "", fmt.Errorf("recovery shell unavailable: bubblewrap required; no unprotected fallback. Use structured read/edit tools")
+		}
+		// Read-only host filesystem, private scratch and no network: shell
+		// redirection, rename, interpreters and child processes obey the same
+		// mount boundary. A failed namespace setup never executes plain bash.
+		isolationArgs := []string{"--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--ro-bind", t.dir, t.dir, "--unshare-net", "--die-with-parent", "--", "bash"}
+		cmd = exec.Command(isolation, append(isolationArgs, shellArgs...)...)
+	}
 	cmd.Dir = t.dir
 	// Own process group so we can kill the WHOLE tree on timeout. A command that
 	// backgrounds a long-lived child (e.g. `npm run dev &`) otherwise leaks that

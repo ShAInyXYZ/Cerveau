@@ -41,7 +41,7 @@ func (t *CheckPage) Description() string {
 		"served page. IF THE PAGE USES ES MODULES (<script type=\"module\">, import), path: WILL NOT WORK — " +
 		"the browser blocks module loading over file://, so the page renders nothing. Start the serve tool " +
 		"and pass its url instead; eval works there too. expect: optional element tag/id to confirm " +
-		"rendered (e.g. \"canvas\" or \"#board\")."
+		"rendered (e.g. \"canvas\" or \"#board\"). Reports wall-clock timeout/process failure and loading stages separately from a failed assertion. Missing evidence is not a clean page load. Use serve action=probe to inspect an owned local server; recovery bash cannot reach host localhost."
 }
 
 func (t *CheckPage) Schema() map[string]any {
@@ -85,13 +85,21 @@ func checkPageHostAllowed(ctx context.Context, rawURL string) bool {
 	return true
 }
 
-// findChrome locates a usable headless chromium. Playwright's cache first
-// (present on dev machines), then system binaries.
+// Prefer the installed dedicated headless shell for the CLI dump-dom protocol.
+// On LABRIG, full Chromium 1234 ran trivial evals but never completed dump-dom;
+// the same-version shell completed the identical fixture. An explicit override
+// always wins, and a failed invocation never silently switches engines.
 func findChrome() string {
 	if env := os.Getenv("CRV_CHROME"); env != "" {
 		return env
 	}
 	home, _ := os.UserHomeDir()
+	if matches, _ := filepath.Glob(filepath.Join(home, ".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell")); len(matches) > 0 {
+		return matches[len(matches)-1]
+	}
+	if matches, _ := filepath.Glob(filepath.Join(home, ".cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell")); len(matches) > 0 {
+		return matches[len(matches)-1]
+	}
 	if matches, _ := filepath.Glob(filepath.Join(home, ".cache/ms-playwright/chromium-*/chrome-linux*/chrome")); len(matches) > 0 {
 		return matches[len(matches)-1] // highest version sorts last
 	}
@@ -177,7 +185,11 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 
 	cctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, chrome,
+	budget := 25 * time.Second
+	if deadline, ok := cctx.Deadline(); ok {
+		budget = time.Until(deadline)
+	}
+	result := runBrowserProcess(cctx, chrome, []string{
 		"--headless=new", "--no-sandbox",
 		// software WebGL: --disable-gpu would make every Three.js/canvas app
 		// report "WebGL context could not be created" — a false failure.
@@ -185,20 +197,22 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 		"--enable-logging=stderr", "--v=0",
 		"--virtual-time-budget=12000", // load + the 2.5 s settle + up to 4 s of awaited eval
 		"--dump-dom", target,
-	)
-	var out, errb strings.Builder
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	_ = cmd.Run() // chrome's exit code is unreliable; the output is the signal
-
-	dom := out.String()
+	})
+	dom := result.Stdout
+	diagnostics := BrowserDiagnostics{Status: "completed", Browser: chrome, ElapsedMS: result.Elapsed.Milliseconds(), TimeoutMS: budget.Milliseconds(), DOMObserved: strings.Contains(strings.ToLower(dom), "<body"), EvalRequested: a.Eval != "", Stages: browserStages(result.Stderr), OutputTruncated: result.StdoutTruncated || result.StderrTruncated}
+	if len(diagnostics.Stages) > 0 {
+		diagnostics.LastStage = diagnostics.Stages[len(diagnostics.Stages)-1]
+	}
 	var report strings.Builder
 
 	// console errors + uncaught exceptions from the stderr log
 	seen := map[string]bool{}
 	errCount := 0
-	for _, m := range consoleLine.FindAllStringSubmatch(errb.String(), -1) {
+	for _, m := range consoleLine.FindAllStringSubmatch(result.Stderr, -1) {
 		msg, src, line := unleak(m[1]), unleak(m[2]), m[3]
+		if strings.Contains(msg, evalMarker) || strings.Contains(msg, pageStageMarker) {
+			continue
+		}
 		// trim the workspace prefix off file:// sources for readability
 		src = strings.TrimPrefix(src, "file://"+t.j.root+"/")
 		key := msg + src + line
@@ -214,22 +228,39 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 
 	// pull the eval result out of the console stream
 	evalResult := ""
-	for _, ln := range strings.Split(errb.String(), "\n") {
+	for _, ln := range strings.Split(result.Stderr, "\n") {
 		if i := strings.Index(ln, evalMarker); i >= 0 {
 			evalResult = unleak(strings.TrimSpace(ln[i+len(evalMarker):]))
 		}
 	}
+	diagnostics.EvalObserved = evalResult != ""
+	switch {
+	case result.TimedOut:
+		diagnostics.Status = "timeout"
+	case ctx.Err() != nil:
+		diagnostics.Status = "cancelled"
+	case result.Err != nil:
+		diagnostics.Status = "process_failed"
+	case hasBrowserStage(diagnostics.Stages, "eval_timed_out"):
+		diagnostics.Status = "eval_timeout"
+	case !diagnostics.DOMObserved:
+		diagnostics.Status = "missing_dom"
+	case a.Eval != "" && evalResult == "":
+		diagnostics.Status = "missing_eval"
+	}
 
 	var final strings.Builder
+	rawDiagnostics, _ := json.Marshal(diagnostics)
+	final.WriteString(browserDiagnosticsPrefix + string(rawDiagnostics) + "\n")
 	if a.Eval != "" {
 		if evalResult != "" {
 			fmt.Fprintf(&final, "eval result: %s\n", evalResult)
 		} else {
-			final.WriteString("eval produced no result — the expression may have thrown before the page settled.\n")
+			final.WriteString("eval produced no result; evaluation is unverified.\n")
 		}
 	}
 	if errCount == 0 {
-		final.WriteString("no console errors — the page loaded cleanly.\n")
+		final.WriteString("no console errors observed in captured output; this alone does not prove successful loading.\n")
 	} else {
 		fmt.Fprintf(&final, "%d console message(s)/error(s):\n", errCount)
 		final.WriteString(report.String())
@@ -237,8 +268,16 @@ func (t *CheckPage) Execute(ctx context.Context, args json.RawMessage) (string, 
 			fmt.Fprintf(&final, "  ...and %d more\n", errCount-12)
 		}
 	}
-	if dom == "" || !strings.Contains(dom, "<body") {
-		final.WriteString("WARNING: the page produced no DOM — it may have failed before rendering.\n")
+	if diagnostics.Status != "completed" {
+		hint := browserIncompleteHint(diagnostics)
+		final.WriteString(hint + "\n")
+		if result.Err != nil {
+			fmt.Fprintf(&final, "browser process result: %v\n", result.Err)
+		}
+		if stderr := strings.TrimSpace(result.Stderr); stderr != "" {
+			final.WriteString("Browser stderr (bounded; includes process diagnostics):\n" + unleak(CapIngress(stderr, 6000)) + "\n")
+		}
+		return final.String(), fmt.Errorf("browser verification unavailable (%s)", diagnostics.Status)
 	}
 	return checkExpect(final.String(), dom, a.Expect), nil
 }
@@ -374,7 +413,11 @@ func (t *CheckPage) harnessBeside(orig, expr string) (string, func(), error) {
 
 	probe := `
 <script>
+console.log(` + jsString(pageStageMarker+" harness_installed") + `);
+document.addEventListener('DOMContentLoaded', function(){ console.log(` + jsString(pageStageMarker+" dom_content_loaded") + `); }, {once:true});
+window.addEventListener('load', function(){ console.log(` + jsString(pageStageMarker+" window_loaded") + `); }, {once:true});
 setTimeout(function () {
+  console.log(` + jsString(pageStageMarker+" eval_started") + `);
   // The expression may return a Promise (a test that dispatches events and
   // waits for frames). It is awaited, up to 4 s, so an async test reports
   // its real outcome instead of "scheduled" — a crane build spent eight
@@ -382,6 +425,7 @@ setTimeout(function () {
   function report(v) {
     if (v && typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = String(v); } }
     console.log(` + jsString(evalMarker) + ` + ' ' + v);
+    console.log(` + jsString(pageStageMarker+" eval_finished") + `);
   }
   var v;
   try {
@@ -396,8 +440,12 @@ setTimeout(function () {
       } else { throw se; }
     }
     if (v && typeof v.then === 'function') {
-      var timer = new Promise(function (res) { setTimeout(function () { res('EVAL ERROR: promise did not settle within 4 s'); }, 4000); });
-      Promise.race([v, timer]).then(report, function (e) { report('EVAL ERROR: ' + (e && e.message ? e.message : String(e))); });
+      var timerID;
+      var timer = new Promise(function (res) { timerID = setTimeout(function () {
+        console.log('` + pageStageMarker + ` eval_timed_out');
+        res('EVAL ERROR: promise did not settle within 4 s');
+      }, 4000); });
+      Promise.race([v, timer]).then(function (value) { clearTimeout(timerID); report(value); }, function (e) { clearTimeout(timerID); report('EVAL ERROR: ' + (e && e.message ? e.message : String(e))); });
       return;
     }
   } catch (e) {

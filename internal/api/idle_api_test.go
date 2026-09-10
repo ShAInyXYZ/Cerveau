@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"cerveau/internal/config"
 	"cerveau/internal/idle"
 )
 
@@ -36,6 +38,48 @@ func TestIdleStatusEndpoint(t *testing.T) {
 	}
 	if s.State != idle.Active || !s.Enabled {
 		t.Fatalf("got state=%q enabled=%v", s.State, s.Enabled)
+	}
+}
+
+func TestIdleStatusReconcilesConfirmedParkOnEveryReload(t *testing.T) {
+	a, tr, _ := withIdle(t)
+	observed := idle.Parked
+	a.idleCoreState = func(context.Context) idle.State { return observed }
+	for i := 0; i < 2; i++ {
+		rec := httptest.NewRecorder()
+		a.IdleStatus(rec, httptest.NewRequest("GET", "/api/idle", nil))
+		var s idle.Status
+		if err := json.Unmarshal(rec.Body.Bytes(), &s); err != nil {
+			t.Fatal(err)
+		}
+		if s.State != idle.Parked || s.ParkInSeconds != -1 {
+			t.Fatalf("reload: %+v", s)
+		}
+	}
+	observed = idle.Waking
+	a.RefreshIdle(context.Background())
+	if tr.Status().State != idle.Waking {
+		t.Fatal("wake not reflected")
+	}
+	observed = idle.Active
+	a.RefreshIdle(context.Background())
+	if tr.Status().State != idle.Active {
+		t.Fatal("ready not reflected")
+	}
+}
+
+func TestIdleHealthDoesNotWakeParkedCore(t *testing.T) {
+	requests := 0
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++; w.Write([]byte(`{}`)) }))
+	defer core.Close()
+	a, _, _ := withIdle(t)
+	a.cfg = &config.Config{}
+	a.cfg.Endpoints.Model = core.URL
+	a.http = core.Client()
+	a.idleCoreState = func(context.Context) idle.State { return idle.Parked }
+	a.Health(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/health", nil))
+	if requests != 0 {
+		t.Fatal("UI health polling contacted a parked Core")
 	}
 }
 

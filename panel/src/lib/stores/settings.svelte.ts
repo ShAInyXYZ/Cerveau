@@ -2,7 +2,7 @@ import { j, jpost } from '../api';
 type Thinking={mode:string;effort:string;modes:string[];efforts:string[]};
 type Sampling={active:string;presets:string[]};
 let thinking=$state<Thinking>({mode:'plan',effort:'low',modes:[],efforts:[]});
-let sampling=$state<Sampling>({active:'strict',presets:[]});
+let sampling=$state<Sampling>({active:'default',presets:[]});
 let error=$state(''),busy=$state(false);
 export const settingsStore={
  get thinking(){return thinking;},get sampling(){return sampling;},get error(){return error;},get busy(){return busy;},

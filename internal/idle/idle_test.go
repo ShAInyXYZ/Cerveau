@@ -97,3 +97,51 @@ func TestWakingOutranksParked(t *testing.T) {
 		t.Fatalf("state = %q, want %q", s.State, Waking)
 	}
 }
+
+func TestObservedParkClosesWarningWithoutResettingActiveTimer(t *testing.T) {
+	tr := New(cfg(time.Hour, 15*time.Minute), filepath.Join(t.TempDir(), "park.json"))
+	tr.last = time.Now().Add(-2 * time.Hour)
+	tr.Observe(Active)
+	if tr.Status().State != Warning {
+		t.Fatal("active polls reset idle timer")
+	}
+	tr.Observe(Parked)
+	if tr.Status().State != Parked || tr.Tick() {
+		t.Fatal("confirmed park was not retained")
+	}
+	tr.Observe("")
+	if tr.Status().State != Parked {
+		t.Fatal("missing observation fabricated a wake")
+	}
+	tr.Observe(Waking)
+	if tr.Status().State != Waking || tr.Tick() {
+		t.Fatal("waking Core can be re-parked")
+	}
+	tr.Observe(Active)
+	if tr.Status().State != Active || tr.Status().IdleSeconds > 1 {
+		t.Fatal("wake did not reset timer")
+	}
+	tr.Observe(Unavailable)
+	if tr.Status().State == Parked || tr.Tick() {
+		t.Fatal("failure represented as successful idle")
+	}
+}
+
+func TestServiceStateNeedsConfirmedStop(t *testing.T) {
+	for _, tc := range []struct {
+		props string
+		want  State
+	}{
+		{"LoadState=loaded\nActiveState=inactive\nSubState=dead\nMainPID=0\nResult=success", Parked},
+		{"LoadState=loaded\nActiveState=active\nSubState=running\nMainPID=123", Active},
+		{"LoadState=loaded\nActiveState=activating", Waking},
+		{"LoadState=loaded\nActiveState=failed", Unavailable},
+		{"LoadState=not-found\nActiveState=inactive", ""},
+		{"LoadState=loaded\nActiveState=deactivating", ""},
+		{"", ""},
+	} {
+		if got := serviceState(tc.props); got != tc.want {
+			t.Fatalf("%q => %q, want %q", tc.props, got, tc.want)
+		}
+	}
+}

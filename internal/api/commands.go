@@ -15,8 +15,7 @@ func (a *API) Command(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var cmd loop.Command
-	if json.NewDecoder(r.Body).Decode(&cmd) != nil {
-		writeJSON(w, 400, map[string]string{"error": "invalid command JSON"})
+	if !decodeBoundedCommand(w, r, &cmd) {
 		return
 	}
 	id := r.PathValue("id")

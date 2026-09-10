@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,40 @@ func TestBashKeepsOutputOnFailure(t *testing.T) {
 	// the command's own stderr must survive alongside the exit error
 	if want := "boom"; !contains(out, want) {
 		t.Fatalf("output %q missing %q", out, want)
+	}
+}
+
+func TestBashPipelineStatus(t *testing.T) {
+	for _, recovery := range []bool{false, true} {
+		t.Run(fmt.Sprintf("recovery=%t", recovery), func(t *testing.T) {
+			ctx := context.Background()
+			if recovery {
+				if _, err := exec.LookPath("bwrap"); err != nil {
+					t.Skip("bubblewrap unavailable; production fails closed")
+				}
+				ctx = WithRecoveryShell(ctx)
+			}
+			for _, test := range []struct {
+				name, command, output string
+				fail                  bool
+			}{
+				{"failed_check_through_tail", "(printf 'RangeError: Maximum call stack size exceeded\\n' >&2; exit 7) 2>&1 | tail -15", "RangeError: Maximum call stack size exceeded", true},
+				{"successful_pipeline", "printf 'checks passed\\n' | tail -15", "checks passed", false},
+				{"failed_filter", "printf 'checks passed\\n' | grep missing", "", true},
+				{"explicit_recovery", "(exit 7) | tail -15 || printf 'expected failure handled\\n'", "expected failure handled", false},
+				{"no_implicit_errexit", "false; printf 'continued\\n'", "continued", false},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					out, err := NewBash(t.TempDir()).Execute(ctx, bashArgs(test.command))
+					if (err != nil) != test.fail || !strings.Contains(out, test.output) {
+						t.Fatalf("output=%q error=%v; want output containing %q and failure=%t", out, err, test.output, test.fail)
+					}
+					if test.name == "failed_check_through_tail" && !strings.Contains(err.Error(), "exit status 7") {
+						t.Fatalf("lost check exit code: %v", err)
+					}
+				})
+			}
+		})
 	}
 }
 

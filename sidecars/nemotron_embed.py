@@ -2,19 +2,30 @@
 """
 Nemotron-3-Embed-1B sidecar — OpenAI-compatible /v1/embeddings on :8081.
 
-cerveau's Typesense calls this to embed memory content (server-side remote
-embedding). Not called by the Go core directly.
+Typesense calls the legacy route to embed memory documents. The Go memory
+client calls the versioned route directly for typed retrieval-query vectors.
 
 Run:
     python3 sidecars/nemotron_embed.py
     # or: uvicorn nemotron_embed:app --host 127.0.0.1 --port 8081
 
 Model dir defaults to ~/.crv/models/Nemotron-3-Embed-1B (override with EMBED_MODEL).
-Passages are prefixed 'passage: ' per the model's sentence-transformers config;
-queries should be prefixed 'query: ' by the caller (Typesense sends raw content
-as passages, which is correct for indexing).
+The legacy /v1/embeddings route preserves its document-vector behavior:
+every raw input receives 'passage: '. It must not embed retrieval queries.
+The versioned /v2/embeddings route takes an explicit input_type and validates
+the model metadata before applying 'query: ' or 'passage: '. The Go client uses
+query vectors from this route against the unchanged Typesense document index.
 """
 import os
+from typing import Literal
+
+from embedding_conventions import (
+    DOCUMENT_CONVENTION,
+    MODEL_V2,
+    QUERY_CONVENTION,
+    prepare_inputs,
+    validate_model_convention,
+)
 
 # CPU BY DEFAULT. The GPU is fully committed to the vLLM Core (0.90 util), and
 # an embedder sharing it OOM'd on any realistic batch: a single short string
@@ -37,7 +48,7 @@ if EMBED_DEVICE == "cpu":
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import torch
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 
@@ -67,6 +78,12 @@ class EmbedRequest(BaseModel):
     model: str | None = None
 
 
+class TypedEmbedRequest(EmbedRequest):
+    input_type: Literal["query", "document"]
+    model: Literal["nemotron-embed-v2"] = MODEL_V2
+    document_convention: Literal["nemotron3-passage-v1"] = DOCUMENT_CONVENTION
+
+
 @app.get("/health")
 def health():
     return {
@@ -74,6 +91,9 @@ def health():
         "model": MODEL_DIR,
         "device": EMBED_DEVICE,
         "threads": EMBED_THREADS if EMBED_DEVICE == "cpu" else None,
+        "query_endpoint": "/v2/embeddings",
+        "document_convention": DOCUMENT_CONVENTION,
+        "query_convention": QUERY_CONVENTION,
     }
 
 
@@ -104,6 +124,30 @@ def embeddings(req: EmbedRequest):
         "object": "list",
         "data": data,
         "model": req.model or "nemotron-embed",
+        "usage": {"prompt_tokens": 0, "total_tokens": 0},
+    }
+
+
+@app.post("/v2/embeddings")
+def typed_embeddings(req: TypedEmbedRequest):
+    try:
+        validate_model_convention(MODEL_DIR)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="embedding convention validation failed") from exc
+    texts = [req.input] if isinstance(req.input, str) else req.input
+    # The document branch is byte-for-byte compatible with /v1's old prefix
+    # and encode call. Only the query branch changes query semantics.
+    prefixed = prepare_inputs(texts, req.input_type)
+    vecs = model().encode(prefixed, normalize_embeddings=True)
+    return {
+        "object": "list",
+        "data": [
+            {"object": "embedding", "index": i, "embedding": v.tolist()}
+            for i, v in enumerate(vecs)
+        ],
+        "model": MODEL_V2,
+        "embedding_convention": QUERY_CONVENTION if req.input_type == "query" else DOCUMENT_CONVENTION,
+        "document_convention": DOCUMENT_CONVENTION,
         "usage": {"prompt_tokens": 0, "total_tokens": 0},
     }
 

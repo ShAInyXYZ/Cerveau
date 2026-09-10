@@ -20,12 +20,13 @@ type Item struct {
 	Kind  string
 }
 type Report struct {
-	Tokens    int    `json:"tokens"`
-	Budget    int    `json:"budget"`
-	Zone      string `json:"zone"`
-	Demoted   int    `json:"demoted"`
-	Trimmed   int    `json:"trimmed"`
-	Compacted int    `json:"compacted"`
+	Tokens       int    `json:"tokens"`
+	Budget       int    `json:"budget"`
+	Zone         string `json:"zone"`
+	Demoted      int    `json:"demoted"`
+	Trimmed      int    `json:"trimmed"`
+	Compacted    int    `json:"compacted"`
+	VisionTokens int    `json:"vision_tokens,omitempty"`
 }
 type Manager struct {
 	mu                        sync.Mutex
@@ -83,7 +84,7 @@ func (m *Manager) BuildWithBrief(ctx context.Context, items []Item, brief func(i
 	usable := int(float64(budget-reserve) * .75)
 	out := RepairToolGroups(items)
 	count := func(msg llm.Message) int {
-		n := counter.Count(ctx, msg.Content) + 4
+		n := counter.Count(ctx, msg.Content) + 4 + len(msg.Images)*llm.VisionTokensPerImage
 		for _, tc := range msg.ToolCalls {
 			n += counter.Count(ctx, tc.Function.Arguments) + counter.Count(ctx, tc.Function.Name)
 		}
@@ -167,6 +168,7 @@ func (m *Manager) BuildWithBrief(ctx context.Context, items []Item, brief func(i
 	for _, it := range out {
 		if it.Kind != "dropped" {
 			msgs = append(msgs, it.Msg)
+			rep.VisionTokens += len(it.Msg.Images) * llm.VisionTokensPerImage
 		}
 	}
 	rep.Tokens = total()
@@ -211,17 +213,27 @@ func RepairToolGroups(items []Item) []Item {
 	return out
 }
 
-// Admit checks the ACTUAL serialized request envelope and effective generation
-// reservation, after compaction. Approximate tokenizer counts retain 10% headroom.
+// Admit checks the text/schema envelope plus an explicit conservative vision
+// reservation, after compaction. Base64 is not language-tokenizer input.
+// Approximate counts retain another 10% headroom.
 func (m *Manager) Admit(ctx context.Context, msgs []llm.Message, specs []llm.ToolSpec, reserve int) error {
+	textMessages := append([]llm.Message(nil), msgs...)
+	visionTokens := 0
+	for i, msg := range msgs {
+		if _, err := llm.ValidateImagesContext(ctx, msg.Images); err != nil {
+			return err
+		}
+		visionTokens += len(msg.Images) * llm.VisionTokensPerImage
+		textMessages[i].Images = nil
+	}
 	raw, err := json.Marshal(struct {
 		Messages []llm.Message  `json:"messages"`
 		Tools    []llm.ToolSpec `json:"tools"`
-	}{msgs, specs})
+	}{textMessages, specs})
 	if err != nil {
 		return err
 	}
-	n := m.counter.Count(ctx, string(raw))
+	n := m.counter.Count(ctx, string(raw)) + visionTokens
 	if n+n/10+reserve > m.Budget() {
 		return fmt.Errorf("context blocked: request estimate %d + reply reserve %d exceeds safe capacity %d; shorten context or reduce effort", n, reserve, m.Budget())
 	}

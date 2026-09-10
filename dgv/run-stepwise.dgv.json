@@ -2,8 +2,8 @@
   "dgv": 1,
   "meta": {
     "title": "Stepwise runs — one step, one run, one verdict",
-    "description": "0.6 LABRIG: detached admission, plan-bound supervisor state, validated checks and revision ordering, one-prefix UI projection. Planner1.5.0 embedded atomically in host; installed copies untouched. Bounded real W8A16 pause, steer, crash/reopen, whole and selected cases PASS. Limits and evidence: docs/release-0.6-LABRIG.md.",
-    "updated": "2026-09-05",
+    "description": "0.6 LABRIG: detached admission and immutable checks remain authoritative. 2026-09-07 adds stable delivery bindings and bounded evidence-backed implementation-guidance revisions without resetting spent attempts or marking old failures passed. UI separates current work from detailed evidence. Current backlog acceptance and remaining live checks: docs/backlog-fixes-2026-09-07.md; historical lifecycle evidence remains in docs/release-0.6-LABRIG.md.",
+    "updated": "2026-09-07",
     "colorBy": "kind",
     "driftIgnore": [
       "android",
@@ -66,7 +66,7 @@
       },
       "size": {
         "width": 664,
-        "height": 887
+        "height": 1270
       }
     },
     {
@@ -125,7 +125,7 @@
         "x": 444,
         "y": 60
       },
-      "note": "Bounded planning requires structured commit_plan with executable criteria; malformed/missing plans suspend, no prose execution fallback. Answer-only uses same runner."
+      "note": "Bounded safe DGV planning reads installed; mode/risk fences and forced commit retained. Revision d706d2b3a3ab. Local installation receipt retained privately."
     },
     {
       "ports": [],
@@ -134,7 +134,7 @@
       "kind": "module",
       "label": "Step criteria",
       "sublabel": "each step declares a check that CAN FAIL · constants and script paths rejected",
-      "note": "commit_plan gains a `verify` field per step, validated at commit time. Three runnable forms: a check_page eval returning a boolean, a command judged by exit code, a file that must contain a named symbol. Existence-only checks are rejected.\n\nThe first live attempt (improve-forced) wrote expr \"true\" on every step, pointed at .js files — a constant cannot fail and check_page cannot render a script. Both are now rejected with an error that names the fix, and the forced retry carries it.\n\nAnswered live on the next run: `contains js/config.js \"MAX_SPEED\"`, `contains js/physics.js \"class CarPhysics\"`, and for the final step an eval on the served URL checking the canvas and both HUD elements. The model writes usable checks when the shape is constrained and the call is forced.",
+      "note": "Full check contracts and local coverage guidance installed; no semantic proof or old-plan rewrite. Local installation receipt retained privately.",
       "frame": "plan",
       "tech": "Go",
       "status": "done",
@@ -142,7 +142,18 @@
         "x": 444,
         "y": 305
       },
-      "path": "internal/plan/verify.go"
+      "path": "internal/plan/verify.go",
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "issue",
+          "title": "Generated checks do not establish full task coverage",
+          "note": "Historical evt_002948/003027: flat fixture256faces vs generated300threshold. Later run ac0a51719d6b502d7df1940a repaired seam behavior, reports528faces25quads100vertices and steps1–4 verified. That narrow pass is not full geometry proof. Step5 HUD/API predicate can be true despite runtime errors/zero rendered chunks (evt_003674); final evt_003742 browser observation unavailable. See docs/browser-recovery-tools-2026-09-06.md. Automatic versioned plan adaptation is pending, not shipped.",
+          "fix": "Preserve original benchmark coverage; use evidence-backed contract review for contradictory or inadequate generated checks. Do not reinterpret HUD presence as visible terrain or auto-amend acceptance on retry.",
+          "by": "agent",
+          "at": "2026-09-06T10:00:00Z"
+        }
+      ]
     },
     {
       "ports": [],
@@ -183,7 +194,7 @@
       "kind": "module",
       "label": "Step prompt writer",
       "sublabel": "the prompt for ONE step · its check verbatim · the SOURCE the plan was made from",
-      "note": "Assembled from committed facts rather than generated prose, so the prompt cannot drift from the plan it claims to execute. It carries the step, its files, its check quoted verbatim, only the steps already VERIFIED as context — and, since 2026-09-04, the source the model read while planning.\n\nA step starts with a fresh window. Without the planning reads the model had never seen the file it was told to split: it re-read all 435 lines, which alone spent the four iterations it had, and never reached a write — no writes at all in two attempts (improve-overrun). The reads that informed the plan now ride into every step as a tool-result item, capped at 40k chars, with the instruction not to re-read.\n\nThe user's original prompt is used once, to plan, and never re-injected.",
+      "note": "Exact Verify JSON installed for steps/retries; original brief/images preserved. No benchmark pass claimed. Local installation receipt retained privately.",
       "frame": "drive",
       "tech": "Go + one model call",
       "status": "done",
@@ -215,8 +226,8 @@
       "id": "steprun",
       "kind": "worker",
       "label": "Step run",
-      "sublabel": "one step · SESSION registry · THINK level honoured · a retry is TOLD why it failed · earns iterations while it changes files · judged by its check",
-      "note": "A retry used to start blind: the prompt was the same, the model never saw the failed verdict, and the step it re-did was the one that had just failed (NFQ step 4, a Three.js TypeError, 2026-09-05). Now the step prompt carries the failed check and what was observed, first thing. The iteration cap is not fixed either: a step earns another window while the workspace fingerprint keeps moving (guard-based extension); a step that stops changing files stops.",
+      "sublabel": "bounded model rounds · continuation requires checked repair progress",
+      "note": "Installed 2026-09-06, revision a3a8367-dirty-45e4ab58c05d. Repair-based round extensions require changed declared source plus new committed-check evidence, not mutation alone. Existing one-time fresh-source inspection continuity retained; all guards remain. Three failed repair/check cycles hand back without fresh automatic attempt. Latest verification/event ID separate from execution stop. Earlier and later shared-file passes rechecked; selected scope preserved. Full release gates pass.",
       "frame": "run",
       "tech": "Go",
       "status": "done",
@@ -233,7 +244,7 @@
       "kind": "module",
       "label": "Step verify",
       "sublabel": "run the step's own check · pass / fail, with evidence · fails CLOSED · session registry",
-      "note": "Runs what the step declared: the eval, the command, the file check. The verdict is an observation, not the model's opinion that it is finished.\n\nEvery kind fails CLOSED. A check that cannot run is exactly as unproven as one that failed, and treating \"could not check\" as success is how a plan goes green while nothing works — the car run's check_page returned \"eval produced no result\" and that now reads as a failure.",
+      "note": "Installed 619383328f9d: invalidate declared shared-file passes before execution and recheck before advance; stale replay verifies without model rebuild. Selected never rechecks unselected prerequisites. No semantic proof beyond declared checks.",
       "frame": "run",
       "tech": "Go",
       "status": "done",
@@ -258,7 +269,7 @@
         "x": 2036,
         "y": 425
       },
-      "note": "Chat and steps share prepareRunRegistry; one matching, registration-error and cached capability contract. Tests cover actual session-scoped skill read/write with distinct global root, original+current plan skills, no completed-task bleed, rejected partial RFX registrations and one-time load evidence. Full race suite and vet pass."
+      "note": "2026-09-06: browser process isolation/bounded evidence, explicit unavailable statuses, awaited verification, and owned serve probe/root confinement tested. Installed headless shell resolves reproduced full-Chromium CLI hang; WebGL+ESM fixtures pass. No benchmark mutation. See docs/browser-recovery-tools-2026-09-06.md. Full release gate follows."
     },
     {
       "ports": [],
@@ -324,7 +335,7 @@
         "x": 2524,
         "y": 448
       },
-      "note": "ReducePlan remains sole completion authority, no filesystem-based pass inference. Removed unused reconciliation helpers and corrected inverse test wording. Existing file-presence regressions retained; targeted race tests pass before/after cleanup."
+      "note": "Installed9c527991491f: canonical reducer reports historical successful checks as awaiting recheck, not currently verified. Distinct needs_reverify/pending/running/unverified/skipped counts. Live Minecraft state verified 2 stale,1 blocked,5 pending,0 skipped."
     },
     {
       "ports": [],
@@ -333,7 +344,7 @@
       "kind": "ui",
       "label": "Native plan strip",
       "sublabel": "SIMPLE surface · steps, which is running, pass/fail · no knobs",
-      "note": "Canonical plan/report retained. Incident chime restored with session/run/event identity; first hydration/switch/repeat/reconnect silent, new incident sounds once. Five store regressions plus full 55-test frontend suite pass; plan visuals unchanged.",
+      "note": "Installed 2026-09-06, revision a3a8367-dirty-45e4ab58c05d: canonical blocked-step label, compact incidents with technical disclosure, bounded multiline composer, non-overlay dock seam, grouped consecutive reads retaining receipts/failures, quiet flat sidebar. Browser fixtures pass four viewport/zoom configurations (build/recovery-ui-CNATJJ); 101 Vitest tests pass; Svelte reports zero errors/eight existing warnings. Live assets match package. No production retry submitted.",
       "frame": "show",
       "tech": "Svelte 5",
       "status": "done",
@@ -350,7 +361,7 @@
       "kind": "ui",
       "label": "RFX Planner panel",
       "sublabel": "ADVANCED surface · calls runStep(), no longer writes prompts",
-      "note": "Planner1.5.0 embedded from canonical rfx/planner assets; built-in-wins identity and version/digest/origin/ignored copies visible. Missing/old/equal/new/malformed/renamed/multiple installed copies tested; all untouched, other packs preserved. CLI/server/API wired and packaged atomically without separate archive. Source+automated gates done; real-Core whole/selected acceptance follows.",
+      "note": "Installed embedded Planner1.5.1 with builtin-wins precedence. Live build identity and served Planner asset verified; installed1.5.0 unchanged and ignored. Single-step Recover names/targets blocked index2 before stale Next0. Browser fixtures passed; actual session not resumed.",
       "frame": "show",
       "tech": "HTML in a sandboxed iframe",
       "status": "done",
@@ -390,6 +401,97 @@
         "y": 1505
       },
       "path": "internal/api/api.go"
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "recovery",
+      "kind": "module",
+      "label": "Failure-aware recovery",
+      "note": "Installed 2026-09-06 10:29 CEST: a3a8367-dirty-c71e1f303281, bundle v7w9uo. Preserve stale shared-file contract context; exact read_plan_step snapshots; evidence-backed verification review stops instead of fixture distortion or unbounded retries. Original Minecraft check still requires review; no benchmark mutation or retry. Full release gates passed; Core/embedding PIDs unchanged. Receipt: docs/verification-review-recovery-2026-09-06.md.",
+      "frame": "run",
+      "status": "done",
+      "path": [
+        "internal/loop/recovery.go",
+        "internal/loop/recovery_progress.go",
+        "internal/loop/recovery_source.go",
+        "internal/loop/recovery_coverage.go",
+        "docs/targeted-file-recovery-2026-09-06.md"
+      ],
+      "position": {
+        "x": 1728,
+        "y": 879
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "checkreview",
+      "kind": "module",
+      "label": "Evidence-backed verification review",
+      "note": "Installed scoped immutable plan reader and verification-review handoff. Validates evidence identity and original check hash; persists fresh actual verdict, rejects stale execution/saves, survives restart before PlanState, cancels remaining batch and blocks even a disputed passing check. Generic retry does not approve or execute proposals. 227 loop tests + full Go race/vet and 101 frontend tests passed. Criterion validity and live model adoption remain unverified.",
+      "status": "done",
+      "path": [
+        "internal/loop/verification_review.go",
+        "internal/loop/review_dispatch.go",
+        "internal/loop/plan_identity.go",
+        "internal/loop/plan_context.go"
+      ],
+      "position": {
+        "x": 0,
+        "y": 218
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "nativechecks",
+      "kind": "module",
+      "label": "Structured checks + diagnostics",
+      "note": "Typed existing Node/Go tests and Node/TS/Go diagnostics; scoped versions, hashed receipts, bounded summaries. Real fixtures and failure/omission tests pass.",
+      "tech": "Go",
+      "status": "done",
+      "path": [
+        "internal/tools/runchecks.go",
+        "internal/tools/codediagnostics.go"
+      ],
+      "position": {
+        "x": 3000,
+        "y": 300
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "nativebrowser",
+      "kind": "module",
+      "label": "Browser sequence + profile",
+      "note": "Embedded fresh-page sequence/profile; exact local GET/HEAD proxy, 6 captures. Trusted input, stuck JS CPU evidence, unavailable metrics and byte limits fixture-tested.",
+      "tech": "Go + trusted JS",
+      "status": "done",
+      "path": [
+        "internal/tools/browsernative.go",
+        "internal/tools/browsernative"
+      ],
+      "position": {
+        "x": 3000,
+        "y": 650
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "nativeprocess",
+      "kind": "module",
+      "label": "Owned native process runner",
+      "note": "Owned PID namespace + process group, bounded streams/time. Checks: RO host/workspace and no network. Cancellation/RO/output tests pass; bwrap absence fails closed.",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/tools/native_process.go",
+      "position": {
+        "x": 3400,
+        "y": 450
+      }
     }
   ],
   "edges": [
@@ -583,6 +685,79 @@
       "target": "verify",
       "protocol": "fs",
       "label": "the declared check — eval / exit code / symbol, never mere existence"
+    },
+    {
+      "kind": "control",
+      "source": "supervisor",
+      "target": "recovery",
+      "label": "failed/interrupted attempt",
+      "id": "supervisor-recovery"
+    },
+    {
+      "kind": "control",
+      "source": "recovery",
+      "target": "steprun",
+      "label": "evidence + protected recovery",
+      "id": "recovery-steprun"
+    },
+    {
+      "kind": "control",
+      "source": "recovery",
+      "target": "verify",
+      "label": "fresh prerequisite checks before advance",
+      "id": "recovery-verify"
+    },
+    {
+      "kind": "data",
+      "source": "recovery",
+      "target": "events",
+      "protocol": "fs",
+      "label": "snapshot references and recovery evidence",
+      "id": "recovery-events"
+    },
+    {
+      "kind": "control",
+      "id": "recovery-checkreview",
+      "source": "recovery",
+      "target": "checkreview",
+      "protocol": "import",
+      "label": "Disputed criterion → review, not fixture distortion"
+    },
+    {
+      "kind": "control",
+      "id": "checkreview-verify",
+      "source": "checkreview",
+      "target": "verify",
+      "protocol": "import",
+      "label": "Original check remains authoritative"
+    },
+    {
+      "kind": "control",
+      "source": "tools",
+      "target": "nativechecks",
+      "label": "typed tools",
+      "id": "tools-nativechecks"
+    },
+    {
+      "kind": "control",
+      "source": "tools",
+      "target": "nativebrowser",
+      "label": "typed tools",
+      "id": "tools-nativebrowser"
+    },
+    {
+      "kind": "sync",
+      "source": "nativechecks",
+      "target": "nativeprocess",
+      "label": "read-only execution",
+      "id": "nativechecks-nativeprocess"
+    },
+    {
+      "kind": "sync",
+      "source": "nativebrowser",
+      "target": "nativeprocess",
+      "label": "owned engine",
+      "id": "nativebrowser-nativeprocess"
     }
   ],
   "history": [
@@ -2046,6 +2221,1481 @@
           "field": "description",
           "from": "0.6 LABRIG source: detached admission, plan-bound supervisor state, validated…",
           "to": "0.6 LABRIG: detached admission, plan-bound supervisor state, validated checks…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:44:06.021Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Assembled from committed facts rather than generated prose, so the prompt can…",
+          "to": "Original request's validated image attachments now accompany step prompts, pr…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:44:06.021Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Chat and steps share prepareRunRegistry; one matching, registration-error and…",
+          "to": "Shared prepareRunRegistry retained. RFX follow-up adds native DGV/GitHub/DevC…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.128Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Original request's validated image attachments now accompany step prompts, pr…",
+          "to": "Original request images accompany step prompts, preserving visual scope acros…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.128Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Shared prepareRunRegistry retained. RFX follow-up adds native DGV/GitHub/DevC…",
+          "to": "Shared prepareRunRegistry retained. Native DGV/GitHub/DevCheck sources and st…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:21:17.584Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Bounded planning requires structured commit_plan with executable criteria; ma…",
+          "to": "Minecraft run exposed DGV reads excluded from planning. Add bounded safe DGV …"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:21:17.584Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "commit_plan gains a `verify` field per step, validated at commit time. Three …",
+          "to": "Minecraft checks were narrower than step claims. Review prompt/check contract…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:21:17.584Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Shared prepareRunRegistry retained. Native DGV/GitHub/DevCheck sources and st…",
+          "to": "Patch validation consumed numbered paginated public-read output, causing fals…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:27:20.803Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Original request images accompany step prompts, preserving visual scope acros…",
+          "to": "Pass exact verification JSON to each step/retry, not clipped Describe labels.…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:27:20.803Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "A retry used to start blind: the prompt was the same, the model never saw the…",
+          "to": "Fresh steps/retries now scope read cursors to their own model window. No budg…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.579Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Minecraft run exposed DGV reads excluded from planning. Add bounded safe DGV …",
+          "to": "Safe DGV reads offered and dispatched under existing bounded planning budget;…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.579Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Minecraft checks were narrower than step claims. Review prompt/check contract…",
+          "to": "Guidance requires checks for all claimed step behavior or smaller steps. Full…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.579Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Pass exact verification JSON to each step/retry, not clipped Describe labels.…",
+          "to": "Exact Verify JSON replaces clipped labels in every step/retry prompt; full co…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.579Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Fresh steps/retries now scope read cursors to their own model window. No budg…",
+          "to": "Fresh step/retry cursor scopes isolate model windows and concurrent owners. A…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.579Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Patch validation consumed numbered paginated public-read output, causing fals…",
+          "to": "Raw guarded patch snapshots replace numbered paginated validation. Explicit h…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.127Z",
+      "by": "agent",
+      "type": "node",
+      "id": "plangate",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Safe DGV reads offered and dispatched under existing bounded planning budget;…",
+          "to": "Bounded safe DGV planning reads installed; mode/risk fences and forced commit…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.127Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Guidance requires checks for all claimed step behavior or smaller steps. Full…",
+          "to": "Full check contracts and local coverage guidance installed; no semantic proof…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.127Z",
+      "by": "agent",
+      "type": "node",
+      "id": "promptgen",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Exact Verify JSON replaces clipped labels in every step/retry prompt; full co…",
+          "to": "Exact Verify JSON installed for steps/retries; original brief/images preserve…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.127Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Fresh step/retry cursor scopes isolate model windows and concurrent owners. A…",
+          "to": "Fresh step/retry cursor scopes installed; budgets unchanged. Minecraft remain…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.127Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Raw guarded patch snapshots replace numbered paginated validation. Explicit h…",
+          "to": "Raw patch snapshots, explicit fields, sequential validation and scoped read c…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:36:54.108Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "add",
+      "kind": "module",
+      "label": "Failure-aware recovery"
+    },
+    {
+      "at": "2026-09-06T01:36:54.108Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-recovery",
+      "op": "add",
+      "kind": "control",
+      "label": "supervisor → recovery"
+    },
+    {
+      "at": "2026-09-06T01:36:54.108Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "recovery-steprun",
+      "op": "add",
+      "kind": "control",
+      "label": "recovery → steprun"
+    },
+    {
+      "at": "2026-09-06T01:36:54.108Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "recovery-verify",
+      "op": "add",
+      "kind": "control",
+      "label": "recovery → verify"
+    },
+    {
+      "at": "2026-09-06T01:36:54.108Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "recovery-events",
+      "op": "add",
+      "kind": "data",
+      "label": "recovery → events"
+    },
+    {
+      "at": "2026-09-06T01:52:51.911Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Fresh step/retry cursor scopes installed; budgets unchanged. Minecraft remain…",
+          "to": "Source update 2026-09-06: dedicated failure-aware recovery context, bounded p…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:52:51.911Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Runs what the step declared: the eval, the command, the file check. The verdi…",
+          "to": "Source update: invalidate declared shared-file passes before execution and re…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:52:51.911Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Design 2026-09-06: bounded evidence brief from current plan journal; verified…",
+          "to": "Implemented source-only 2026-09-06: plan-scoped failure/effect evidence and p…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "internal/loop/recovery.go",
+          "to": "internal/loop/recovery.go, internal/loop/recovery_test.go, internal/tools/bash.go, docs/failure-aware-recovery-2026-09-06.md"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:59:38.541Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Source update 2026-09-06: dedicated failure-aware recovery context, bounded p…",
+          "to": "Failure-aware recovery installed in 619383328f9d: bounded context/read tool, …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:59:38.541Z",
+      "by": "agent",
+      "type": "node",
+      "id": "verify",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Source update: invalidate declared shared-file passes before execution and re…",
+          "to": "Installed 619383328f9d: invalidate declared shared-file passes before executi…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:59:38.541Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implemented source-only 2026-09-06: plan-scoped failure/effect evidence and p…",
+          "to": "Installed 2026-09-06 at user request: a3a8367-dirty-619383328f9d; bundle sauc…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:29:03.438Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "ReducePlan remains sole completion authority, no filesystem-based pass infere…",
+          "to": "Separate historical successful checks from current verification; pending/rech…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:29:03.438Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Canonical plan/report retained. Incident chime restored with session/run/even…",
+          "to": "Make stale prior passes explicit: previously passed, awaiting recheck. Distin…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:29:03.438Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Planner1.5.0 embedded from canonical rfx/planner assets; built-in-wins identi…",
+          "to": "Same state semantics as native strip; blocked recovery target takes precedenc…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:29:03.438Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed 2026-09-06 at user request: a3a8367-dirty-619383328f9d; bundle sauc…",
+          "to": "2026-09-06 follow-up run 59f70b171d49dc38741bcb2b: two 8-call attempts made n…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:42:54.373Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Separate historical successful checks from current verification; pending/rech…",
+          "to": "Canonical reducer remains sole completion authority. Structured report indepe…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:42:54.373Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Make stale prior passes explicit: previously passed, awaiting recheck. Distin…",
+          "to": "Source complete, not installed: labels/counters distinguish verified, awaitin…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:42:54.373Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Same state semantics as native strip; blocked recovery target takes precedenc…",
+          "to": "Embedded Planner1.5.1 source complete, not installed. Visible previously-pass…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:42:54.373Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 follow-up run 59f70b171d49dc38741bcb2b: two 8-call attempts made n…",
+          "to": "Source complete 2026-09-06; NOT INSTALLED. At most two empty-length output re…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:51:57.877Z",
+      "by": "agent",
+      "type": "node",
+      "id": "report",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Canonical reducer remains sole completion authority. Structured report indepe…",
+          "to": "Installed9c527991491f: canonical reducer reports historical successful checks…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:51:57.877Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Source complete, not installed: labels/counters distinguish verified, awaitin…",
+          "to": "Installed 9c527991491f: served JS/CSS matched package. Live report 2 needs_re…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:51:57.877Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Embedded Planner1.5.1 source complete, not installed. Visible previously-pass…",
+          "to": "Installed embedded Planner1.5.1 with builtin-wins precedence. Live build iden…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:51:57.877Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Source complete 2026-09-06; NOT INSTALLED. At most two empty-length output re…",
+          "to": "Installed 2026-09-06 at user request as a3a8367-dirty-9c527991491f, bundle Di…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:02:30.076Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Failure-aware recovery installed in 619383328f9d: bounded context/read tool, …",
+          "to": "Latest live run16 calls/no edits. Empty-output fallback not involved; each re…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "update"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:02:30.076Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Raw patch snapshots, explicit fields, sequential validation and scoped read c…",
+          "to": "Concrete read contract defect: headers advertise requested range before8000-b…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "update"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:02:30.076Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed 2026-09-06 at user request as a3a8367-dirty-9c527991491f, bundle Di…",
+          "to": "Live regression: f4538ef4dd60bbc3e2d674d0 on installed9c527991491f made16 too…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "update"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:26:01.215Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Latest live run16 calls/no edits. Empty-output fallback not involved; each re…",
+          "to": "Integrating durable evidence carry-forward with existing iteration/time/token…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:26:01.215Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Concrete read contract defect: headers advertise requested range before8000-b…",
+          "to": "2026-09-06 authorized repair: accurate bounded source coverage/continuation +…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:26:01.215Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Live regression: f4538ef4dd60bbc3e2d674d0 on installed9c527991491f made16 too…",
+          "to": "Authorized repair design: source-focused journal evidence with success/versio…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:41:48.658Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 authorized repair: accurate bounded source coverage/continuation +…",
+          "to": "Source repair implemented, not installed: actual bounded line/byte read recei…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:41:48.658Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Authorized repair design: source-focused journal evidence with success/versio…",
+          "to": "Durable bounded plan/step/check-bound source observations, paired call/result…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:51:28.099Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Integrating durable evidence carry-forward with existing iteration/time/token…",
+          "to": "First actual copied-session run oxHvQh failed196s16calls0edits despite accura…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:51:28.099Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Durable bounded plan/step/check-bound source observations, paired call/result…",
+          "to": "Regional real-Core baseline passed17.9s7calls targetedSHAedit+check+priorrech…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:03:32.187Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Regional real-Core baseline passed17.9s7calls targetedSHAedit+check+priorrech…",
+          "to": "2026-09-06 targeted recovery: exact source receipts, hash-guarded edits, jour…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:08:11.780Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "First actual copied-session run oxHvQh failed196s16calls0edits despite accura…",
+          "to": "Implemented: one same-window recovery continuation uses an existing extension…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:08:11.780Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 targeted recovery: exact source receipts, hash-guarded edits, jour…",
+          "to": "Implementation and regional real-Core repair/recheck/continue pass. Actual Mi…"
+        },
+        {
+          "field": "path",
+          "from": "internal/loop/recovery.go, internal/loop/recovery_test.go, internal/tools/bash.go, docs/failure-aware-recovery-2026-09-06.md",
+          "to": "internal/loop/recovery.go, internal/loop/recovery_progress.go, internal/loop/recovery_source.go, internal/loop/recovery_coverage.go, docs/targeted-file-recovery-2026-09-06.md"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:12:35.878Z",
+      "by": "agent",
+      "type": "node",
+      "id": "criteria",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Generated verification may contradict its chosen fixture"
+      }
+    },
+    {
+      "at": "2026-09-06T04:12:35.883Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Source repair implemented, not installed: actual bounded line/byte read recei…",
+          "to": "Implemented exact bounded read receipts and cursors, optional expected SHA pr…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:14:26.741Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implemented exact bounded read receipts and cursors, optional expected SHA pr…",
+          "to": "Implemented exact bounded read receipts/cursors, optional source SHA precondi…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:19:09.385Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "one step · SESSION registry · THINK level honoured · a retry is TOLD why it f…",
+          "to": "bounded model rounds · continuation requires checked repair progress"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:19:09.385Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed 9c527991491f: served JS/CSS matched package. Live report 2 needs_re…",
+          "to": "Display canonical blocked step in suspended label; preserve stale-pass rechec…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:19:09.385Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implementation and regional real-Core repair/recheck/continue pass. Actual Mi…",
+          "to": "Latest ca8ac7 recovery: two attempts, 53 model requests including 4 output-on…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:34:25.543Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implemented: one same-window recovery continuation uses an existing extension…",
+          "to": "2026-09-06: recovery extensions require changed declared source plus novel ch…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:34:25.543Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Display canonical blocked step in suspended label; preserve stale-pass rechec…",
+          "to": "2026-09-06: stopped status targets canonical blocked prerequisite; actual run…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:34:25.543Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Latest ca8ac7 recovery: two attempts, 53 model requests including 4 output-on…",
+          "to": "2026-09-06: checked recovery baseline and bounded repair batches implemented.…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:36:09.122Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: checked recovery baseline and bounded repair batches implemented.…",
+          "to": "2026-09-06: checked repair cycles implemented, 200 loop tests race and full r…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:39:40.326Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: checked repair cycles implemented, 200 loop tests race and full r…",
+          "to": "2026-09-06 final: checked baseline and small repair/check batches, handback a…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:42:34.129Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: recovery extensions require changed declared source plus novel ch…",
+          "to": "2026-09-06 installed a3a8367-dirty-45e4ab58c05d: recovery extensions require …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:42:34.129Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: stopped status targets canonical blocked prerequisite; actual run…",
+          "to": "2026-09-06 installed a3a8367-dirty-45e4ab58c05d: canonical blocked-step stopp…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:42:34.129Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 final: checked baseline and small repair/check batches, handback a…",
+          "to": "2026-09-06 installed: 0.6.0-alpha LABRIG a3a8367-dirty-45e4ab58c05d, bundle4J…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:43:21.092Z",
+      "by": "agent",
+      "type": "node",
+      "id": "steprun",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 installed a3a8367-dirty-45e4ab58c05d: recovery extensions require …",
+          "to": "Installed 2026-09-06, revision a3a8367-dirty-45e4ab58c05d. Repair-based round…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:43:21.092Z",
+      "by": "agent",
+      "type": "node",
+      "id": "strip",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 installed a3a8367-dirty-45e4ab58c05d: canonical blocked-step stopp…",
+          "to": "Installed 2026-09-06, revision a3a8367-dirty-45e4ab58c05d: canonical blocked-…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:43:21.092Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 installed: 0.6.0-alpha LABRIG a3a8367-dirty-45e4ab58c05d, bundle4J…",
+          "to": "Installed 2026-09-06: 0.6.0-alpha LABRIG a3a8367-dirty-45e4ab58c05d, bundle 4…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:06:45.000Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkreview",
+      "op": "add",
+      "kind": "module",
+      "label": "Evidence-backed verification review"
+    },
+    {
+      "at": "2026-09-06T08:06:45.000Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed 2026-09-06: 0.6.0-alpha LABRIG a3a8367-dirty-45e4ab58c05d, bundle 4…",
+          "to": "2026-09-06 latest run 1b44ee01c31c7219fd739b3c stopped normally at cap8 after…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:06:45.000Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "recovery-checkreview",
+      "op": "add",
+      "kind": "control",
+      "label": "recovery → checkreview"
+    },
+    {
+      "at": "2026-09-06T08:06:45.000Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "checkreview-verify",
+      "op": "add",
+      "kind": "control",
+      "label": "checkreview → verify"
+    },
+    {
+      "at": "2026-09-06T08:19:27.583Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkreview",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Model may request review of frozen generated check using observed eventrefs +…",
+          "to": "Implemented scoped read_plan_step and request_verification_review. Captures i…"
+        },
+        {
+          "field": "path",
+          "from": "internal/loop/verification_review.go",
+          "to": "internal/loop/verification_review.go, internal/loop/review_dispatch.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:30:10.164Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 latest run 1b44ee01c31c7219fd739b3c stopped normally at cap8 after…",
+          "to": "Installed 2026-09-06 10:29 CEST: a3a8367-dirty-c71e1f303281, bundle v7w9uo. P…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:30:10.164Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkreview",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implemented scoped read_plan_step and request_verification_review. Captures i…",
+          "to": "Installed scoped immutable plan reader and verification-review handoff. Valid…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "internal/loop/verification_review.go, internal/loop/review_dispatch.go",
+          "to": "internal/loop/verification_review.go, internal/loop/review_dispatch.go, internal/loop/plan_identity.go, internal/loop/plan_context.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T09:46:03.639Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implemented exact bounded read receipts/cursors, optional source SHA precondi…",
+          "to": "2026-09-06 step 5 browser probes end at25s even eval1+1; check_page ignores c…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T09:58:13.719Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 step 5 browser probes end at25s even eval1+1; check_page ignores c…",
+          "to": "Native owned serve probe/root identity/symlink containment and fail-closed br…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T10:02:17.820Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Native owned serve probe/root identity/symlink containment and fail-closed br…",
+          "to": "2026-09-06 browser tool repair verified on disposable fixtures: isolated owne…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T10:02:32.477Z",
+      "by": "agent",
+      "type": "node",
+      "id": "tools",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 browser tool repair verified on disposable fixtures: isolated owne…",
+          "to": "2026-09-06: browser process isolation/bounded evidence, explicit unavailable …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T22:50:34.281Z",
+      "by": "agent",
+      "type": "node",
+      "id": "nativechecks",
+      "op": "add",
+      "kind": "module",
+      "label": "Structured checks + diagnostics"
+    },
+    {
+      "at": "2026-09-06T22:50:34.281Z",
+      "by": "agent",
+      "type": "node",
+      "id": "nativebrowser",
+      "op": "add",
+      "kind": "module",
+      "label": "Browser sequence + profile"
+    },
+    {
+      "at": "2026-09-06T22:50:34.281Z",
+      "by": "agent",
+      "type": "node",
+      "id": "nativeprocess",
+      "op": "add",
+      "kind": "module",
+      "label": "Owned native process runner"
+    },
+    {
+      "at": "2026-09-06T22:50:34.281Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "tools-nativechecks",
+      "op": "add",
+      "kind": "control",
+      "label": "tools → nativechecks"
+    },
+    {
+      "at": "2026-09-06T22:50:34.281Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "tools-nativebrowser",
+      "op": "add",
+      "kind": "control",
+      "label": "tools → nativebrowser"
+    },
+    {
+      "at": "2026-09-06T22:50:34.281Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "nativechecks-nativeprocess",
+      "op": "add",
+      "kind": "sync",
+      "label": "nativechecks → nativeprocess"
+    },
+    {
+      "at": "2026-09-06T22:50:34.281Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "nativebrowser-nativeprocess",
+      "op": "add",
+      "kind": "sync",
+      "label": "nativebrowser → nativeprocess"
+    },
+    {
+      "at": "2026-09-06T23:10:17.568Z",
+      "by": "agent",
+      "type": "node",
+      "id": "nativechecks",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Bounded typed Node/Go checks and Node/TS/Go diagnostics. Existing tools only;…",
+          "to": "Typed existing Node/Go tests and Node/TS/Go diagnostics; scoped versions, has…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T23:10:17.568Z",
+      "by": "agent",
+      "type": "node",
+      "id": "nativebrowser",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "One owned fresh browser per call; bounded real-input sequence with checks/cap…",
+          "to": "Embedded fresh-page sequence/profile; exact local GET/HEAD proxy, 6 captures.…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T23:10:17.568Z",
+      "by": "agent",
+      "type": "node",
+      "id": "nativeprocess",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Fixed executable/argv, bounded streams/time, cleanup own group. Check/diagnos…",
+          "to": "Owned PID namespace + process group, bounded streams/time. Checks: RO host/wo…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
         }
       ]
     }

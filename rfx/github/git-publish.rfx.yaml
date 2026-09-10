@@ -1,0 +1,18 @@
+rfx: 1
+name: git-publish
+description: Human-approved creation of explicit OWNER/REPO on GitHub with an origin remote; does not push commits
+kind: exec
+risk: dangerous
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-github, git-publish]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: [github.com, api.github.com], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    name: {type: string, minLength: 3, maxLength: 140}
+    visibility: {type: string, enum: [private, public]}
+    expected_head: {type: string, pattern: '^(?:[a-f0-9]{40}|[a-f0-9]{64})$'}
+  required: [name, visibility, expected_head]

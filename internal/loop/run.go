@@ -26,8 +26,11 @@ var ErrBusy = errors.New("run already active")
 type RunState struct {
 	Result         *Result   `json:"result,omitempty"`
 	ID             string    `json:"id"`
+	Kind           string    `json:"kind,omitempty"`
+	Reflex         string    `json:"reflex,omitempty"`
 	Status         string    `json:"status"`
 	Phase          string    `json:"phase,omitempty"`
+	RecoveryPhase  string    `json:"recovery_phase,omitempty"`
 	Tool           string    `json:"tool,omitempty"`
 	Step           int       `json:"step"`
 	Started        time.Time `json:"started"`
@@ -63,6 +66,15 @@ type runHandle struct {
 }
 
 type runKey struct{}
+
+func (h *runHandle) recoveryPhase(phase string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.state.RecoveryPhase = phase
+	return h.publishLocked(h.state.Status, h.state.Phase, h.state.Tool, h.state.Reason)
+}
+
+type reflexRunKey struct{}
 
 func handleOf(ctx context.Context) *runHandle { h, _ := ctx.Value(runKey{}).(*runHandle); return h }
 
@@ -146,6 +158,9 @@ func (l *Loop) beginRun(ctx context.Context, sid, mode, brief string) (context.C
 	root, cancel := context.WithCancel(tools.WithSession(ctx, sid))
 	h := &runHandle{rootCancel: cancel, wake: make(chan struct{}, 1), brief: brief,
 		state: RunState{ID: hex.EncodeToString(idBytes), Status: "running", Step: -1, Started: time.Now().UTC(), Workspace: ws}}
+	if name, _ := ctx.Value(reflexRunKey{}).(string); name != "" {
+		h.state.Kind, h.state.Reflex = "reflex", name
+	}
 	h.state.ThinkingMode, h.state.ThinkingEffort = l.Thinking()
 	h.state.Sampling = samplingOf(ctx)
 	if h.state.Sampling == "" {

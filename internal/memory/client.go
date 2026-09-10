@@ -154,16 +154,31 @@ type Hit struct {
 	Score float64
 }
 
+type searchResult struct {
+	Hits *[]struct {
+		Document *Doc `json:"document"`
+	} `json:"hits"`
+	Error string `json:"error"`
+	Code  int    `json:"code"`
+}
+
 func (c *TSClient) Search(ctx context.Context, q, memoryType, sessionID string, limit int, hybrid bool, extraFilter string) ([]Hit, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 	params := url.Values{}
 	params.Set("q", q)
+	params.Set("query_by", "content")
 	if hybrid {
-		params.Set("query_by", "content,embedding")
-	} else {
-		params.Set("query_by", "content")
+		vector, err := c.queryVector(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := json.Marshal(vector)
+		if err != nil {
+			return nil, err
+		}
+		params.Set("vector_query", "embedding:("+string(encoded)+", k:"+fmt.Sprint(limit)+")")
 	}
 	params.Set("per_page", fmt.Sprint(limit))
 	filters := []string{}
@@ -179,7 +194,22 @@ func (c *TSClient) Search(ctx context.Context, q, memoryType, sessionID string, 
 	if len(filters) > 0 {
 		params.Set("filter_by", strings.Join(filters, " && "))
 	}
-	resp, err := c.do(ctx, http.MethodGet, "/collections/memory/documents/search?"+params.Encode(), nil)
+	var resp *http.Response
+	var err error
+	if hybrid {
+		// A 2048-dimensional vector exceeds Typesense's request-URL limit.
+		// Federated multi_search accepts the same search parameters in JSON;
+		// keep the vector (and the original lexical query) out of the URL.
+		search := make(map[string]any, len(params)+1)
+		for key := range params {
+			search[key] = params.Get(key)
+		}
+		search["collection"] = "memory"
+		search["per_page"] = limit
+		resp, err = c.do(ctx, http.MethodPost, "/multi_search", map[string]any{"searches": []any{search}})
+	} else {
+		resp, err = c.do(ctx, http.MethodGet, "/collections/memory/documents/search?"+params.Encode(), nil)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -188,17 +218,45 @@ func (c *TSClient) Search(ctx context.Context, q, memoryType, sessionID string, 
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("search: %s", body)
 	}
-	var out struct {
-		Hits []struct {
-			Document Doc `json:"document"`
-		} `json:"hits"`
+	var out searchResult
+	if hybrid {
+		var envelope struct {
+			Results []searchResult `json:"results"`
+			Error   string         `json:"error"`
+			Code    int            `json:"code"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+			return nil, fmt.Errorf("multi_search response: %w", err)
+		}
+		if envelope.Error != "" || (envelope.Code != 0 && envelope.Code != http.StatusOK) {
+			return nil, fmt.Errorf("multi_search: code %d: %s", envelope.Code, envelope.Error)
+		}
+		if len(envelope.Results) != 1 {
+			return nil, fmt.Errorf("multi_search: expected one result, got %d", len(envelope.Results))
+		}
+		out = envelope.Results[0]
+	} else if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("search response: %w", err)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
+	// multi_search can return HTTP 200 with a failed individual search.
+	// Missing results are not a successful empty search: callers must be able
+	// to mark the backend degraded and use their lexical/local fallback.
+	if out.Error != "" || (out.Code != 0 && out.Code != http.StatusOK) {
+		return nil, fmt.Errorf("search result: code %d: %s", out.Code, out.Error)
 	}
-	hits := make([]Hit, 0, len(out.Hits))
-	for _, h := range out.Hits {
-		hits = append(hits, Hit{Doc: h.Document})
+	if out.Hits == nil {
+		if hybrid {
+			return nil, fmt.Errorf("search result: missing hits")
+		}
+		// Preserve the lexical endpoint's existing empty/null-hits behavior.
+		return []Hit{}, nil
+	}
+	hits := make([]Hit, 0, len(*out.Hits))
+	for _, h := range *out.Hits {
+		if h.Document == nil {
+			return nil, fmt.Errorf("search result: missing document")
+		}
+		hits = append(hits, Hit{Doc: *h.Document})
 	}
 	return hits, nil
 }

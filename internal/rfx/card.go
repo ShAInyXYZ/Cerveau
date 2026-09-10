@@ -30,7 +30,7 @@ func CheckStep(card Card, tool string, args map[string]any) error {
 
 func isFileTool(tool string) bool {
 	switch tool {
-	case "read", "write", "edit", "grep":
+	case "read", "write", "edit", "grep", "glob", "apply_patch", "code":
 		return true
 	}
 	return false

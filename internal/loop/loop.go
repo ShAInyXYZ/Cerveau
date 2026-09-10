@@ -219,12 +219,13 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 	}
 	defer func() { finish(result, runErr) }()
 	wr := h.writer
-	if _, err := wr.Append(episodic.MsgUser, map[string]string{"text": userMsg}); err != nil {
+	if _, err := wr.Append(episodic.MsgUser, UserMessage{Text: userMsg, Images: imagesOf(ctx)}); err != nil {
 		return nil, err
 	}
 	// Every tool call under this turn belongs to THIS session, whatever the
 	// shared SessionContext says by the time it runs.
 	ctx = tools.WithSession(ctx, sessionID)
+	ctx = tools.WithFreshReadCursor(ctx)
 	mode := ModeByName(modeName)
 	systemPrompt := basePrompt + l.envBlock(sessionID) + "\n\n" + ReminderGuidance + "\n\n" + mode.Module
 	// In autopilot, a plan committed earlier (in Discussion) is injected as GUIDANCE
@@ -428,7 +429,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 			// remembers from the instruction text, and the registry runs
 			// them. Guided decoding is the only thing that binds it.
 			if planReads < maxPlanReads && !planInsisted {
-				specs = onlyTools(specs, planningTools...)
+				specs = planningSpecs(sessionReg, specs)
 			} else {
 				specs = onlyTool(specs, "commit_plan")
 				callCtx = llm.WithForcedTool(callCtx, "commit_plan")
@@ -445,6 +446,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 			}
 		}
 		reply, usage, err := l.completeWithRetry(llm.WithThinking(callCtx, callLevel), wr, messages, specs, "", mode.ProseCap)
+		g.addUsage(usage) // a completed decode still costs effort when control discards its reply
 		if errors.Is(err, errControl) {
 			iterCancel()
 			h.steered.Store(false)
@@ -452,7 +454,6 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 			i--
 			continue
 		}
-		g.addTokens(usage.AnswerTokens()) // reasoning is not re-sent: it costs time, not window
 		if err != nil {
 			canceled := iterCtx.Err() == context.Canceled
 			iterCancel()
@@ -499,10 +500,15 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 			if reply.Raw != "" {
 				wr.Append(episodic.Note, map[string]string{"kind": "empty_reply_raw", "text": reply.Raw})
 			}
-			if reply.Truncated() && callLevel != llm.ThinkingOff {
-				next := llm.StepDown(thinkLevel)
+			if reply.Truncated() {
+				if emptyRetried || callLevel == llm.ThinkingOff {
+					iterCancel()
+					return stop(&Result{Iterations: i}, StopLLMError, "model output limit reached without an answer or tool call; bounded output recovery exhausted"), nil
+				}
+				emptyRetried = true // the off-thinking reissue consumes this empty streak's retry
+				next := llm.ThinkingOff
 				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
-					"text": fmt.Sprintf("thinking at %s ran past its budget (%d reasoning tokens, no answer) — retrying this step at %s", thinkLevel, usage.ReasoningTokens, next)})
+					"text": fmt.Sprintf("thinking at %s ran past its budget (%d reasoning tokens, no answer) — retrying this step at %s", callLevel, usage.ReasoningTokens, next)})
 				thinkLevel = next
 				iterCancel()
 				continue
@@ -521,12 +527,17 @@ func (l *Loop) Run(ctx context.Context, sessionID, userMsg, modeName string) (re
 			emptyRetried = false // a real reply closes an empty streak
 		}
 		if len(reply.ToolCalls) == 0 && planFirst {
-			if reply.Truncated() && callLevel != llm.ThinkingOff {
-				// still thinking at the cap: same graded fallback as any step
+			if reply.Truncated() {
+				// One off-thinking reissue shares the existing plan-request retry.
 				wr.Append(episodic.MsgAssistant, assistantPayload(reply, usage))
-				next := llm.StepDown(callLevel)
+				if planInsisted || callLevel == llm.ThinkingOff {
+					iterCancel()
+					return stop(&Result{Iterations: i}, "planning_blocked", "model output limit reached before a validated plan; bounded output recovery exhausted"), nil
+				}
+				planInsisted = true
+				next := llm.ThinkingOff
 				wr.Append(episodic.Note, map[string]string{"kind": "self_correct",
-					"text": fmt.Sprintf("planning at %s ran past its budget (%d reasoning tokens) — retrying the plan at %s", thinkLevel, usage.ReasoningTokens, next)})
+					"text": fmt.Sprintf("planning at %s ran past its budget (%d reasoning tokens) — retrying the plan at %s", callLevel, usage.ReasoningTokens, next)})
 				planLevel = next
 				iterCancel()
 				continue
@@ -705,10 +716,12 @@ const planThinkingBudget = 24576
 
 const planInstruction = "Divide this task into steps and commit them with the commit_plan TOOL (a real tool call, not text). " +
 	"If the task is about EXISTING code, read it first — glob, read, grep, file_map are available now — a plan for code you have not seen is a guess. " +
+	"When offered, use dgv-list to discover diagrams, then dgv-context or dgv-read for existing architecture; dgv-catalog explains the schema and dgv-check validates it. These lookups share the bounded reading budget. DGV writes wait until execution. " +
 	"Then commit. Keep your reasoning brief — the steps are the output. " +
-	"Size each step to what a few tool calls can finish: ONE file or one concern per step, at most ~200 lines " +
-	"written per step, verification (check_page / a test run) as its own step near the end. Name each step's " +
-	"files. Do not write code in this call — commit the plan, then the next call starts step 1."
+	"Size each step to one concern that a few tool calls can finish, at most ~200 lines written per step. " +
+	"Give every step a runnable verify covering all behavior claimed in its title and detail; split the step if that needs several independent checks. " +
+	"Test local behavior in that step; reserve later verification steps for integration and browser checks, not deferred proof of earlier work. " +
+	"Name each step's files. Do not write code in this call — commit the plan, then the next call starts step 1."
 
 // handOffToPlan runs a plan that just landed, step by step, and ends the chat
 // turn with the supervisor's report.
@@ -753,6 +766,22 @@ func (l *Loop) handOffToPlan(ctx context.Context, sessionID string, plan *Plan, 
 // web_fetch, ask_user and remember — all side effects, none of them reading.
 var planningTools = []string{
 	"commit_plan", "read", "glob", "grep", "file_map", "find_symbol", "find_references", "outline_file",
+}
+
+// Only the known read-only DGV operations join the planning capability set.
+// The registry must also declare them safe and offer them in the current mode.
+// This is a host policy for trusted packs, not an OS sandbox for arbitrary
+// executables mislabeled safe. Never admit all RFX or all safe tools here.
+var planningDGVReads = []string{"dgv-list", "dgv-catalog", "dgv-context", "dgv-read", "dgv-check"}
+
+func planningSpecs(reg *tools.Registry, offered []llm.ToolSpec) []llm.ToolSpec {
+	names := append([]string(nil), planningTools...)
+	for _, name := range planningDGVReads {
+		if entry, ok := reg.Entry(name); ok && entry.RiskTier == tools.RiskSafe {
+			names = append(names, name)
+		}
+	}
+	return onlyTools(offered, names...)
 }
 
 // maxPlanReads bounds how many READS planning may spend. Orientation calls —
@@ -814,6 +843,9 @@ func onlyTool(specs []llm.ToolSpec, name string) []llm.ToolSpec {
 // and one number describes both.
 func assistantPayload(m llm.Message, u llm.Usage) map[string]any {
 	p := map[string]any{"text": m.Content}
+	if m.FinishReason != "" {
+		p["finish_reason"] = m.FinishReason
+	}
 	if m.Reasoning != "" {
 		p["reasoning"] = m.Reasoning
 	}
@@ -855,6 +887,9 @@ func (l *Loop) tailEvtIDs(sessionID string, n int) map[string]bool {
 }
 
 func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string, pulls []memory.Pull, skillNotes []string) ([]llm.Message, window.Report, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, window.Report{}, err
+	}
 	events, err := episodic.Replay(l.path(sessionID))
 	if err != nil {
 		return nil, window.Report{}, err
@@ -879,13 +914,13 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 		}
 	}
 	for _, ev := range events {
+		if err := ctx.Err(); err != nil {
+			return nil, window.Report{}, err
+		}
 		switch ev.Type {
 		case episodic.MsgUser:
-			var p struct {
-				Text string `json:"text"`
-			}
-			if json.Unmarshal(ev.Payload, &p) == nil {
-				items = append(items, window.Item{Msg: llm.Message{Role: "user", Content: p.Text}, EvtID: ev.ID, Kind: "user"})
+			if message, ok := replayUserMessage(ev.Payload); ok {
+				items = append(items, window.Item{Msg: message, EvtID: ev.ID, Kind: "user"})
 			}
 		case episodic.MsgAssistant:
 			var p struct {
@@ -927,10 +962,10 @@ func (l *Loop) buildMessages(ctx context.Context, sessionID, systemPrompt string
 		for _, it := range items {
 			msgs = append(msgs, it.Msg)
 		}
-		return msgs, window.Report{}, nil
+		return validateRetainedImages(ctx, msgs, window.Report{})
 	}
 	msgs, rep := l.win.BuildWithBrief(ctx, items, func(n int) string { return buildResumeBrief(l.resumeFacts(sessionID, events, n)) })
-	return msgs, rep, nil
+	return validateRetainedImages(ctx, msgs, rep)
 }
 
 // longTurnKey marks a turn as a supervised plan step (RFX_UI planner):
@@ -974,7 +1009,9 @@ func (l *Loop) compress(ctx context.Context, items []window.Item) ([]llm.Message
 	if l.win == nil {
 		msgs := make([]llm.Message, 0, len(items))
 		for _, it := range items {
-			msgs = append(msgs, it.Msg)
+			if it.Kind != "dropped" {
+				msgs = append(msgs, it.Msg)
+			}
 		}
 		return msgs, window.Report{}
 	}
@@ -1097,7 +1134,7 @@ func (l *Loop) SetSampling(name string) {
 
 func (l *Loop) SamplingName() string {
 	if l.llm == nil {
-		return "strict"
+		return "default"
 	}
 	return l.llm.SamplingName()
 }
@@ -1174,6 +1211,7 @@ func answersWithoutAPlan(content string) bool {
 var reNumberedItem = regexp.MustCompile(`(?m)^\s*\d+[.)]\s+\S`)
 
 func (l *Loop) RunReflexFor(ctx context.Context, sid, name string, args json.RawMessage) (out string, runErr error) {
+	ctx = context.WithValue(ctx, reflexRunKey{}, name)
 	ctx, h, finish, err := l.beginRun(ctx, sid, "autopilot", "manual reflex: "+name)
 	if err != nil {
 		return "", err

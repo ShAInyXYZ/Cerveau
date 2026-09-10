@@ -35,10 +35,15 @@ async function tick(): Promise<void> {
 export const idleStore = {
   get value(): IdleStatus | null { return status; },
   get state(): string { return status?.state ?? 'active'; },
-  /** the screen is shown for every state except plain active */
+  /** Only an upcoming park needs the interrupting warning card. */
   get visible(): boolean {
     const s = status?.state;
-    return s === 'warning' || s === 'parked' || s === 'waking';
+    return s === 'warning';
+  },
+  get notice(): string {
+    if (status?.state === 'parked') return 'Core is already idle. Send a message to wake it.';
+    if (status?.state === 'waking') return 'Core is waking. Your conversation is still here.';
+    return '';
   },
 
   /** replace state after a user action, so the UI does not wait for a poll */

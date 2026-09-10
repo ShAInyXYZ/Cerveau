@@ -1,0 +1,21 @@
+rfx: 1
+name: devcheck-inspect
+description: Inspect a local app's DOM labels, console errors and failed requests; return bounded facts and a workspace evidence receipt, not a visual pass
+kind: exec
+risk: sensitive
+modes: [autopilot]
+ingress_cap: 6000
+argv: [/usr/bin/env, rfx-devcheck, inspect]
+timeout: 40s
+card:
+  fs: [workspace]
+  network: [localhost, 127.0.0.1]
+  env: [CERVEAU_PLAYWRIGHT_MODULE, CERVEAU_CHROMIUM]
+  subprocess: true
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    url: {type: string, maxLength: 2048, description: 'Explicit http://localhost:PORT or http://127.0.0.1:PORT local app; port 1024..65535, no credentials'}
+    wait_ms: {type: integer, minimum: 0, maximum: 1500, description: 'Optional bounded observation delay after DOM ready; default 200 ms'}
+  required: [url]

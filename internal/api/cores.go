@@ -80,7 +80,7 @@ func (a *API) SelectCore(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/sampling — global defaults for future runs and what a UI may offer.
 func (a *API) GetSampling(w http.ResponseWriter, r *http.Request) {
-	name := "strict"
+	name := "default"
 	if a.chat != nil {
 		name = a.chat.SamplingName()
 	}

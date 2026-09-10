@@ -72,7 +72,7 @@
       </p>
 
     {:else}
-      <h3>Going idle in <span class="clock">{countdown}</span></h3>
+      <h3>{#if countdown}Going idle in <span class="clock">{countdown}</span>{:else}Waiting for the Core to go idle{/if}</h3>
       <p class="lede">
         Nothing has run for a while, so the Core is about to unload and stop
         drawing power. Still working? Keep it awake.

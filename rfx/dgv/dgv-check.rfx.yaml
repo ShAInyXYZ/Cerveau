@@ -1,0 +1,16 @@
+rfx: 1
+name: dgv-check
+description: Check graph schema and semantics, code-path drift, or both using original DGV rules; no model inference or writes.
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-dgv, check]
+timeout: 25s
+ingress_cap: 25000
+card: {fs: [workspace], network: none, env: [RFX_DGV_CORE], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    name: {type: string, maxLength: 100}
+    checks: {type: string, enum: [all, lint, drift], description: Defaults to all; lint checks schema and semantics.}
+  required: [name]

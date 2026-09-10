@@ -1,0 +1,9 @@
+rfx: 1
+name: git-suggest
+description: Prepare a bounded staged-diff review bundle for a commit message in the current host run; does not call any model
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-github, git-suggest]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}

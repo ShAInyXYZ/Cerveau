@@ -1,5 +1,5 @@
 <script>
-  // TP-7 industrial button: square, mono-uppercase, mechanical press.
+  // Pill control with quiet sentence-case labels and mechanical press feedback.
   // variants: default | primary | ghost | danger | quiet
   let {
     variant = 'default',
@@ -19,12 +19,11 @@
 <style>
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-weight: 500;
-    letter-spacing: .1em;
-    text-transform: uppercase;
+    letter-spacing: 0;
     border: 1px solid var(--line2);
-    border-radius: var(--r);
+    border-radius: var(--r-control);
     background: var(--s2);
     color: var(--muted);
     cursor: pointer;
@@ -41,13 +40,13 @@
 
   .btn.active { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 
-  .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .primary:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.08); border-color: var(--accent); }
+  .primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .primary:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); filter: brightness(1.08); border-color: var(--accent); }
 
-  .ghost { background: transparent; border-color: transparent; color: var(--dim); }
+  .ghost { background: transparent; border-color: transparent; color: var(--muted); }
   .ghost:hover:not(:disabled) { color: var(--text); background: var(--s2); border-color: transparent; }
 
-  .quiet { background: transparent; border-color: transparent; color: var(--dim); padding-left: 4px; padding-right: 4px; }
+  .quiet { background: transparent; border-color: transparent; color: var(--muted); padding-left: 4px; padding-right: 4px; }
   .quiet:hover:not(:disabled) { color: var(--text); background: transparent; }
 
   .danger:hover:not(:disabled) { color: var(--err); border-color: var(--err); background: transparent; }

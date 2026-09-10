@@ -1,6 +1,6 @@
 // Packaging trusts the just-built executable's immutable metadata, not an
 // independently parsed installed pack or a second hardcoded version string.
-export const releaseArtifacts = ['crv', 'crvcli', 'build.json'];
+export const releaseArtifacts = ['crv', 'crvcli', 'ignite', 'build.json'];
 
 export function plannerFromBinary(info, version, revision) {
   const p = info?.planner;

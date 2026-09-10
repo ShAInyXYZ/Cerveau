@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PanelLeftOpen, PanelLeftClose } from 'lucide-svelte';
+  import { Moon, Coffee, PanelLeftOpen, PanelLeftClose } from 'lucide-svelte';
   // Inter, bundled — not fetched from Google. The token has named Inter since
   // the start while nothing ever loaded it, so the panel has been rendering in
   // whatever system-ui resolves to (DejaVu Sans on this machine).
@@ -87,6 +87,19 @@
     </div>
   {/if}
 
+  {#if idleStore.notice}
+    <div class="idle-notice" role="status" aria-atomic="true">
+      <span class="idle-notice-icon" aria-hidden="true">
+        {#if idleStore.value?.state === 'waking'}
+          <Coffee size={20} strokeWidth={1.6} />
+        {:else}
+          <Moon size={20} strokeWidth={1.6} />
+        {/if}
+      </span>
+      <p>{idleStore.notice}</p>
+    </div>
+  {/if}
+
   {#if idleStore.visible}
     <div class="idlewrap">
       <IdleScreen status={idleStore.value} onchange={(s: IdleStatus) => idleStore.set(s)} />
@@ -139,7 +152,7 @@
     {:else}
       <div class="chatwrap">
         <Chat />
-        {#key healthStore.workspace}
+        {#key `${sessionStore.activeId}:${sessionStore.workspace}`}
           <RfxDock sessionId={sessionStore.activeId}
             onTurn={(text: string, m?: string) => sessionStore.panelTurn(text, m as never)} />
         {/key}
@@ -201,6 +214,7 @@
   .shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
   .chatwrap { display: flex; flex: 1; min-width: 0; min-height: 0; }
   .chatwrap :global(main.chat) { flex: 1; min-width: 0; }
+  @media (max-width: 900px) { .chatwrap { flex-direction: column; } }
   .body { flex: 1; display: flex; min-height: 0; gap: 1px; background: var(--line); position: relative; }
   .body > :global(*) { background: var(--bg); }
 
@@ -220,6 +234,37 @@
     pointer-events: none;
   }
   .idlewrap > :global(*) { pointer-events: auto; }
+
+  .idle-notice {
+    /* A passive popup, never a shell row or another blocking idle dialog. */
+    position: fixed;
+    top: calc(var(--bar-h) + var(--sp-5) + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-popover);
+    width: max-content;
+    max-width: min(380px, calc(100% - 32px));
+    display: flex;
+    align-items: center;
+    gap: var(--sp-5);
+    padding: var(--sp-6) var(--sp-7);
+    border: 1px solid var(--line2);
+    border-radius: 16px;
+    background: var(--s2);
+    box-shadow: var(--elev-2), 0 8px 24px rgb(0 0 0 / .18);
+    color: var(--text);
+    font-size: var(--fs-body);
+    line-height: 1.55;
+    pointer-events: none;
+  }
+  .idle-notice-icon { flex: none; color: var(--muted); }
+  .idle-notice p { min-width: 0; overflow-wrap: anywhere; }
+  @supports (backdrop-filter: blur(12px)) {
+    .idle-notice {
+      background: color-mix(in srgb, var(--s2) 94%, transparent);
+      backdrop-filter: blur(12px);
+    }
+  }
 
   .offline {
     display: flex; align-items: center; gap: 8px;

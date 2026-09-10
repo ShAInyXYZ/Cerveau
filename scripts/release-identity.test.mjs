@@ -8,7 +8,7 @@ const identity = () => ({version:'0.6.0-alpha', revision:'test-build', planner:{
 }});
 
 test('release owns one executable-bundled Planner, not a second install artifact', () => {
-  assert.deepEqual(releaseArtifacts, ['crv','crvcli','build.json']);
+  assert.deepEqual(releaseArtifacts, ['crv','crvcli','ignite','build.json']);
   assert.deepEqual(plannerFromBinary(identity(), '0.6.0-alpha', 'test-build'), identity().planner);
 });
 

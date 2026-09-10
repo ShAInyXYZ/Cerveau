@@ -1,0 +1,16 @@
+rfx: 1
+name: git-add
+description: Stage only the explicitly listed literal file paths, including deletions; directories and stage-all are refused
+kind: exec
+risk: sensitive
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-github, git-add]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    paths: {type: array, minItems: 1, maxItems: 128, items: {type: string}}
+  required: [paths]

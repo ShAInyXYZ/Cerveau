@@ -98,7 +98,10 @@ func (a *API) ToggleRfx(w http.ResponseWriter, r *http.Request) {
 		Name    string `json:"name"`
 		Enabled bool   `json:"enabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+	if !decodeBoundedCommand(w, r, &body) {
+		return
+	}
+	if body.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
@@ -125,7 +128,10 @@ func (a *API) RunRfx(w http.ResponseWriter, r *http.Request) {
 		Args      json.RawMessage `json:"args"`
 		Confirmed bool            `json:"confirmed"` // an explicit UI confirm click
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+	if !decodeBoundedCommand(w, r, &body) {
+		return
+	}
+	if body.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}

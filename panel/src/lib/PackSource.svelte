@@ -4,7 +4,8 @@
 </script>
 
 {#if pack.origin === 'builtin'}
-  <div class="source">
+  <details class="source">
+    <summary>Built-in pack{ignored.length ? ` · ${ignored.length} installed ${ignored.length === 1 ? 'copy' : 'copies'} ignored` : ''}</summary>
     <p>Built into Cerveau. Takes precedence over installed copies.</p>
     {#if ignored.length}
       <details>
@@ -16,12 +17,12 @@
         </ul>
       </details>
     {/if}
-  </div>
+  </details>
 {/if}
 
 <style>
-  .source { padding: 0 12px 10px; color: var(--text); font-size: 14px; line-height: 1.45; }
-  p { margin: 0; }
+  .source { padding: 0 12px 10px; color: var(--muted); font-size: var(--fs-small); line-height: 1.5; }
+  p { margin: 8px 0 0; }
   details { margin-top: 6px; }
   summary { cursor: pointer; }
   summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

@@ -1,0 +1,24 @@
+rfx: 1
+pack: github
+version: 2.0.0
+author: shiny
+description: Repository-bound Git review and explicit changes, with host-approved GitHub publishing
+icon: git-branch
+ui:
+  widgets:
+    - type: button
+      label: Check repository
+      run: git-status
+      icon: refresh
+    - type: button
+      label: Review diff
+      run: git-diff
+      args: {scope: all}
+      icon: file-diff
+    - type: button
+      label: Recent commits
+      run: git-log
+      args: {count: 5}
+      icon: history
+    - type: log
+      lines: 8

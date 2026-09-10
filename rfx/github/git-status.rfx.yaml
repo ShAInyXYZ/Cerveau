@@ -1,0 +1,9 @@
+rfx: 1
+name: git-status
+description: Read structured repository status, exact changed file paths, local identity and remotes; non-repository is an expected state
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-github, git-status]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}

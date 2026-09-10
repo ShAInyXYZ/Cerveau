@@ -73,10 +73,11 @@ img, svg, canvas { display: block; max-width: 100%; }
   --semantic: #b48ad6;  /* memory: semantic (violet) */
   --episodic: #5bb7c9;  /* memory: episodic (cyan) */
 
-  /* ---- depth: hairline ring + top-light bump, no cast shadows ----
+  /* ---- depth: hairline ring + top-light bump ----
      A control is lit from above: a bright top edge, a dark bottom edge, and
      a ring to separate it from the surface behind. That is the whole depth
-     language — nothing floats, nothing blurs. ---- */
+     language. Floating menus add a tinted blurred backdrop; the chat/dock
+     transition deliberately stays a plain opacity gradient. ---- */
   --ring:        rgba(255,255,255,.08);
   --ring-strong: rgba(255,255,255,.12);
   --lift:        rgba(255,255,255,.09);   /* top-edge highlight */
@@ -92,10 +93,14 @@ img, svg, canvas { display: block; max-width: 100%; }
   --code-title:   #7FB3D9;
   --code-type:    #6BB7C9;
 
-  /* ---- geometry: TP-7 is SQUARE — small radii only ---- */
+  /* ---- geometry: tight data cells, rounded frames, pill controls ---- */
   --r-sm: 2px;
   --r:    3px;
   --r-lg: 4px;
+  --r-panel: 14px;
+  --r-control: 999px;
+  --floating-surface: var(--s2);
+  --floating-blur: none;
 
   /* ---- rhythm ---- */
   /* SPACING SCALE — snap to these.
@@ -150,6 +155,16 @@ img, svg, canvas { display: block; max-width: 100%; }
 
   /* ---- breakpoints (for reference in @media, which cannot read vars):
      narrow < 640px · compact < 900px · full ≥ 900px ---- */
+}
+
+@supports (backdrop-filter: blur(24px)) {
+  :root, [data-theme="dark"] {
+    --floating-surface: color-mix(in srgb, var(--s2) 94%, transparent);
+    --floating-blur: blur(24px);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root, [data-theme="dark"] { --floating-surface: var(--s2); --floating-blur: none; }
 }
 
 

@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"cerveau/internal/llm"
 )
 
 const (
@@ -31,6 +33,7 @@ type turnGuard struct {
 	repeatLimit int
 
 	tokens      int
+	generated   int // total decode work, including reasoning; never reset by a slice
 	extensions  int // token-budget checkpoints already granted this turn
 	iterExts    int // iteration-cap extensions already granted this turn
 	perToolErrs map[string]int
@@ -106,6 +109,9 @@ func newTurnGuardBudget(maxIter int, budget time.Duration) *turnGuard {
 }
 
 func (g *turnGuard) preThink(iter int) (string, string, bool) {
+	if g.generated >= maxTurnTokens*(maxTokenExtensions+1) {
+		return StopTokens, fmt.Sprintf("generated-token budget (%d, including reasoning) exhausted at %d", maxTurnTokens*(maxTokenExtensions+1), g.generated), true
+	}
 	if iter > g.maxIter+g.iterExts*g.maxIter {
 		return StopIterations, fmt.Sprintf("iteration cap (%d) reached", g.maxIter+g.iterExts*g.maxIter), true
 	}
@@ -125,6 +131,17 @@ func (g *turnGuard) preThink(iter int) (string, string, bool) {
 func (g *turnGuard) progress() { g.deadline = time.Now().Add(g.budget) }
 
 func (g *turnGuard) addTokens(n int) { g.tokens += n }
+
+func (g *turnGuard) addUsage(u llm.Usage) {
+	g.addTokens(u.AnswerTokens()) // window pressure and decode effort are different limits
+	generated := u.CompletionTokens
+	if u.ReasoningTokens > generated {
+		generated = u.ReasoningTokens
+	}
+	if generated > 0 {
+		g.generated += generated
+	}
+}
 
 // tokensExhausted reports whether the current budget slice is spent.
 func (g *turnGuard) tokensExhausted() bool { return g.tokens > g.maxTokens }

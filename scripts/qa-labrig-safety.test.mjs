@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { claimEvidence, fetchWithin } from './qa-labrig-safety.mjs';
+import { assertRecoveryIdleWindow, claimEvidence, fetchWithin } from './qa-labrig-safety.mjs';
 
 test('evidence ownership refuses reuse and preserves the first record', () => {
   const root = mkdtempSync(join(tmpdir(), 'labrig-evidence-guard-'));
@@ -23,4 +23,15 @@ test('a stalled local request is bounded', async () => {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
   }
+});
+
+test('recovery requires actual idle runway, not an unrelated activity hold', () => {
+  for (const seconds of [-1, 0, 600, 719, 720, undefined, NaN]) {
+    assert.throws(() => assertRecoveryIdleWindow({ enabled: true, held: false, park_in_seconds: seconds }), /idle timer/);
+  }
+  assert.doesNotThrow(() => assertRecoveryIdleWindow({ enabled: true, held: false, park_in_seconds: 721 }));
+  assert.throws(() => assertRecoveryIdleWindow({ enabled: true, held: true, park_in_seconds: -1 }), /idle timer/);
+  assert.doesNotThrow(() => assertRecoveryIdleWindow({ enabled: false }));
+  assert.throws(() => assertRecoveryIdleWindow({}), /Cannot verify/);
+  assert.throws(() => assertRecoveryIdleWindow(null), /Cannot verify/);
 });

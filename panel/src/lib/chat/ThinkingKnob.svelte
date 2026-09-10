@@ -86,15 +86,16 @@
   .menu {
     position: absolute; bottom: calc(100% + 6px); left: 0; z-index: var(--z-dropdown);
     min-width: 132px; padding: 3px;
-    background: var(--s2); border: 1px solid var(--line2); border-radius: 9px;
+    background: var(--floating-surface); backdrop-filter: var(--floating-blur);
+    border: 1px solid var(--line2); border-radius: var(--r-panel);
   }
   .item {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     width: 100%; padding: 6px 9px; border: 0; border-radius: 6px;
-    background: none; color: var(--dim); font: inherit; font-size: 12px;
+    background: none; color: var(--muted); font: inherit; font-size: 12px;
     cursor: pointer; text-align: left;
   }
-  .item:hover { background: var(--panel); color: var(--text); }
+  .item:hover { background: var(--s3); color: var(--text); }
   .item.sel { color: var(--text); }
   .item.sel::after { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
   .def { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }

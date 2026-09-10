@@ -3,7 +3,7 @@
   import { tooltip } from '../kit/tooltip.js';
   import { relTime } from './api';
   import { groupByProject } from './projects.js';
-  import { Plus, Boxes, ChevronRight, Folder, FolderOpen, Pencil, Trash2, Zap, Settings as SettingsIcon } from 'lucide-svelte';
+  import { Plus, Boxes, ChevronRight, Pencil, Trash2, Zap, Settings as SettingsIcon } from 'lucide-svelte';
 
   let {
     sessions = [], activeId, activeWorkspace = '', lastEvents = {}, skills = [], runningIds = [],
@@ -77,20 +77,22 @@
     {#each projects as p (p.path)}
       {@const isActiveProj = p.path === activeWorkspace}
       <div class="project">
-        <button class="pfolder" class:active={isActiveProj} class:instant={p.instant}
-          onclick={() => toggle(p.path)} use:tooltip={p.instant ? 'ephemeral · auto-deletes in 24h' : p.path}>
-          <span class="chev" class:open={expanded[p.path]}><ChevronRight size={13} /></span>
-          <span class="ficon">
-            {#if p.instant}<Zap size={14} />{:else if expanded[p.path]}<FolderOpen size={14} />{:else}<Folder size={14} />{/if}
-          </span>
-          <span class="pname">{p.name}</span>
+        <div class="folder-row" class:active={isActiveProj}>
+          <button class="pfolder" class:active={isActiveProj}
+            aria-expanded={!!expanded[p.path]}
+            onclick={() => toggle(p.path)} use:tooltip={p.instant ? 'ephemeral · auto-deletes in 24h' : p.path}>
+            {#if p.instant}<span class="ficon"><Zap size={14} /></span>{/if}
+            <span class="pname">{p.name}</span>
+            <span class="session-count" aria-label={`${p.sessions.length} sessions`}>{p.sessions.length}</span>
+            <span class="chev" class:open={expanded[p.path]}><ChevronRight size={13} /></span>
+          </button>
           {#if !p.instant}
-            <span class="padd" use:tooltip={"new session in this project"}
-              onclick={(e) => startCreate(e, p.path)} role="button" tabindex="0">
+            <button class="padd" use:tooltip={"new session in this project"}
+              aria-label={`New session in ${p.name}`} onclick={(e) => startCreate(e, p.path)}>
               <Plus size={13} />
-            </span>
+            </button>
           {/if}
-        </button>
+        </div>
 
         {#if expanded[p.path]}
           <div class="sessions">
@@ -101,37 +103,44 @@
               </div>
             {/if}
             {#each p.sessions as s (s.id)}
-              <button class="sess" class:on={s.id === activeId} onclick={() => onSelect(s.id)}>
+              <div class="sess" class:on={s.id === activeId}>
                 {#if runningIds.includes(s.id)}
-                  <span class="sdot live" title="a turn is running in this session"></span>
+                  <span class="sdot live" role="img" aria-label="a turn is running in this session"></span>
                 {:else if s.id === activeId}<Dot tone="accent" size={5} />{:else}<span class="sdot"></span>{/if}
-                <span class="scol">
+                <div class="scol">
                   {#if renamingId === s.id}
                     <!-- svelte-ignore a11y_autofocus -->
                     <input
-                      class="srename" bind:value={renameVal} autofocus
-                      onclick={(e) => e.stopPropagation()}
+                      class="srename" bind:value={renameVal} autofocus aria-label="Session name"
                       onblur={commitRename}
                       onkeydown={(e) => {
                         e.stopPropagation();
                         if (e.key === 'Enter') commitRename();
                         if (e.key === 'Escape') renamingId = null;
                       }} />
+                    <span class="smeta mono" class:ttl={s.instant}>
+                      {s.instant ? expiresIn(s) : (lastLabel(s.id) || s.id.slice(0, 15))}
+                    </span>
                   {:else}
-                    <span class="sname" ondblclick={(e) => startRename(e, s)}
-                      use:tooltip={'double-click to rename'}>{s.name}</span>
+                    <button class="sselect" aria-current={s.id === activeId ? 'true' : undefined}
+                      onclick={() => onSelect(s.id)} ondblclick={(e) => startRename(e, s)}
+                      use:tooltip={'double-click to rename'}>
+                      <span class="sname">{s.name}</span>
+                      <span class="smeta mono" class:ttl={s.instant}>
+                        {s.instant ? expiresIn(s) : (lastLabel(s.id) || s.id.slice(0, 15))}
+                      </span>
+                    </button>
                   {/if}
-                  <span class="smeta mono" class:ttl={s.instant}>
-                    {s.instant ? expiresIn(s) : (lastLabel(s.id) || s.id.slice(0, 15))}
-                  </span>
-                </span>
+                </div>
                 {#if renamingId !== s.id}
-                  <span class="sedit" onclick={(e) => startRename(e, s)} role="button" tabindex="0"
-                    use:tooltip={'rename'}><Pencil size={11} /></span>
-                  <span class="sedit del" onclick={(e) => { e.stopPropagation(); onDelete?.(s); }} role="button" tabindex="0"
-                    use:tooltip={'delete'}><Trash2 size={11} /></span>
+                  <div class="sactions">
+                    <button class="sedit" onclick={(e) => startRename(e, s)} aria-label={`Rename ${s.name}`}
+                      use:tooltip={'rename'}><Pencil size={11} /></button>
+                    <button class="sedit del" onclick={() => onDelete?.(s)} aria-label={`Delete ${s.name}`}
+                      use:tooltip={'delete'}><Trash2 size={11} /></button>
+                  </div>
                 {/if}
-              </button>
+              </div>
             {/each}
           </div>
         {/if}
@@ -149,7 +158,7 @@
         <Boxes size={12} /><span class="label">SKILLS</span><span class="tag">{skills.length}</span>
       </div>
     {/if}
-    <button class="settings-btn" class:on={settingsOpen} onclick={() => onSettings?.()}>
+    <button class="settings-btn" class:on={settingsOpen} aria-pressed={settingsOpen} onclick={() => onSettings?.()}>
       <SettingsIcon size={14} /><span>Settings</span>
     </button>
   </div>
@@ -170,138 +179,109 @@
   }
   .instant-btn {
     margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
-    width: 26px; height: 26px; color: var(--dim);
-    /* surface, not an outline — the header already carries a border-bottom,
-       and a boxed icon beside it read as a second frame */
-    background: var(--s2); border: 1px solid transparent;
-    border-radius: 7px; cursor: pointer;
-    transition: color .1s, background .1s, border-color .1s, transform .05s;
+    width: 28px; height: 28px; color: var(--muted);
+    background: transparent; border: none;
+    border-radius: var(--r); cursor: pointer;
+    transition: color var(--t-fast), background var(--t-fast);
   }
-  .instant-btn:hover { color: var(--text); background: var(--s3); border-color: var(--line); }
-  .instant-btn:active { transform: translateY(1px); }
+  .instant-btn:hover { color: var(--text); background: var(--s2); }
+  .instant-btn:active { background: var(--s3); }
   .screate { padding: 2px 0 4px; }
 
-  .tree { flex: 1; overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .tree { flex: 1; overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
   .project { display: flex; flex-direction: column; }
 
-  /* ---- project folder header: a rounded PILL (like the chat bar) ---- */
+  /* Secondary navigation stays flat; only selection and focus carry emphasis. */
+  .folder-row { display: flex; align-items: center; min-width: 0; border-radius: var(--r-control); padding-right: var(--sp-2); }
   .pfolder {
-    width: 100%; display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px; border: none; border-radius: 999px;
-    /* Surface only, no elevation ring. --elev-1 is THREE edges (a 1px ring
-       plus two insets); with one per pill, a border-left on every session
-       list and the rail's own border-right, a 250px column was drawing five
-       overlapping lines. Depth here comes from the surface gradient. */
-    background: var(--surface-raised);
+    flex: 1; min-width: 0; min-height: 32px; display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-5); border: none; border-radius: var(--r-control);
+    background: transparent;
     color: var(--muted); cursor: pointer;
-    transition: box-shadow .12s, color .12s;
+    transition: color var(--t-fast);
   }
+  .folder-row:hover { background: var(--s2); }
+  .folder-row.active { background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--accent-line); }
   .pfolder:hover { color: var(--text); }
-  .pfolder.active {
-    color: var(--text);
-    box-shadow: 0 0 0 1px var(--accent-line), 0 1px 0 0 var(--lift) inset;
-  }
-  .chev { display: inline-flex; color: var(--faint); transition: transform .15s; flex-shrink: 0; }
-  .chev.open { transform: rotate(90deg); color: var(--dim); }
+  .pfolder.active { color: var(--text); }
+  .chev { display: inline-flex; color: var(--muted); transition: transform var(--t-fast), opacity var(--t-fast); flex-shrink: 0; opacity: 0; }
+  .chev.open { transform: rotate(90deg); opacity: 1; }
+  .folder-row:hover .chev, .folder-row:focus-within .chev { opacity: 1; }
+  .session-count { font: var(--fs-small) var(--font-mono); color: var(--muted); }
   .ficon { display: inline-flex; color: var(--dim); flex-shrink: 0; }
-  .pfolder.active .ficon { color: var(--accent); }
-  /* instant group — always reads as the ephemeral/accent one */
-  .pfolder.instant .ficon { color: var(--accent); }
-  .pfolder.instant .pname { color: var(--accent); }
-  .pname { flex: 1; text-align: left; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* per-project add: hidden until the pill is hovered */
+  .pfolder.active .ficon { color: var(--muted); }
+  .pname { flex: 1; text-align: left; font-size: var(--fs-small); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pfolder.active .pname { font-weight: 600; }
+  /* Native sibling controls remain reachable without nested buttons. */
   .padd {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px;
-    color: var(--dim); cursor: pointer;
-    opacity: 0; transition: opacity .12s, color .1s, background .1s;
+    width: 28px; height: 28px; flex-shrink: 0; border-radius: var(--r-control);
+    padding: 0; border: none; background: transparent; color: var(--muted); cursor: pointer;
+    opacity: 0; transition: opacity var(--t-fast), color var(--t-fast), background var(--t-fast);
   }
-  .pfolder:hover .padd { opacity: 1; }
-  .padd:hover { color: var(--accent); background: var(--accent-soft); }
+  .folder-row:hover .padd, .folder-row:focus-within .padd { opacity: 1; }
+  .padd:hover { color: var(--text); background: var(--s3); }
 
   /* A turn is executing in this session — including one started from the CLI,
      which the panel otherwise renders identically to an idle session. */
   .sdot.live {
-    background: var(--ok, #7fa650);
-    box-shadow: 0 0 0 0 var(--ok, #7fa650);
-    animation: livepulse 1.6s ease-out infinite;
-  }
-  @keyframes livepulse {
-    0%   { box-shadow: 0 0 0 0 rgba(127,166,80,.6); }
-    70%  { box-shadow: 0 0 0 5px rgba(127,166,80,0); }
-    100% { box-shadow: 0 0 0 0 rgba(127,166,80,0); }
+    background: var(--ok);
   }
 
-  /* ---- sessions nested as children beneath the pill ---- */
+  /* Indentation and one quiet guide communicate project/session nesting. */
   .sessions {
-    display: flex; flex-direction: column; gap: 1px;
-    margin: 4px 0 0 20px; padding-left: 12px;
-    /* one quiet guide showing these belong to the pill above, not a
-       divider competing with the rail edge */
+    display: flex; flex-direction: column; gap: var(--sp-1);
+    margin: var(--sp-1) 0 var(--sp-2) var(--sp-6); padding-left: var(--sp-2);
     border-left: 1px solid var(--s3);
   }
   .sess {
     position: relative;
-    display: flex; align-items: flex-start; gap: 8px;
-    text-align: left; background: transparent; border: none; border-radius: 7px;
-    padding: 7px 10px; cursor: pointer; color: var(--muted);
-    transition: background .12s, box-shadow .12s;
+    display: flex; align-items: flex-start; gap: var(--sp-3);
+    text-align: left; background: transparent; border-radius: var(--r);
+    padding: 0 var(--sp-3); color: var(--muted); min-height: 44px;
+    transition: background var(--t-fast);
   }
-  /* connector tick from the guide line to each session */
-  .sess::before {
-    content: ''; position: absolute; left: -12px; top: 15px;
-    width: 8px; height: 1px; background: var(--line);
-  }
-  .sess:hover { background: color-mix(in srgb, #fff 3.5%, transparent); }
-  /* the ::before accent bar already says which session is active */
-  .sess.on { background: var(--surface-raised); }
-  .sess.on::before { background: var(--accent-line); }
-  .sdot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); margin-top: 5px; flex-shrink: 0; }
-  .sess :global(.dot) { margin-top: 5px; }
+  .sess:hover { background: var(--s2); }
+  .sess.on { background: transparent; color: var(--text); }
+  .sess.on::before { content: ''; position: absolute; left: -5px; top: var(--sp-4); bottom: var(--sp-4); width: 1px; background: var(--accent); }
+  .sdot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); margin-top: 13px; flex-shrink: 0; }
+  .sess :global(.dot) { margin-top: 13px; }
   .scol { min-width: 0; flex: 1; display: flex; flex-direction: column; }
-  .sname { font-size: 12px; font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sselect { display: flex; flex-direction: column; width: 100%; min-height: 44px; text-align: left; background: transparent; border: none; border-radius: var(--r); padding: var(--sp-3) 0; cursor: pointer; }
+  .sname { display: block; width: 100%; font-size: var(--fs-small); font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sess.on .sname { color: var(--text); font-weight: 550; }
-  .smeta { font-size: 9px; color: var(--faint); margin-top: 2px; letter-spacing: .04em; }
+  .smeta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-micro); color: var(--muted); margin-top: var(--sp-1); letter-spacing: .04em; }
   .smeta.ttl { color: var(--warn); }
 
   /* inline rename input — matches the name's slot exactly */
   .srename {
-    font-size: 12px; font-weight: 500; color: var(--text);
-    background: var(--bg); border: 1px solid var(--accent-line); border-radius: 5px;
-    padding: 2px 6px; width: 100%; outline: none; font-family: var(--font-sans);
+    font-size: var(--fs-small); font-weight: 500; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line2); border-radius: var(--r);
+    padding: var(--sp-1) var(--sp-3); margin-top: var(--sp-2); width: 100%; font-family: var(--font-sans);
   }
-  /* pencil affordance — hidden until the session row is hovered */
+  .sactions { display: flex; align-items: center; gap: var(--sp-1); margin-top: var(--sp-2); }
   .sedit {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px; flex-shrink: 0; border-radius: 5px; margin-top: 2px;
-    color: var(--dim); cursor: pointer; opacity: 0;
-    transition: opacity .12s, color .1s, background .1s;
+    width: 24px; height: 28px; flex-shrink: 0; border-radius: var(--r);
+    padding: 0; border: none; background: transparent; color: var(--muted); cursor: pointer; opacity: 0;
+    transition: opacity var(--t-fast), color var(--t-fast), background var(--t-fast);
   }
-  .sess:hover .sedit { opacity: 1; }
-  .sedit:hover { color: var(--accent); background: var(--accent-soft); }
+  .sess:hover .sedit, .sess:focus-within .sedit { opacity: 1; }
+  .sedit:hover { color: var(--text); background: var(--s3); }
   .sedit.del:hover { color: var(--err); background: color-mix(in srgb,var(--err) 12%,transparent); }
+  @media (hover: none) { .padd, .sedit { opacity: 1; } }
 
   .empty { padding: 24px 12px; text-align: center; }
 
   .railfoot { flex-shrink: 0; border-top: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .settings-btn {
     display: flex; align-items: center; gap: 8px; width: 100%;
-    text-align: left; padding: 8px 10px; border: none; border-radius: 8px;
-    background: transparent; color: var(--dim); cursor: pointer;
-    font-size: 12px; font-weight: 500;
-    transition: color .12s, background .12s;
+    text-align: left; padding: var(--sp-4); border: none; border-radius: var(--r); min-height: 32px;
+    background: transparent; color: var(--muted); cursor: pointer;
+    font-size: var(--fs-small); font-weight: 500;
+    transition: color var(--t-fast), background var(--t-fast);
   }
-  .settings-btn:hover { color: var(--text); background: color-mix(in srgb, #fff 6%, transparent); }
+  .settings-btn:hover { color: var(--text); background: var(--s2); }
   .settings-btn.on { color: var(--accent); background: var(--accent-soft); }
-  .foot {
-    display: flex; align-items: center; gap: 8px;
-    font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
-    padding: 8px 10px; border-radius: 7px;
-    background: color-mix(in srgb, #fff 4%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 9%, transparent);
-    color: var(--dim); cursor: pointer; border: none; transition: color .1s, box-shadow .1s;
-  }
-  .foot:hover { color: var(--text); }
-  .foot.on { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); background: var(--accent-soft); }
   .skills { display: flex; align-items: center; gap: 7px; padding: 4px 10px; color: var(--dim); }
 </style>

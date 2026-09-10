@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
 
+	"cerveau/internal/cores"
 	"cerveau/internal/idle"
 )
 
@@ -17,7 +19,33 @@ func (a *API) IdleStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"state": "active", "enabled": false})
 		return
 	}
+	a.RefreshIdle(r.Context())
 	writeJSON(w, http.StatusOK, a.idle.Status())
+}
+
+// RefreshIdle is shared by polling and the timer, so a closed browser cannot
+// leave the tracker repeatedly requesting parks after one already completed.
+// Return the fresh service observation, which can be unknown. The tracker keeps
+// its last display state across transient metadata failures; that remembered
+// state is not permission for Health to contact a socket-activated Core.
+func (a *API) RefreshIdle(ctx context.Context) idle.State {
+	if a.idle == nil {
+		return ""
+	}
+	a.idleObserveMu.Lock()
+	defer a.idleObserveMu.Unlock()
+	var state idle.State
+	if a.idleCoreState != nil {
+		state = a.idleCoreState(ctx)
+	} else if a.cfg != nil {
+		if reg, err := cores.Load(cores.DefaultPath()); err == nil {
+			if core := reg.ByEndpoint(a.ConfigSnapshot().Endpoints.Model); core != nil && core.Unit != "" {
+				state = idle.ServiceState(ctx, core.Unit)
+			}
+		}
+	}
+	a.idle.Observe(state)
+	return state
 }
 
 // POST /api/idle/stay — "I'm still here." Pushes the park out without turning

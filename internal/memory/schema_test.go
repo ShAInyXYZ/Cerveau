@@ -72,19 +72,46 @@ func TestSchemaKeywordOnlyWithoutEmbedder(t *testing.T) {
 
 func TestHybridQueryBy(t *testing.T) {
 	var lastQuery string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var hybridSearch map[string]any
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/collections/memory" {
+			json.NewEncoder(w).Encode(embeddingTestSchema(srv.URL))
+			return
+		}
+		if r.URL.Path == "/v2/embeddings" {
+			json.NewEncoder(w).Encode(embeddingTestResponse())
+			return
+		}
+		if r.URL.Path == "/multi_search" {
+			var body struct {
+				Searches []map[string]any `json:"searches"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Searches) != 1 {
+				t.Errorf("invalid multi_search request: %v", err)
+				http.Error(w, "invalid request", 400)
+				return
+			}
+			hybridSearch = body.Searches[0]
+			json.NewEncoder(w).Encode(map[string]any{"results": []any{map[string]any{"hits": []any{}}}})
+			return
+		}
 		lastQuery = r.URL.RawQuery
 		w.Header().Set("content-type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"hits": []any{}})
 	}))
 	defer srv.Close()
 	c := NewTSClient(srv.URL, "k")
-	c.Search(context.Background(), "test", "episodic", "", 5, true, "")
-	if !strings.Contains(lastQuery, "query_by=content%2Cembedding") && !strings.Contains(lastQuery, "query_by=content,embedding") {
-		t.Fatalf("hybrid query_by missing: %s", lastQuery)
+	if _, err := c.Search(context.Background(), "test", "episodic", "", 5, true, ""); err != nil {
+		t.Fatal(err)
 	}
-	c.Search(context.Background(), "test", "episodic", "", 5, false, "")
-	if strings.Contains(lastQuery, "embedding") {
+	if hybridSearch["query_by"] != "content" || hybridSearch["vector_query"] == nil || lastQuery != "" {
+		t.Fatal("hybrid explicit vector missing from JSON, or leaked into URL")
+	}
+	if _, err := c.Search(context.Background(), "test", "episodic", "", 5, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(lastQuery, "query_by=content") || strings.Contains(lastQuery, "embedding") {
 		t.Fatalf("keyword query should not include embedding: %s", lastQuery)
 	}
 }

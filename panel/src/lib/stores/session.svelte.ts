@@ -123,11 +123,13 @@ export const sessionStore={
   dismissed=new Set(storage.get<string[]>(storageKeys.dismissedErrors(id),[]));
   closeStream?.();closeStream=null;void refresh();
  },
- async send(text:string,opts:{step?:boolean}={}){return command({kind:'chat',text,mode,sampling:turnSampling});},
+ async send(text:string,opts:{step?:boolean;images?:{data_url:string}[]}={}){return command({kind:'chat',text,mode,sampling:turnSampling,...(opts.images?.length?{images:opts.images.map(({data_url})=>({data_url}))}:{})});},
  async editAndResend(eventId:string,text:string){
-  const sid=activeId,g=generation;if(!sid||busy()||!text.trim())return;
+  const sid=activeId,g=generation;
+  const images=messages.find(m=>m.id===eventId)?.payload?.images?.map(({data_url})=>({data_url}));
+  if(!sid||busy()||(!text.trim()&&!images?.length))return;
   if(!await control(id=>api.rewind(id,eventId)))return;
-  if(current(sid,g))await this.send(text);
+  if(current(sid,g))await this.send(text,{images});
  },
  async panelTurn(text:string,m?:Mode){if(m)mode=m;return this.send(text);},
  async steer(text:string){return runControl('steer',text);},
@@ -136,7 +138,7 @@ export const sessionStore={
  async runAutopilot(){return command({kind:'continue',plan_event_id:plan?.plan_event_id});},
  async runStep(step=-1,revision=false){return command({kind:'step',step,revision,plan_event_id:plan?.plan_event_id});},
  async dismissAllErrors(){if(!activeId)return;dismissed=new Set([...dismissed,...errors.map(incidentKey)]);storage.set(storageKeys.dismissedErrors(activeId),[...dismissed]);errors=[];},
- async retry(text:string){if(plan)return this.runStep(plan.blocked>=0?plan.blocked:-1);return this.send(text);},
+ async retry(text:string){if(run?.kind==='reflex')return false;if(plan&&!plan.done)return command({kind:'step',step:plan.blocked>=0?plan.blocked:-1,plan_event_id:plan.plan_event_id,continue_plan:true});const images=[...messages].reverse().find(m=>m.type==='msg.user')?.payload?.images;return this.send(text,{images});},
  async create(name:string,workspace?:string){try{const m=await api.createSession(name,workspace);await this.loadSessions();if(m?.id)this.select(m.id);}catch(e){failure(e);}},
  async createInstant(){try{const m=await api.createInstant();await this.loadSessions();if(m?.id)this.select(m.id);}catch(e){failure(e);}},
  async rename(id:string,name:string){if(await api.renameSession(id,name))await this.loadSessions();},

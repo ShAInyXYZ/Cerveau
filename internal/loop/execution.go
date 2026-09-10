@@ -130,6 +130,14 @@ func (l *Loop) executeCall(ctx context.Context, wr *episodic.Writer, reg *tools.
 		if err := h.publish("running", "tool_call", tc.Function.Name, ""); err != nil {
 			return "", err, ""
 		}
+		h.mu.Lock()
+		recovering := h.state.RecoveryPhase != ""
+		h.mu.Unlock()
+		if recovering && (tc.Function.Name == "edit" || tc.Function.Name == "write" || tc.Function.Name == "apply_patch") {
+			if err := h.recoveryPhase("repairing"); err != nil {
+				return "", err, ""
+			}
+		}
 	}
 	allowed := false
 	for _, sp := range specs {
@@ -160,10 +168,11 @@ func (l *Loop) executeCall(ctx context.Context, wr *episodic.Writer, reg *tools.
 }
 
 type verifyRunner struct {
-	l   *Loop
-	ctx context.Context
-	wr  *episodic.Writer
-	reg *tools.Registry
+	l       *Loop
+	ctx     context.Context
+	wr      *episodic.Writer
+	reg     *tools.Registry
+	eventID *string
 }
 
 func (v verifyRunner) ExecuteMode(ctx context.Context, name string, args json.RawMessage, mode string) (string, error) {
@@ -172,19 +181,47 @@ func (v verifyRunner) ExecuteMode(ctx context.Context, name string, args json.Ra
 	if h != nil {
 		id = fmt.Sprintf("%s-verify-%d", h.state.ID, h.verifySeq.Add(1))
 	}
-	out, err, _ := v.l.executeCall(ctx, v.wr, v.reg, v.reg.Specs(mode), mode, llm.ToolCall{ID: id, Type: "function", Function: llm.FunctionCall{Name: name, Arguments: string(args)}})
+	out, err, eventID := v.l.executeCall(ctx, v.wr, v.reg, v.reg.Specs(mode), mode, llm.ToolCall{ID: id, Type: "function", Function: llm.FunctionCall{Name: name, Arguments: string(args)}})
+	if v.eventID != nil {
+		*v.eventID = eventID
+	}
 	return out, err
 }
 func (l *Loop) verifyStep(ctx context.Context, wr *episodic.Writer, sid string, idx int, v *plan.Verify) Verdict {
 	h := handleOf(ctx)
+	h.mu.Lock()
+	recovering := h.state.RecoveryPhase != ""
+	h.mu.Unlock()
+	if recovering {
+		if err := h.recoveryPhase("rechecking"); err != nil {
+			return Verdict{Evidence: err.Error()}
+		}
+	}
 	if err := h.publish("running", "verifying", "", fmt.Sprintf("checking step %d", idx+1)); err != nil {
 		return Verdict{Evidence: err.Error()}
 	}
 	wr.Append(episodic.Note, map[string]any{"kind": "verify_started", "index": idx, "verify": v})
-	verdict := RunVerify(ctx, verifyRunner{l, ctx, wr, h.registry}, h.state.Workspace, v)
+	// A metadata-only workspace fingerprint is insufficient authority for a
+	// guidance amendment. Bind a check to declared source content only when
+	// those bytes are unchanged across execution; never alter the predicate.
+	var sourceStep *PlanStep
+	sourceBefore := ""
+	if current, _, err := LatestPlan(l.path(sid)); err == nil && idx >= 0 && idx < len(current.Steps) && sameReviewJSON(current.Steps[idx].Verify, v) {
+		step := current.Steps[idx]
+		sourceStep = &step
+		sourceBefore = recoveryStepVersion(h.state.Workspace, step)
+	}
+	var eventID string
+	verdict := RunVerify(ctx, verifyRunner{l, ctx, wr, h.registry, &eventID}, h.state.Workspace, v)
+	if sourceStep != nil && sourceBefore != "" && recoveryStepVersion(h.state.Workspace, *sourceStep) == sourceBefore {
+		verdict.DeclaredSourceVersion = sourceBefore
+	}
+	verdict.EvidenceEventID = eventID
 	tracker := newWorkTracker(h.state.Workspace)
 	fp, _ := tracker.fingerprint()
 	verdict.WorkspaceVersion = fmt.Sprintf("%x", fp)
-	wr.Append(episodic.Note, map[string]any{"kind": "verify_finished", "index": idx, "verdict": verdict})
+	if ev, err := wr.Append(episodic.Note, map[string]any{"kind": "verify_finished", "index": idx, "verdict": verdict}); err == nil && verdict.EvidenceEventID == "" {
+		verdict.EvidenceEventID = ev.ID // contains checks have no tool result
+	}
 	return verdict
 }

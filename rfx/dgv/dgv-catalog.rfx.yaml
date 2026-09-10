@@ -1,0 +1,9 @@
+rfx: 1
+name: dgv-catalog
+description: Read the original DGV node, edge and status vocabulary before authoring a graph.
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-dgv, catalog]
+timeout: 25s
+ingress_cap: 25000
+card: {fs: [workspace], network: none, env: [RFX_DGV_CORE], subprocess: true}

@@ -35,7 +35,8 @@ const (
 	// Parked — the Core is unloaded. The next turn pays a cold start.
 	Parked State = "parked"
 	// Waking — a request arrived while parked; the Core is loading.
-	Waking State = "waking"
+	Waking      State = "waking"
+	Unavailable State = "unavailable"
 )
 
 // Config carries the two durations that shape the feature.
@@ -74,8 +75,9 @@ type Tracker struct {
 	holds int
 	// parked is set by the watchdog acknowledging the request, not by us
 	// guessing. Reality comes from whether the endpoint answers.
-	parked bool
-	waking bool
+	parked      bool
+	waking      bool
+	unavailable bool
 	// snoozedUntil suppresses the warning after the user waves it off.
 	snoozedUntil time.Time
 	// requestPath is the file the systemd watchdog polls.
@@ -145,6 +147,20 @@ func (t *Tracker) SetWaking(v bool) {
 	t.waking = v
 }
 
+// Observe reconciles service reality without touching the Core or resetting
+// the idle clock on every successful poll. Empty means observation failed.
+func (t *Tracker) Observe(state State) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	switch state {
+	case Parked, Waking, Unavailable, Active:
+		if state == Active && (t.parked || t.waking || t.unavailable) {
+			t.last = time.Now()
+		}
+		t.parked, t.waking, t.unavailable = state == Parked, state == Waking, state == Unavailable
+	}
+}
+
 // Status is the panel's view of the world.
 type Status struct {
 	State State `json:"state"`
@@ -174,6 +190,8 @@ func (t *Tracker) status() Status {
 		WarnSeconds:  int(t.cfg.Warn.Seconds()),
 	}
 	switch {
+	case t.unavailable:
+		s.State = Unavailable
 	case t.waking:
 		s.State = Waking
 	case t.parked:
@@ -185,7 +203,7 @@ func (t *Tracker) status() Status {
 	idle := time.Since(t.last)
 	s.IdleSeconds = int(idle.Seconds())
 
-	if !t.cfg.Enabled || t.holds > 0 || t.parked || t.waking {
+	if !t.cfg.Enabled || t.holds > 0 || t.parked || t.waking || t.unavailable {
 		// Nothing is counting down, so a countdown would be a lie.
 		s.ParkInSeconds = -1
 		return s
@@ -205,7 +223,7 @@ func (t *Tracker) Tick() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if !t.cfg.Enabled || t.parked || t.waking || t.holds > 0 {
+	if !t.cfg.Enabled || t.parked || t.waking || t.unavailable || t.holds > 0 {
 		return false
 	}
 	if time.Since(t.last) < t.cfg.After {

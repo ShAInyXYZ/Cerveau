@@ -1,0 +1,34 @@
+rfx: 1
+name: devcheck-capture
+description: Capture a local app viewport, CSS element or rectangle as a compact JPEG; return a hashed workspace image reference, never a visual correctness verdict
+kind: exec
+risk: sensitive
+modes: [autopilot]
+ingress_cap: 6000
+argv: [/usr/bin/env, rfx-devcheck, capture]
+timeout: 40s
+card:
+  fs: [workspace]
+  network: [localhost, 127.0.0.1]
+  env: [CERVEAU_PLAYWRIGHT_MODULE, CERVEAU_CHROMIUM]
+  subprocess: true
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    url: {type: string, maxLength: 2048, description: 'Explicit http://localhost:PORT or http://127.0.0.1:PORT local app; port 1024..65535, no credentials'}
+    target: {type: string, enum: [page, selector, rectangle], description: 'Page means the initial 1280x960 viewport, not a full scrolling page or desktop window'}
+    selector: {type: string, maxLength: 300, description: 'Required only for target selector; exactly one visible CSS element'}
+    rectangle:
+      type: object
+      additionalProperties: false
+      description: 'Required only for target rectangle; coordinates inside the initial 1280x960 viewport'
+      properties:
+        x: {type: integer, minimum: 0, maximum: 1279}
+        y: {type: integer, minimum: 0, maximum: 959}
+        width: {type: integer, minimum: 1, maximum: 1280}
+        height: {type: integer, minimum: 1, maximum: 960}
+      required: [x, y, width, height]
+    max_bytes: {type: integer, minimum: 16384, maximum: 262144, description: 'Default 131072 bytes; image is resized to at most 1280x960 and compressed to this hard cap'}
+    wait_ms: {type: integer, minimum: 0, maximum: 1500}
+  required: [url, target]

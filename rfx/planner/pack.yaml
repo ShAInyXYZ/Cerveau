@@ -1,6 +1,6 @@
 rfx: 1
 pack: planner
-version: 1.5.0
+version: 1.5.1
 author: shiny
 description: Native plan status and explicit server-owned next, selected, and whole-plan execution
 icon: git-branch

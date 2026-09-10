@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,5 +157,202 @@ func TestApplyPatchUsesTheExecutingRegistry(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(dirB, "game.html"))
 	if !strings.Contains(string(b), "WIN=8000") || strings.Contains(string(a), "WIN=8000") {
 		t.Fatalf("patch landed in the wrong workspace: A=%q B=%q", a, b)
+	}
+}
+
+// The Minecraft run validated multiline hunks against read's numbered,
+// cursor-dependent presentation. Valid source therefore failed to match.
+func TestApplyPatchReadsCompleteRawSourceWithoutMovingCursor(t *testing.T) {
+	for _, advance := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cursor_advanced_%t", advance), func(t *testing.T) {
+			dir := t.TempDir()
+			old := "function lightAt(x) {\n  return cached(x);\n}"
+			content := strings.Repeat("// padding\n", 2000) + old + "\n"
+			os.WriteFile(filepath.Join(dir, "world.js"), []byte(content), 0o644)
+			reg := setupPatchReg(t, dir)
+			read := reg.entries["read"].Tool.(*Read)
+			if advance {
+				if _, err := reg.ExecuteMode(context.Background(), "read", json.RawMessage(`{"path":"world.js"}`), ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cursorBefore := read.next[filepath.Join(dir, "world.js")]
+			args, _ := json.Marshal(map[string]any{"edits": []map[string]string{{
+				"path": "world.js", "old_string": old, "new_string": "function lightAt(x) {\n  return queued(x);\n}",
+			}}})
+			if _, err := reg.ExecuteMode(context.Background(), "apply_patch", args, ""); err != nil {
+				t.Fatalf("valid multiline hunk beyond read page rejected: %v", err)
+			}
+			got, _ := os.ReadFile(filepath.Join(dir, "world.js"))
+			if string(got) != strings.Replace(content, "cached(x)", "queued(x)", 1) {
+				t.Fatal("source content corrupted")
+			}
+			if read.next[filepath.Join(dir, "world.js")] != cursorBefore {
+				t.Fatalf("patch changed public read cursor: before=%d after=%d", cursorBefore, read.next[filepath.Join(dir, "world.js")])
+			}
+		})
+	}
+}
+
+func TestApplyPatchRawValidationStillUsesReadGuardAndJail(t *testing.T) {
+	for _, scenario := range []string{"guard", "escape", "symlink", "oversize"} {
+		t.Run(scenario, func(t *testing.T) {
+			dir, outside := t.TempDir(), t.TempDir()
+			os.WriteFile(filepath.Join(dir, "a.txt"), []byte("first"), 0o644)
+			os.WriteFile(filepath.Join(outside, "outside.txt"), []byte("outside"), 0o644)
+			path, old := "b.txt", "second"
+			os.WriteFile(filepath.Join(dir, path), []byte(old), 0o644)
+			reg := setupPatchReg(t, dir)
+			switch scenario {
+			case "guard":
+				reg.SetGuard(func(tool string, args json.RawMessage) error {
+					if tool == "read" && strings.Contains(string(args), "b.txt") {
+						return fmt.Errorf("test read denied")
+					}
+					return nil
+				})
+			case "escape":
+				path = "../outside.txt"
+			case "symlink":
+				os.Symlink(outside, filepath.Join(dir, "link"))
+				path, old = "link/outside.txt", "outside"
+			case "oversize":
+				os.WriteFile(filepath.Join(dir, path), []byte(strings.Repeat("z", maxFileSize)+old), 0o644)
+			}
+			args, _ := json.Marshal(map[string]any{"edits": []map[string]string{
+				{"path": "a.txt", "old_string": "first", "new_string": "changed"},
+				{"path": path, "old_string": old, "new_string": "changed"},
+			}})
+			if _, err := reg.ExecuteMode(context.Background(), "apply_patch", args, ""); err == nil {
+				t.Fatal("unsafe or unreadable hunk accepted")
+			}
+			got, _ := os.ReadFile(filepath.Join(dir, "a.txt"))
+			if string(got) != "first" {
+				t.Fatal("failed validation changed an earlier file")
+			}
+			got, _ = os.ReadFile(filepath.Join(outside, "outside.txt"))
+			if string(got) != "outside" {
+				t.Fatal("outside file changed")
+			}
+		})
+	}
+}
+
+func TestApplyPatchMalformedHunksGiveSchemaWithoutWrites(t *testing.T) {
+	for _, args := range []string{
+		`{}`,
+		`{"edits":[{"old_string":"original","new_string":"changed"}]}`,
+		`{"path":"a.txt","edits":[{"old_string":"original","new_string":"changed"}]}`,
+		`{"edits":[{"path":"a.txt","new_string":"changed"}]}`,
+		`{"edits":[{"path":"a.txt","old_string":"original"}]}`,
+		`{"edits":[{"path":"a.txt","old_string":"original","new_string":null}]}`,
+	} {
+		t.Run(args, func(t *testing.T) {
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "a.txt"), []byte("original"), 0o644)
+			reg := setupPatchReg(t, dir)
+			_, err := reg.ExecuteMode(context.Background(), "apply_patch", json.RawMessage(args), "")
+			if err == nil || !strings.Contains(err.Error(), `"edits":[{"path":`) || !strings.Contains(err.Error(), "no edits applied") {
+				t.Fatalf("missing actionable schema/no-write error: %v", err)
+			}
+			got, _ := os.ReadFile(filepath.Join(dir, "a.txt"))
+			if string(got) != "original" {
+				t.Fatalf("malformed patch changed source: %q", got)
+			}
+		})
+	}
+}
+
+func TestApplyPatchMismatchHintUsesActualLineAndRawBoundedText(t *testing.T) {
+	dir := t.TempDir()
+	content := strings.Repeat("// padding\n", 600) + "function lightAt(x) {\n  return cached(x);\n}\n"
+	os.WriteFile(filepath.Join(dir, "world.js"), []byte(content), 0o644)
+	reg := setupPatchReg(t, dir)
+	args := json.RawMessage(`{"edits":[{"path":"world.js","old_string":"function lightAt(x) {\n  return stale(x);\n}","new_string":"changed"}]}`)
+	_, err := reg.ExecuteMode(context.Background(), "apply_patch", args, "")
+	if err == nil || !strings.Contains(err.Error(), "line 601") || !strings.Contains(err.Error(), "return cached(x);") || strings.Contains(err.Error(), `601\t`) {
+		t.Fatalf("hint must show a current unnumbered region and absolute location: %v", err)
+	}
+	if len(err.Error()) > 2200 {
+		t.Fatal("recovery hint is unbounded")
+	}
+}
+
+func TestApplyPatchPrevalidatesSequentialHunksAndAliases(t *testing.T) {
+	for _, alias := range []string{"a.txt", "./a.txt", "sub/../a.txt", "linked.txt", "hard.txt"} {
+		for _, conflict := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s_conflict_%t", alias, conflict), func(t *testing.T) {
+				dir := t.TempDir()
+				os.WriteFile(filepath.Join(dir, "a.txt"), []byte("original"), 0o644)
+				os.WriteFile(filepath.Join(dir, "first.txt"), []byte("first"), 0o644)
+				os.Symlink("a.txt", filepath.Join(dir, "linked.txt"))
+				if err := os.Link(filepath.Join(dir, "a.txt"), filepath.Join(dir, "hard.txt")); err != nil {
+					t.Fatal(err)
+				}
+				old := "changed"
+				if conflict {
+					old = "original" // no longer present after the previous hunk
+				}
+				args, _ := json.Marshal(map[string]any{"edits": []map[string]string{
+					{"path": "first.txt", "old_string": "first", "new_string": "edited"},
+					{"path": "a.txt", "old_string": "original", "new_string": "changed"},
+					{"path": alias, "old_string": old, "new_string": "final"},
+				}})
+				reg := setupPatchReg(t, dir)
+				_, err := reg.ExecuteMode(context.Background(), "apply_patch", args, "")
+				if (err != nil) != conflict {
+					t.Fatalf("conflict=%t: %v", conflict, err)
+				}
+				wantA, wantFirst := "final", "edited"
+				if conflict {
+					wantA, wantFirst = "original", "first"
+					if !strings.Contains(err.Error(), "no edits applied") {
+						t.Fatalf("must fail during validation: %v", err)
+					}
+				}
+				for name, want := range map[string]string{"a.txt": wantA, "first.txt": wantFirst} {
+					got, _ := os.ReadFile(filepath.Join(dir, name))
+					if string(got) != want {
+						t.Fatalf("%s = %q; want %q", name, got, want)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestApplyPatchCreateThenEditIsPrevalidated(t *testing.T) {
+	dir := t.TempDir()
+	reg := setupPatchReg(t, dir)
+	args := json.RawMessage(`{"edits":[{"path":"new.txt","old_string":"","new_string":"created"},{"path":"./new.txt","old_string":"created","new_string":"final"}]}`)
+	if _, err := reg.ExecuteMode(context.Background(), "apply_patch", args, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "new.txt"))
+	if string(got) != "final" {
+		t.Fatalf("create+edit produced %q", got)
+	}
+}
+
+func TestApplyPatchOversizedResultDoesNotPartiallyApply(t *testing.T) {
+	for _, old := range []string{"", "original"} {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "first.txt"), []byte("first"), 0o644)
+		os.WriteFile(filepath.Join(dir, "a.txt"), []byte("original"), 0o644)
+		reg := setupPatchReg(t, dir)
+		args, _ := json.Marshal(map[string]any{"edits": []map[string]string{
+			{"path": "first.txt", "old_string": "first", "new_string": "edited"},
+			{"path": "a.txt", "old_string": old, "new_string": strings.Repeat("x", maxFileSize+1)},
+		}})
+		_, err := reg.ExecuteMode(context.Background(), "apply_patch", args, "")
+		if err == nil || !strings.Contains(err.Error(), "no edits applied") {
+			t.Fatalf("oversized result must be rejected during validation: %v", err)
+		}
+		for file, want := range map[string]string{"first.txt": "first", "a.txt": "original"} {
+			got, _ := os.ReadFile(filepath.Join(dir, file))
+			if string(got) != want {
+				t.Fatalf("%s changed after validation failure", file)
+			}
+		}
 	}
 }

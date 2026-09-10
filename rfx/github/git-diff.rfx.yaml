@@ -1,0 +1,14 @@
+rfx: 1
+name: git-diff
+description: Read a bounded staged, worktree or combined patch, including initial commits; untracked content is not included
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-github, git-diff]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    scope: {type: string, enum: [all, staged, worktree]}

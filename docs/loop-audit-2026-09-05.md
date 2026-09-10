@@ -1,7 +1,7 @@
 # Loop, tools, plans and ChatUI audit
 
 Baseline: `feat/stepwise-runs`, commit `510df03`, 2026-09-05.
-While this audit ran, the handover was committed as `b570da2`; its only change was `docs/HANDOVER-2026-09-05.md`. Audited application source remained identical to the baseline.
+While this audit ran, the handover was committed as `b570da2`; its only change was the historical operator handover, now retained privately. Audited application source remained identical to the baseline.
 Scope: execution and observability contracts. Inference deployment and hardware tuning are outside this review.
 Status: historical baseline audit complete. Implementation was subsequently
 approved; the 0.6 LABRIG working-tree fixes and validation are tracked in
@@ -18,7 +18,7 @@ Read DGV first, trace the implementation behind each edge, record an issue only 
 
 DGV MCP is registered in Codex using Claude's existing launch command. A direct stdio MCP handshake confirmed DGV 0.2.0 and all 13 tools. The existing viewer at `http://127.0.0.1:7710` serves this repo's `dgv/` directory. The native tool catalog in the current conversation did not refresh, so this review uses a local MCP client against the same installed server. Registration follows https://learn.chatgpt.com/docs/extend/mcp?surface=cli.
 
-The user subsequently supplied [HANDOVER-2026-09-05.md](HANDOVER-2026-09-05.md), which was read in full. It distinguishes live happy-path evidence from stub-only changes and explicitly says the native strip migration and versioning the installed planner pack remain open. Its historical 11/11 run is not evidence for pause, restart, revision ordering or multi-session correctness. Its operational restart/push/NFQ instructions are context, not authorization to perform those actions during this audit. The installed planner source was then read, producing L18 below. Current engine settings mentioned by the handover were not changed or revalidated by running inference.
+The user subsequently supplied the historical operator handover, now retained privately, which was read in full. It distinguishes live happy-path evidence from stub-only changes and explicitly says the native strip migration and versioning the installed planner pack remain open. Its historical 11/11 run is not evidence for pause, restart, revision ordering or multi-session correctness. Its operational restart/push/NFQ instructions are context, not authorization to perform those actions during this audit. The installed planner source was then read, producing L18 below. Current engine settings mentioned by the handover were not changed or revalidated by running inference.
 
 ## Findings ledger
 

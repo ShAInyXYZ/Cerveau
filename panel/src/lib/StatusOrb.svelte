@@ -5,6 +5,8 @@
   // phone the hardware readout is folded INTO this panel: two separate
   // popovers competing for one narrow bar was the crowding problem.
   let { components = [], system = null, stats = null } = $props();
+  const popoverID = $props.id();
+  let expanded = $state(false);
 
   const anyDown = $derived(components.some((c) => !c.ok));
   const tone = $derived(components.length === 0 ? 'off' : anyDown ? 'err' : 'ok');
@@ -12,11 +14,11 @@
 
 <div class="orbwrap">
   <!-- simplified trigger: just the status ring -->
-  <button class="orb {tone}" aria-label="system status">
+  <button class="orb {tone}" aria-label="service status" aria-expanded={expanded} popovertarget={popoverID}>
     <span class="core"></span>
   </button>
 
-  <div class="pop">
+  <div class="pop" id={popoverID} popover="auto" ontoggle={(event) => expanded = event.newState === 'open'}>
     <div class="phead">
       <span class="label">SYSTEM</span>
       <span class="pspace"></span>
@@ -64,7 +66,7 @@
     display: inline-flex; align-items: center; justify-content: center;
     width: 30px; height: 30px;
     border: 1px solid var(--line2); border-radius: 50%;
-    background: var(--s2); cursor: default; padding: 0;
+    background: var(--s2); cursor: pointer; padding: 0;
   }
   .core { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); transition: background .2s; }
   .orb.ok  { border-color: color-mix(in srgb, var(--ok) 40%, var(--line2)); }
@@ -73,14 +75,15 @@
   .orb.err .core { background: var(--err); box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 20%, transparent); }
 
   .pop {
-    position: absolute; top: calc(100% + 8px); right: 0;
-    width: 340px; z-index: var(--z-popover);
-    background: var(--surface); border-radius: 10px;
+    position: fixed; inset: auto; top: calc(var(--bar-h, 46px) + 8px); right: 16px; margin: 0;
+    width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 80px); overflow-y: auto;
+    z-index: var(--z-popover); color: var(--text); border: 1px solid var(--line2);
+    background: var(--floating-surface); backdrop-filter: var(--floating-blur); border-radius: var(--r-panel);
     box-shadow: var(--elev-2);
     opacity: 0; transform: translateY(-4px); pointer-events: none;
     transition: opacity .12s ease, transform .12s ease;
   }
-  .orbwrap:hover .pop { opacity: 1; transform: none; pointer-events: auto; }
+  .pop:popover-open { opacity: 1; transform: none; pointer-events: auto; }
 
   /* Desktop keeps the two panels separate — there is room for both, and the
      hover target for hardware is the metric chips themselves. */
@@ -89,9 +92,7 @@
     .hw { display: block; border-top: 1px solid var(--line); }
   }
 
-  /* Touch has no hover, so tapping the orb could never reveal this. The
-     trigger is already a <button>, so focus-within is enough. */
-  .orbwrap:focus-within .pop { opacity: 1; transform: none; pointer-events: auto; }
+  /* Native popover handles keyboard activation, Escape and outside clicks. */
 
   /* The orb sits near the right edge, so a 340px panel anchored to it ran
      off the LEFT of a phone screen — component labels were sliced mid-word

@@ -188,8 +188,8 @@
   // is a per-request field.
   const sampling=$derived(settingsStore.sampling);
   const SAMPLING_TIP = {
-    default:  'No temperature or top_p sent — the model uses its own generation config (Qwen3.8-27B: temperature 1.0, top_p 0.95, top_k 20).',
-    strict:   'temperature 0.2, no top_p. The measured default — every good benchmark run this project has produced used it. Best for code.',
+    default:  'No temperature or top_p override — the Core supplies its configured defaults for this model.',
+    strict:   'temperature 0.2, no top_p override. Optional preset; not proven best for code.',
     neutral:  'temperature 0.55, top_p 0.85. Looser, for drafting and exploration. Not benchmarked here.',
     creative: 'temperature 0.7, top_p 0.9. Widest spread, for when there is no single correct answer. Not benchmarked here.'
   };

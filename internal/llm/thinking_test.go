@@ -84,6 +84,7 @@ func TestThinkingBudgetsAndStepDown(t *testing.T) {
 // "default" must send no sampling fields at all, so the Core applies the
 // model's generation_config; the tuned presets must still send theirs.
 func TestDefaultSamplingSendsNothing(t *testing.T) {
+	t.Setenv("CRV_TEMP", "")
 	var got map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&got)
@@ -92,7 +93,9 @@ func TestDefaultSamplingSendsNothing(t *testing.T) {
 	defer srv.Close()
 	c := NewClient(srv.URL)
 
-	c.SetSampling("default")
+	if c.SamplingName() != "default" {
+		t.Fatalf("new client sampling = %q, want default", c.SamplingName())
+	}
 	c.Complete(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil, "", 100)
 	if _, ok := got["temperature"]; ok {
 		t.Fatalf("default must not send temperature: %v", got["temperature"])

@@ -46,6 +46,7 @@ func New(addr string, a *api.API) *http.Server {
 	mux.HandleFunc("POST /api/sessions/{id}/rewind", a.Rewind)
 	mux.HandleFunc("POST /api/sessions/{id}/chat", a.Chat)
 	mux.HandleFunc("POST /api/sessions/{id}/commands", a.Command)
+	mux.HandleFunc("POST /api/sessions/{id}/images/devcheck", a.DevCheckImage)
 	mux.HandleFunc("POST /api/sessions/{id}/resume", a.Resume)
 	mux.HandleFunc("POST /api/sessions/{id}/autopilot", a.Autopilot)
 	mux.HandleFunc("POST /api/sessions/{id}/steer", a.Steer)

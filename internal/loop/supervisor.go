@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"cerveau/internal/plan"
 	"fmt"
 	"strings"
 )
@@ -58,7 +59,7 @@ type Supervisor struct {
 func NewSupervisor(p *Plan) *Supervisor {
 	s := &Supervisor{Plan: p, pairFails: map[[2]int]int{}, revisionTarget: -1}
 	for i, st := range p.Steps {
-		s.Steps = append(s.Steps, StepState{ID: fmt.Sprintf("step-%d", i+1), Index: i, Title: st.Title, Status: "pending"})
+		s.Steps = append(s.Steps, StepState{ID: plan.StepID(st.ID, i), Index: i, Title: st.Title, Status: "pending"})
 	}
 	return s
 }
@@ -120,6 +121,13 @@ func (s *Supervisor) Record(idx int, v Verdict, needsStep int) Decision {
 	st := &s.Steps[idx]
 	st.Attempts++
 	st.Verdict = &v
+	if v.VerificationReview != nil {
+		// A disputed criterion is not an implementation retry or an approval.
+		// Keep the actual check result, including a pass, but stop advancement.
+		st.Status = "blocked"
+		st.Reason = "Verification review requested: " + v.VerificationReview.Reason
+		return Decision{Action: "blocked", Step: idx, HandBack: true, Reasoning: st.Reason}
+	}
 
 	// A run that asks to reopen an EARLIER step takes priority over its own
 	// verdict: it cannot honestly pass while its foundation is wrong.
@@ -130,6 +138,7 @@ func (s *Supervisor) Record(idx int, v Verdict, needsStep int) Decision {
 
 	if v.Pass {
 		st.Status = "passed"
+		st.Reason = ""
 		if idx == s.revisionTarget && len(s.reverify) > 0 {
 			return Decision{Action: "reverify", Step: idx, Reverify: append([]int(nil), s.reverify...), Reasoning: "target passed; recheck invalidated downstream evidence now"}
 		}

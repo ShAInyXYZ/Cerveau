@@ -116,7 +116,7 @@ func TestVerifyEvalAcceptsOnlyExactBooleanEvidence(t *testing.T) {
 			if err := json.Unmarshal(reg.args, &args); err != nil {
 				t.Fatal(err)
 			}
-			if args["eval"] != "JSON.stringify(!!(!!x))" {
+			if args["eval"] != "Promise.resolve((!!x)).then(value => JSON.stringify(!!value))" {
 				t.Fatalf("verification did not request an actual boolean: %q", args["eval"])
 			}
 		})

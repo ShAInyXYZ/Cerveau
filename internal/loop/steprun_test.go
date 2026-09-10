@@ -240,7 +240,7 @@ func TestStepThatOverrunsIsStillJudgedByItsCheck(t *testing.T) {
 	if st == nil || st.Steps[0].Status != "passed" {
 		t.Errorf("the file satisfies the check, so the step is DONE however the run ended: %+v", st)
 	}
-	if !strings.Contains(res.Reply, "1 done") {
+	if !strings.Contains(res.Reply, "1 verified") {
 		t.Errorf("report should count it done:\n%s", res.Reply)
 	}
 }

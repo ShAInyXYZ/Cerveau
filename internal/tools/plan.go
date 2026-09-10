@@ -18,11 +18,13 @@ import (
 // can never say a verification passed — the inference that reported 4/4 green
 // on the car run while the turn was dying in a check_page loop.
 type planStepIn struct {
-	Title  string          `json:"title"`
-	Detail string          `json:"detail"`
-	Files  []string        `json:"files"`
-	Risk   string          `json:"risk"`
-	Verify json.RawMessage `json:"verify,omitempty"`
+	ID          string          `json:"id,omitempty"`
+	MilestoneID string          `json:"milestone_id,omitempty"`
+	Title       string          `json:"title"`
+	Detail      string          `json:"detail"`
+	Files       []string        `json:"files"`
+	Risk        string          `json:"risk"`
+	Verify      json.RawMessage `json:"verify,omitempty"`
 }
 
 type CommitPlan struct {
@@ -42,10 +44,21 @@ func (t *CommitPlan) Description() string {
 		"`verify` — the check that proves the step done, which is what lets Autopilot run and confirm one step " +
 		"at a time instead of guessing from which files exist. A verify must be able to FAIL: a check_page eval, " +
 		"a command's exit code, or a file that must contain a named symbol. \"The file exists\" is not a check. " +
+		"The verify must cover all behavior claimed in the step's title and detail; " +
+		"use a focused assertion suite or split the step if one check cannot cover it. " +
+		"Syntax or symbol checks alone do not prove runtime behavior. Test each step's behavior " +
+		"there; reserve later verification steps for integration and browser checks. " +
+		"Preserve the user's explicit delivery order and early runnable/observable milestones. " +
+		"Do not replace an early playable or browser-tested slice with a subsystem-first plan that postpones it. " +
+		"Before committing, compare the proposed order and checks against the original request; " +
+		"surface genuine prerequisite conflicts rather than silently reordering required milestones. " +
 		"Never write a plan to a .md file or narrate it in prose — an uncommitted plan cannot be tracked."
 }
 
 func (t *CommitPlan) Schema() map[string]any {
+	verify := cplan.VerifySchema()
+	verify["description"] = "REQUIRED. A runnable check that can FAIL and covers all behavior claimed in the step's title and detail. " +
+		"Use a focused assertion suite or split the step; syntax, symbols and file existence alone do not prove runtime behavior."
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -61,12 +74,14 @@ func (t *CommitPlan) Schema() map[string]any {
 				"items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"title":  map[string]any{"type": "string"},
-						"detail": map[string]any{"type": "string"},
+						"id":           map[string]any{"type": "string", "description": "Optional unique stable step ID; generated when absent."},
+						"milestone_id": map[string]any{"type": "string", "description": "Required when the user supplied an explicit Delivery order/Delivery milestones numbered list: milestone-1, milestone-2, etc. (or the user's structured contract IDs). Cover every milestone in original order. Membership is not semantic proof; each check must prove the named user milestone."},
+						"title":        map[string]any{"type": "string"},
+						"detail":       map[string]any{"type": "string", "description": "Behavior and invariants for this milestone. For shared state, specify who creates, updates and removes it, and check repeated operations as well as first initialization. Preserve explicitly requested delivery order."},
 						"files": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string"},
 							"description": "the file(s) this step creates or changes — REQUIRED; a later revision re-checks every step that shares one"},
 						"risk":   map[string]any{"type": "string", "enum": []string{"low", "medium", "high"}},
-						"verify": cplan.VerifySchema(),
+						"verify": verify,
 					},
 					"required": []string{"title", "files", "verify"},
 				},
@@ -74,7 +89,7 @@ func (t *CommitPlan) Schema() map[string]any {
 			"autonomy_budget": map[string]any{
 				"type":        "string",
 				"enum":        []string{"low", "high"},
-				"description": "low: hand back on any step failure. high: log and continue.",
+				"description": "Autonomy preference. Failures remain blocking; higher autonomy never permits skipping a failed check or overriding user constraints.",
 			},
 		},
 		// title + steps required. The markdown-only shape still works on an
@@ -141,15 +156,40 @@ func (t *CommitPlan) Execute(ctx context.Context, args json.RawMessage) (string,
 	if sid == "" {
 		return "", fmt.Errorf("no active session")
 	}
+	unlock := cplan.LockMutation(sid)
+	defer unlock()
 	wr, err := t.open(sid)
 	if err != nil {
 		return "", err
 	}
+	events, err := wr.Events()
+	if err != nil {
+		return "", err
+	}
+	request, sourceID := cplan.PlanningRequest(events, false)
+	delivery, err := cplan.ParseDelivery(request, sourceID)
+	if err != nil {
+		return "", err
+	}
+	seen := map[string]bool{}
+	milestones := make([]string, len(plan.Steps))
+	for i := range plan.Steps {
+		st := &plan.Steps[i]
+		st.ID = cplan.StepID(st.ID, i)
+		if !cplan.ValidStableID(st.ID) || seen[st.ID] {
+			return "", fmt.Errorf("step %d has invalid or duplicate stable id", i+1)
+		}
+		seen[st.ID] = true
+		milestones[i] = st.MilestoneID
+	}
+	if err := cplan.ValidateDelivery(delivery, milestones); err != nil {
+		return "", err
+	}
 	ev, err := wr.Append(episodic.Plan, map[string]any{
-		"title": plan.Title, "steps": plan.Steps, "autonomy_budget": plan.AutonomyBudget,
+		"title": plan.Title, "steps": plan.Steps, "autonomy_budget": plan.AutonomyBudget, "delivery_contract": delivery,
 	})
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("plan committed as %s (%d steps, autonomy %s) — ready for Autopilot", ev.ID, len(plan.Steps), plan.AutonomyBudget), nil
+	return fmt.Sprintf("plan committed as %s (%d steps, autonomy %s; delivery order: %s, semantic coverage not validated) — ready for Autopilot", ev.ID, len(plan.Steps), plan.AutonomyBudget, delivery.Status), nil
 }

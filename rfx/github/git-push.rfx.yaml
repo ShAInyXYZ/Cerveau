@@ -1,0 +1,18 @@
+rfx: 1
+name: git-push
+description: Human-approved push of the reviewed full commit OID to an explicit GitHub remote and branch; never force-pushes
+kind: exec
+risk: dangerous
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-github, git-push]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: [github.com, api.github.com], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    remote: {type: string, minLength: 1, maxLength: 64}
+    branch: {type: string, minLength: 1, maxLength: 200}
+    expected_head: {type: string, pattern: '^(?:[a-f0-9]{40}|[a-f0-9]{64})$'}
+  required: [remote, branch, expected_head]

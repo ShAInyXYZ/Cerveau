@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"cerveau/internal/rfx"
 )
@@ -36,6 +38,24 @@ func (t *ReflexTool) Execute(ctx context.Context, args json.RawMessage) (string,
 // reflexDepthKey bounds reflexes-calling-reflexes (a step may name another
 // reflex). No cycles detection needed — a hard depth cap catches A→B→A too.
 type reflexDepthKey struct{}
+type reflexCardsKey struct{}
+
+func checkReflexCards(ctx context.Context, tool string, args json.RawMessage) error {
+	cards, _ := ctx.Value(reflexCardsKey{}).([]rfx.Card)
+	if len(cards) == 0 {
+		return nil
+	}
+	var values map[string]any
+	if err := json.Unmarshal(args, &values); err != nil {
+		return err
+	}
+	for _, card := range cards {
+		if err := rfx.CheckStep(card, tool, values); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 const maxReflexDepth = 3
 
@@ -45,6 +65,9 @@ func (t *ReflexTool) ExecuteMode(ctx context.Context, args json.RawMessage, mode
 		return "", fmt.Errorf("reflex %s: max nesting depth %d reached (reflexes calling reflexes)", t.def.Name, maxReflexDepth)
 	}
 	ctx = context.WithValue(ctx, reflexDepthKey{}, depth+1)
+	parents, _ := ctx.Value(reflexCardsKey{}).([]rfx.Card)
+	cards := append(append([]rfx.Card(nil), parents...), t.def.Card)
+	ctx = context.WithValue(ctx, reflexCardsKey{}, cards)
 
 	params := map[string]any{}
 	if len(args) > 0 {
@@ -311,39 +334,114 @@ func validateReflexArgs(schema map[string]any, args map[string]any) error {
 
 func checkArgType(name string, schema map[string]any, val any) error {
 	if enums, ok := schema["enum"].([]any); ok {
-		str, _ := val.(string)
+		str, isString := val.(string)
+		matched := false
 		for _, e := range enums {
-			if es, _ := e.(string); es == str {
-				return nil
+			if es, ok := e.(string); isString && ok && es == str {
+				matched = true
+				break
 			}
 		}
-		return fmt.Errorf("param %q: %v not in enum", name, val)
+		if !matched {
+			return fmt.Errorf("param %q: %v not in enum", name, val)
+		}
+	}
+	for _, keyword := range []string{"anyOf", "oneOf"} {
+		if choices, ok := schema[keyword].([]any); ok {
+			matches := 0
+			for _, choice := range choices {
+				if branch, ok := choice.(map[string]any); ok && checkArgType(name, branch, val) == nil {
+					matches++
+				}
+			}
+			if matches == 0 || (keyword == "oneOf" && matches != 1) {
+				return fmt.Errorf("param %q: %s type constraint failed", name, keyword)
+			}
+		}
 	}
 	switch typ, _ := schema["type"].(string); typ {
 	case "string":
-		if _, ok := val.(string); !ok {
+		value, ok := val.(string)
+		if !ok {
 			return fmt.Errorf("param %q: must be a string", name)
+		}
+		if err := reflexBounds(name, schema, float64(utf8.RuneCountInString(value)), "minLength", "maxLength"); err != nil {
+			return err
+		}
+		if pattern, ok := schema["pattern"].(string); ok {
+			re, err := regexp.Compile(pattern)
+			if err != nil || !re.MatchString(value) {
+				return fmt.Errorf("param %q: pattern constraint failed", name)
+			}
 		}
 	case "integer":
 		f, ok := val.(float64)
-		if !ok || f != float64(int64(f)) {
+		if !ok || math.Trunc(f) != f {
 			return fmt.Errorf("param %q: must be an integer", name)
 		}
+		return reflexBounds(name, schema, f, "minimum", "maximum")
 	case "number":
-		if _, ok := val.(float64); !ok {
+		f, ok := val.(float64)
+		if !ok {
 			return fmt.Errorf("param %q: must be a number", name)
 		}
+		return reflexBounds(name, schema, f, "minimum", "maximum")
 	case "boolean":
 		if _, ok := val.(bool); !ok {
 			return fmt.Errorf("param %q: must be a boolean", name)
 		}
 	case "array":
-		if _, ok := val.([]any); !ok {
+		values, ok := val.([]any)
+		if !ok {
 			return fmt.Errorf("param %q: must be an array", name)
 		}
+		if err := reflexBounds(name, schema, float64(len(values)), "minItems", "maxItems"); err != nil {
+			return err
+		}
+		if item, ok := schema["items"].(map[string]any); ok {
+			for i, v := range values {
+				if err := checkArgType(fmt.Sprintf("%s[%d]", name, i), item, v); err != nil {
+					return err
+				}
+			}
+		}
 	case "object":
-		if _, ok := val.(map[string]any); !ok {
+		value, ok := val.(map[string]any)
+		if !ok {
 			return fmt.Errorf("param %q: must be an object", name)
+		}
+		// A nested {type:object} deliberately delegates its member schema to
+		// the expert engine (e.g. original DGV nodes/meta). It is not an empty
+		// closed object. Declared parameter objects remain checked below.
+		if _, declared := schema["properties"]; !declared && schema["additionalProperties"] != false {
+			return nil
+		}
+		if err := validateReflexArgs(schema, value); err != nil {
+			return fmt.Errorf("param %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func reflexBounds(name string, schema map[string]any, value float64, min, max string) error {
+	for _, key := range []string{min, max} {
+		raw, exists := schema[key]
+		if !exists {
+			continue
+		}
+		var bound float64
+		switch n := raw.(type) {
+		case int:
+			bound = float64(n)
+		case int64:
+			bound = float64(n)
+		case float64:
+			bound = n
+		default:
+			return fmt.Errorf("param %q: invalid %s constraint", name, key)
+		}
+		if (key == min && value < bound) || (key == max && value > bound) {
+			return fmt.Errorf("param %q: %s constraint failed", name, key)
 		}
 	}
 	return nil

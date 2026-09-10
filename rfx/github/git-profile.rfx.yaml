@@ -1,0 +1,17 @@
+rfx: 1
+name: git-profile
+description: Set the user-approved commit name and email in this repository only; global identity is never changed
+kind: exec
+risk: sensitive
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-github, git-profile]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    name: {type: string, minLength: 1, maxLength: 256}
+    email: {type: string, minLength: 3, maxLength: 256}
+  required: [name, email]

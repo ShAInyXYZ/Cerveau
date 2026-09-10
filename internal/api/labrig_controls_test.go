@@ -51,16 +51,25 @@ type labrigModelProbe struct {
 	requests []*labrigModelObservation
 	sent     chan int
 	server   *httptest.Server
+	client   *http.Client
 }
 
 func newLABRIGModelProbe(t *testing.T, endpoint string) *labrigModelProbe {
+	t.Helper()
+	return newLABRIGModelProbeWithTimeout(t, endpoint, 110*time.Second)
+}
+
+func newLABRIGModelProbeWithTimeout(t *testing.T, endpoint string, timeout time.Duration) *labrigModelProbe {
 	t.Helper()
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" {
 		t.Fatal("CERVEAU_ACCEPTANCE_MODEL_URL must be an HTTP(S) Core base URL without credentials or query")
 	}
+	if timeout <= 0 || timeout > 10*time.Minute {
+		t.Fatal("acceptance proxy request timeout must be positive and at most the production 10-minute limit")
+	}
 	p := &labrigModelProbe{sent: make(chan int, 32)}
-	client := &http.Client{Transport: llm.CoreTransport(), Timeout: 110 * time.Second}
+	p.client = &http.Client{Transport: llm.CoreTransport(), Timeout: timeout}
 	p.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
 		if err != nil {
@@ -99,7 +108,7 @@ func newLABRIGModelProbe(t *testing.T, endpoint string) *labrigModelProbe {
 		// Credentials are forwarded privately, never retained in observations.
 		upstream.Header.Set("Content-Type", "application/json")
 		upstream.Header.Set("Authorization", r.Header.Get("Authorization"))
-		response, callErr := client.Do(upstream)
+		response, callErr := p.client.Do(upstream)
 		if callErr != nil {
 			p.mu.Lock()
 			observation.Finished, observation.Outcome = time.Now().UTC(), "transport_error"

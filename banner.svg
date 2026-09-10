@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 300" font-family="ui-sans-serif,-apple-system,Inter,sans-serif">
+  <title>Cerveau: local-first agentic coding harness</title>
   <!-- Cerveau banner. Black ground, one white disc, one cherry brain, white
        wordmark. Corner meta is here because it never changes; the VERSION is
        deliberately NOT, because baked into an SVG it goes stale silently at

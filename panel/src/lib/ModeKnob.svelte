@@ -133,7 +133,7 @@
 
   :global(.menu) {
     z-index: var(--z-popover); min-width: 264px;
-    background: var(--surface); border-radius: 10px;
+    background: var(--floating-surface); backdrop-filter: var(--floating-blur); border-radius: var(--r-panel);
     padding: 6px; box-shadow: var(--elev-2);
   }
   .mhead { padding: 6px 8px 8px; }

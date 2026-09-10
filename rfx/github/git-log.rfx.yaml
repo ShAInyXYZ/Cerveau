@@ -1,0 +1,15 @@
+rfx: 1
+name: git-log
+description: Read 1 to 50 recent commits as structured records; a repository without commits returns an empty list
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-github, git-log]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    count: {type: integer, minimum: 1, maximum: 50}
+  required: [count]

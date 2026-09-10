@@ -49,6 +49,7 @@ func Default() *Config {
 		Workspace:   ".",
 		SessionsDir: filepath.Join(home, ".crv", "sessions"),
 		ModelCtx:    32768,
+		Sampling:    "default",
 		// Builds think, chat answers directly. Changed live from Settings.
 		ThinkingMode:   "plan",
 		ThinkingEffort: "low", // medium thought 13k tokens on one planning call and got cut off

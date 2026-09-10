@@ -1,0 +1,27 @@
+rfx: 1
+name: dgv-create
+description: Create a new validated DGV plan, up to 64 elements, with automatic layout and history; never replaces an existing graph.
+kind: exec
+risk: sensitive
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-dgv, create]
+timeout: 25s
+ingress_cap: 25000
+card: {fs: [workspace], network: none, env: [RFX_DGV_CORE], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    name: {type: string, maxLength: 100, description: New graph name; letters, digits, underscores and hyphens only.}
+    document:
+      type: object
+      description: DGV v1 object; use dgv-catalog. Up to 64 total frames, nodes and edges. No supplied history.
+      properties:
+        dgv: {type: integer, minimum: 1, maximum: 1}
+        meta: {type: object, properties: {title: {type: string}, description: {type: string}}, required: [title]}
+        frames: {type: array, items: {type: object}}
+        nodes: {type: array, items: {type: object}}
+        edges: {type: array, items: {type: object}}
+      required: [dgv, meta, nodes, edges]
+      additionalProperties: false
+  required: [name, document]

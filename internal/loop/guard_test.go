@@ -16,6 +16,23 @@ import (
 	"cerveau/internal/tools"
 )
 
+func TestGeneratedBudgetCountsReasoningAcrossWindowSlices(t *testing.T) {
+	g := newTurnGuard(8)
+	for i := 0; i <= maxTokenExtensions; i++ {
+		g.addUsage(llm.Usage{CompletionTokens: maxTurnTokens, ReasoningTokens: maxTurnTokens})
+		if g.tokens != 0 {
+			t.Fatal("reasoning must not consume retained-context accounting")
+		}
+		if i < maxTokenExtensions {
+			g.extendTokens()
+		}
+	}
+	code, detail, stop := g.preThink(1)
+	if !stop || code != StopTokens || !strings.Contains(detail, "including reasoning") {
+		t.Fatalf("invisible decode escaped effort guard: %s %s %v", code, detail, stop)
+	}
+}
+
 func setup(t *testing.T, respond func(call int) map[string]any) (*Loop, string, *int) {
 	t.Helper()
 	tmp := t.TempDir()

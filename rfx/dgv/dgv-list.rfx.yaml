@@ -1,0 +1,14 @@
+rfx: 1
+name: dgv-list
+description: List workspace DGV graphs with titles, counts and content hashes; read context before opening source files.
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-dgv, list]
+timeout: 25s
+ingress_cap: 25000
+card: {fs: [workspace], network: none, env: [RFX_DGV_CORE], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    limit: {type: integer, minimum: 1, maximum: 30, description: Maximum graph entries; defaults to 12.}

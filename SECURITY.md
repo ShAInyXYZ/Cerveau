@@ -18,18 +18,24 @@ for a fix before any public disclosure.
 Cerveau is a **single-user, local-first** tool. Understand these properties
 before deploying it:
 
-- **The HTTP API is unauthenticated.** It binds to `127.0.0.1` by default for
-  exactly this reason. Anyone who can reach the API can drive the agent.
-- **The agent can execute shell commands** (in Autopilot mode). The `bash` tool
-  is **not OS-sandboxed** — it runs with the workspace as its working directory,
-  but it can read and write anywhere the OS user can (`cat /etc/passwd`,
-  `~/.ssh`, etc.). Only the dedicated file tools (`read`/`write`/`edit`) are
-  jailed to the workspace. Treat access to the API as equivalent to shell
-  access to your machine, full stop. (A Landlock-based `bash` jail is on the
-  roadmap; the guard is not a substitute for it.)
-- **Do not expose the API to a network** (changing the bind address, a reverse
-  proxy, port-forwarding) without putting your own authentication in front of
-  it. Authenticated remote access is on the roadmap; until then, keep it local.
+- **Loopback clients are trusted.** The default bind is `127.0.0.1:7700`.
+  A fresh, unpaired local setup does not require authentication. Keep the
+  explicit loopback address; do not substitute `:7700` or a wildcard bind.
+- **The agent can execute shell commands.** Ordinary Autopilot `bash` calls
+  run with the workspace as their working directory, but retain the OS user's
+  permissions elsewhere. Dedicated workspace file tools constrain their
+  paths; this does not make the entire agent a sandbox. Treat API access as
+  equivalent to shell access to your machine.
+- **Some procedures have additional isolation.** Recovery shell calls and
+  native check/debug procedures require Bubblewrap and fail closed when their
+  isolation is unavailable. Read-only host access prevents writes, not reads
+  of private files; it is not a confidentiality sandbox. Do not assume these
+  restrictions apply to every tool or external RFX process.
+- **Remote access requires deliberate configuration.** Paired remote API
+  requests use a bearer token and device-signature checks; local operator
+  access remains trusted. Protect configuration files, pairing invitations
+  and device keys. Use a trusted encrypted tunnel and review proxy forwarding
+  behavior rather than exposing the plain HTTP API publicly.
 
 ## What is *not* a vulnerability
 
@@ -39,8 +45,10 @@ before deploying it:
   **not a sandbox** — a determined, obfuscated command can evade it. Real
   isolation is the OS user's responsibility (run Cerveau as an unprivileged
   user; consider a container or VM for untrusted workloads).
-- Issues that require the operator to have already exposed the unauthenticated
-  API to untrusted networks against the guidance above.
+
+Authentication, confinement or isolation behavior that does not match the
+documented boundary should still be reported privately. Misconfiguration is
+not a reason to dismiss a genuine implementation vulnerability.
 
 ## Supported versions
 

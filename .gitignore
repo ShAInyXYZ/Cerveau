@@ -1,6 +1,7 @@
 # ── internal docs ─────────────────────────────────────────────────────────
 # Working notes, architecture boards, briefs — for us, not for consumers.
 docs-private/
+.omd/
 
 # Benchmark artefacts: the pages a run actually produced, kept locally so a
 # later run can be compared against them. Output, not source.
@@ -24,6 +25,9 @@ arch-viewer/dist/
 /crv
 /crvcli
 /cerveau
+/ignite
+/rfx-dgv
+/rfx-github
 *.exe
 *.so
 *.dylib
@@ -57,6 +61,9 @@ secrets*
 # ── runtime data (never belongs in the repo) ──────────────────────────────
 # Sessions, memories, code graph and model weights live under ~/.crv/
 .crv/
+.devcheck/
+dgv/.rfx-backups/
+dgv/.rfx-locks/
 *.jsonl
 *.db
 *.sqlite

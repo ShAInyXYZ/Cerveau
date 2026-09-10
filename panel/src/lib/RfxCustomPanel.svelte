@@ -225,7 +225,7 @@
 </script>
 
 <div class="cpanel">
-  <button class="phead" onclick={() => (open = !open)}>
+  <button class="phead" aria-expanded={open} onclick={() => (open = !open)}>
     <PackIcon size={13} />
     <span class="pname">{pack.name}</span>
     <span class="pver">v{pack.version} · {members.length ? 'custom panel' : 'supervisor'}</span>
@@ -256,20 +256,19 @@
 
 <style>
   .cpanel {
-    border-radius: 10px; overflow: hidden;
-    background: color-mix(in srgb, #fff 2.5%, transparent);
-    box-shadow: inset 0 0 0 1px var(--ring, var(--line));
+    border-radius: var(--r-panel); overflow: hidden;
+    background: transparent;
   }
   .phead {
     display: flex; align-items: center; gap: 8px; width: 100%;
     padding: 10px 12px; border: none; cursor: pointer; background: transparent;
     color: var(--accent); text-align: left;
   }
-  .pname { font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 650; letter-spacing: .08em; color: var(--text); }
-  .pver { flex: 1; font-size: 9.5px; color: var(--faint); }
+  .pname { font-size: 13px; font-weight: 650; color: var(--text); }
+  .pver { flex: 1; font-size: 9.5px; color: var(--muted); }
   .chip {
-    font-size: 9px; font-weight: 600; letter-spacing: .04em; padding: 2px 7px; border-radius: 5px;
-    color: var(--dim); background: var(--s3); box-shadow: inset 0 0 0 1px var(--line);
+    font-size: 9px; font-weight: 600; padding: 2px 7px; border-radius: var(--r-control);
+    color: var(--muted); background: transparent;
   }
   .chip-sensitive { color: var(--warn, #b87a00); }
   .chip-dangerous { color: var(--err); }
@@ -283,7 +282,7 @@
   }
   .ds-text { flex: 1; font-size: 11px; }
   .ds-btn {
-    font-size: 10.5px; font-weight: 600; padding: 4px 12px; border: none; border-radius: 6px;
+    font-size: 10.5px; font-weight: 600; padding: 4px 12px; border: none; border-radius: var(--r-control);
     cursor: pointer; background: var(--s3); color: var(--text);
     box-shadow: inset 0 0 0 1px var(--line);
   }

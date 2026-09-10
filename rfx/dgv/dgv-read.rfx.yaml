@@ -1,0 +1,16 @@
+rfx: 1
+name: dgv-read
+description: Read one exact DGV node, edge or frame and related edges; use context for a bounded overview.
+kind: exec
+risk: safe
+argv: [/usr/bin/env, rfx-dgv, read]
+timeout: 25s
+ingress_cap: 25000
+card: {fs: [workspace], network: none, env: [RFX_DGV_CORE], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    name: {type: string, maxLength: 100}
+    on: {type: string, maxLength: 100, description: Exact node, edge or frame ID.}
+  required: [name, on]

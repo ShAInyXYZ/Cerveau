@@ -1,0 +1,26 @@
+rfx: 1
+name: dgv-update
+description: Apply up to 64 explicit graph upserts against a known content hash, retaining a verified backup; no deletion or history replacement.
+kind: exec
+risk: sensitive
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-dgv, update]
+timeout: 25s
+ingress_cap: 25000
+card: {fs: [workspace], network: none, env: [RFX_DGV_CORE], subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    name: {type: string, maxLength: 100}
+    expected_hash: {type: string, pattern: '^[a-f0-9]{64}$', description: graph_sha256 from the latest graph context or read; not the source fingerprint.}
+    patch:
+      type: object
+      description: Partial DGV meta, frames, nodes and edges; IDs are required. Upsert only, no remove or history fields.
+      properties:
+        meta: {type: object}
+        frames: {type: array, items: {type: object}}
+        nodes: {type: array, items: {type: object}}
+        edges: {type: array, items: {type: object}}
+      additionalProperties: false
+  required: [name, expected_hash, patch]

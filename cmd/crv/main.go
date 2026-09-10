@@ -138,6 +138,7 @@ func main() {
 		t := time.NewTicker(30 * time.Second)
 		defer t.Stop()
 		for range t.C {
+			a.RefreshIdle(context.Background())
 			if idleTracker.Tick() {
 				slog.Info("idle: park requested", "after", idleTracker.Cfg().After)
 			}
@@ -180,11 +181,15 @@ func main() {
 			{Tool: tools.NewBash(ws), RiskTier: tools.RiskDangerous, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "transient"},
 			// serve: long-lived static server for the workspace — the one thing
 			// bash cannot do (it kills its process group). Safe: static files only.
-			{Tool: tools.NewServe(ws), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeAutopilot}, IngressCap: 1000, RetryClass: "args"},
+			{Tool: tools.NewServe(ws), RiskTier: tools.RiskSafe, Modes: []string{tools.ModeAutopilot}, IngressCap: 4000, RetryClass: "args"},
 			// check_page: headless-browser feedback — console errors + rendered-DOM
 			// checks. Without it, "the page doesn't render" is undebuggable from
 			// static reads alone.
 			{Tool: tools.NewCheckPage(ws), RiskTier: tools.RiskSafe, IngressCap: 3000, RetryClass: "args"},
+			{Tool: tools.NewBrowserRun(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "args"},
+			{Tool: tools.NewRuntimeProfile(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "args"},
+			{Tool: tools.NewRunChecks(ws), RiskTier: tools.RiskDangerous, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "args"},
+			{Tool: tools.NewCodeDiagnostics(ws), RiskTier: tools.RiskSensitive, Modes: []string{tools.ModeAutopilot}, IngressCap: 8000, RetryClass: "args"},
 			// Autopilot too: the plan gate runs there and asks for this tool on its
 			// first call. Fenced to discussion, Specs("autopilot") never listed it, so
 			// every planning call since the gate was written offered an EMPTY tool
@@ -338,9 +343,10 @@ func main() {
 			}
 		}
 	}()
-	if tsClient != nil {
-		agentLoop.SetRecall(memory.NewRecall(tsClient, cfg.SessionsDir, memory.EndpointHealthy(cfg.Endpoints.Embedder)))
-	}
+	// Local journal recall remains useful when the indexed backend is offline.
+	// Recovery must not lose its evidence fallback because Typesense failed
+	// during startup. Hybrid retrieval degrades to lexical/local evidence.
+	agentLoop.SetRecall(memory.NewRecall(tsClient, cfg.SessionsDir, tsClient != nil && memory.EndpointHealthy(cfg.Endpoints.Embedder)))
 	if curator != nil {
 		agentLoop.SetCurator(curator)
 	}

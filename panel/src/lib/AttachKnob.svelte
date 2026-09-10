@@ -13,8 +13,10 @@
     { key: 'video',  label: 'Video', icon: Video }
   ];
 
-  const accepts = (k) => modalities?.[k] === true;
-  const anyAccepted = $derived(TYPES.some((t) => accepts(t.key)));
+  // Only image attachment is implemented. Core capability alone must not
+  // advertise an audio/video control that the harness cannot actually send.
+  const accepts = (k) => k === 'vision';
+  const anyAccepted = $derived(modalities?.vision === true);
 
   let showBar = $state(false);
   let timer = null;
@@ -30,7 +32,7 @@
         {@const ok = accepts(t.key)}
         {@const Icon = t.icon}
         <button class="cap" class:ok disabled={!ok} onclick={() => pick(t)}
-          role="menuitem" aria-label="{t.label}: {ok ? 'accepted' : 'not accepted'}">
+          role="menuitem" aria-label="{t.label}: {ok ? 'capture or choose image' : 'not implemented'}">
           <span class="cap-ico"><Icon size={17} strokeWidth={1.9} /></span>
           <span class="badge" class:on={ok}>
             {#if ok}<Check size={9} strokeWidth={3.5} />{:else}<X size={9} strokeWidth={3.5} />{/if}
@@ -43,10 +45,9 @@
   <button
     class="knobbtn"
     class:live={anyAccepted}
-    onclick={() => anyAccepted && onAttach?.(TYPES.find((t) => accepts(t.key))?.key)}
-    disabled={!anyAccepted}
-    aria-label="attach"
-    use:tooltip={anyAccepted ? 'attach' : 'text-only model'}
+    onclick={() => onAttach?.('vision')}
+    aria-label="Attach image or capture screen"
+    use:tooltip={'attach image or capture'}
   >
     <svg viewBox="0 0 54 54" class="knob">
       <circle cx="27" cy="27" r="26.5" fill="var(--s2)" stroke="var(--line2)" stroke-width="1" />
@@ -86,7 +87,7 @@
   .cap-bar {
     position: absolute; bottom: calc(100% + 10px); right: 0;
     display: flex; gap: 6px; z-index: var(--z-dropdown);
-    background: var(--surface); border-radius: 12px;
+    background: var(--floating-surface); backdrop-filter: var(--floating-blur); border-radius: var(--r-panel);
     box-shadow: 0 0 0 1px var(--line2), 0 1px 0 0 var(--lift) inset;
     padding: 8px; animation: rise .16s cubic-bezier(.16,1,.3,1);
   }

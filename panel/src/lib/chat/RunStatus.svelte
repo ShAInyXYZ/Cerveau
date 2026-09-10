@@ -1,13 +1,15 @@
 <script lang="ts">
  import { sessionStore as s } from '../stores/session.svelte.ts';
+ import { displayedStep } from './incidentView';
  const run=$derived(s.run);
+ const step=$derived(displayedStep(run,s.plan,s.running));
 </script>
 <div class="run-status">
  {#if s.connectionLost}<p role="status">Connection lost; run state unknown. Showing the last confirmed state. Reconnecting…</p>{/if}
  {#if s.requestError}<p role="alert">{s.requestError} Your input has been kept.</p>{/if}
  {#if run}
   <div class="line">
-   <span role="status">{run.status.replaceAll('_',' ')}{run.phase ? ` · ${run.phase.replaceAll('_',' ')}` : ''}{run.tool ? ` · ${run.tool}` : ''}{run.step>=0 ? ` · step ${run.step+1}` : ''}</span>
+   <span role="status">{run.kind === 'reflex' ? `Reflex ${run.reflex} · ` : ''}{run.status.replaceAll('_',' ')}{run.recovery_phase && s.running ? ` · recovery: ${run.recovery_phase}` : ''}{s.running && run.tool ? ` · ${run.tool}` : ''}{step>=0 ? ` · step ${step+1}` : ''}</span>
    {#if s.running}
     {#if run.status==='paused' || run.status==='pause_requested'}
      <button disabled={s.connectionLost} onclick={()=>s.resume()}>Resume</button>
@@ -23,7 +25,7 @@
 <style>
  .run-status{margin:0 var(--dock-inset) 8px;color:var(--text);font-size:12px;overflow-wrap:anywhere}
  .line{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.line span{flex:1}
- button{font:inherit;color:var(--text);background:var(--s2);border:1px solid var(--line2);border-radius:6px;padding:5px 9px;cursor:pointer}
+ button{font:inherit;color:var(--text);background:var(--s2);border:1px solid var(--line2);border-radius:var(--r-control);padding:5px 12px;cursor:pointer}
  button:disabled{opacity:.5;cursor:default}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
  small{display:block;margin-top:4px;color:var(--muted)}p{color:var(--err);margin:6px 0}
  @media(max-width:640px){.run-status{margin-inline:0}}

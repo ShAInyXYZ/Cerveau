@@ -40,7 +40,7 @@ func TestBuildReport(t *testing.T) {
 	if rep.Steps[2].Status != "pending" {
 		t.Fatalf("step c = %+v", rep.Steps[2])
 	}
-	if rep.Done != 0 || rep.Failed != 1 || rep.Skipped != 2 {
+	if rep.Done != 0 || rep.Failed != 1 || rep.Skipped != 0 || rep.Pending != 1 || rep.Unverified != 1 {
 		t.Fatalf("counts = %d/%d/%d", rep.Done, rep.Failed, rep.Skipped)
 	}
 	if rep.Handback {

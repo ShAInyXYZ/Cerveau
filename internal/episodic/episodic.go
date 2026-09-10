@@ -61,6 +61,17 @@ func (w *Writer) Error() error {
 	return w.appendErr
 }
 
+// Events returns a complete journal snapshot serialized with this writer's
+// appends, including when called through a run-scoped wrapper.
+func (w *Writer) Events() ([]Event, error) {
+	if w.base != nil {
+		return w.base.Events()
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return Replay(w.path)
+}
+
 func Open(path string) (*Writer, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err

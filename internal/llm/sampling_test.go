@@ -5,11 +5,9 @@ import "testing"
 // Temperature was read once, from the environment, at client construction — so
 // changing it meant editing a systemd drop-in and restarting the harness. It is
 // a PER-REQUEST field in the API; nothing about it needs a restart.
-func TestPresetsResolveToMeasuredValues(t *testing.T) {
+func TestPresetsResolveToConfiguredValues(t *testing.T) {
 	cases := map[string]struct{ temp, topP float64 }{
-		// 0.2 is not a taste call: every good benchmark run this project has
-		// produced used it, and a "strict" preset of 0.4 lost visibly on all
-		// four projects.
+		"default":  {Unset, Unset},
 		"strict":   {0.2, 0},
 		"neutral":  {0.55, 0.85},
 		"creative": {0.7, 0.9},
@@ -24,10 +22,10 @@ func TestPresetsResolveToMeasuredValues(t *testing.T) {
 
 // An unknown or empty name must fall back to the safe default rather than
 // sending whatever zero values happen to be in the struct.
-func TestUnknownPresetFallsBackToStrict(t *testing.T) {
+func TestUnknownPresetFallsBackToCoreDefaults(t *testing.T) {
 	for _, name := range []string{"", "  ", "wild", "0.9"} {
-		if got := Preset(name); got.Temp != 0.2 {
-			t.Errorf("Preset(%q).Temp = %v, want the 0.2 default", name, got.Temp)
+		if got := Preset(name); got != Preset("default") {
+			t.Errorf("Preset(%q) = %+v, want Core defaults", name, got)
 		}
 	}
 }

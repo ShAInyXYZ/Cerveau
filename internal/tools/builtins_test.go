@@ -12,10 +12,10 @@ import (
 	"cerveau/internal/rfx"
 )
 
-// The builtin pack (repo-root rfx/) is dogfood, not decoration: every file
-// in it must load through the REAL loader, carry a fuzz contract, and pass
-// a REAL fuzz run. If the pack drifts out of spec, this fails — regardless
-// of which reflexes the pack currently contains.
+// Every repository pack must load through the real loader. Pipeline packs are
+// fuzzed against stub primitives here. External exec packs need their own
+// isolated fixture suites: blind fuzzing could push, publish or mutate a user's
+// machine and is not a sandbox. Their subprocess contracts are checked below.
 func TestBuiltinPackLoadsAndFuzzes(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
 	packDir := filepath.Join(repoRoot, "rfx")
@@ -38,6 +38,12 @@ func TestBuiltinPackLoadsAndFuzzes(t *testing.T) {
 	}
 
 	for _, d := range defs {
+		if d.Kind == "exec" {
+			if len(d.Argv) == 0 || d.Timeout == "" || d.IngressCap == nil || *d.IngressCap <= 0 {
+				t.Errorf("external %q needs argv, timeout and ingress cap", d.Name)
+			}
+			continue
+		}
 		if d.Contract.MaxMs <= 0 {
 			t.Errorf("builtin %q: no contract.max_ms (pack discipline)", d.Name)
 		}
@@ -91,8 +97,11 @@ func TestReadAutoAdvancesOnRepeat(t *testing.T) {
 		t.Fatalf("first read should start at line 1 of the head: %q", first[:20])
 	}
 	second, _ := r.Execute(context.Background(), call)
-	if strings.Contains(second, "1\tAAA") {
-		t.Fatal("identical repeat returned the same head — no auto-advance")
+	// Number prefixes and UTF-8-safe fragment formatting count against the
+	// presentation budget, so an exact cursor can still land inside the A run.
+	firstMeta, secondMeta := toolMetadata(t, "read", first), toolMetadata(t, "read", second)
+	if secondMeta["start_offset"] != firstMeta["end_offset"] || secondMeta["start_offset"] == float64(0) {
+		t.Fatal("repeat did not advance to the exact previous byte endpoint")
 	}
 	if !strings.Contains(second, "continuing") || !strings.Contains(second, "BBB") {
 		t.Fatalf("second read should announce and return the next slice: %q", second[:60])

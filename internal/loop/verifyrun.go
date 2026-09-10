@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"cerveau/internal/plan"
+	"cerveau/internal/tools"
 )
 
 // Verdict is what a step's verify actually observed.
@@ -17,10 +18,15 @@ import (
 // Evidence is the point: "done" must be something the harness watched happen,
 // with the output that says so, not the model's opinion that it has finished.
 type Verdict struct {
-	WorkspaceVersion string `json:"workspace_version,omitempty"`
-	Pass             bool   `json:"pass"`
-	Check            string `json:"check"`    // the verify, in one line
-	Evidence         string `json:"evidence"` // what came back
+	VerificationReview    *VerificationReview `json:"verification_review,omitempty"`
+	WorkspaceVersion      string              `json:"workspace_version,omitempty"`
+	EvidenceEventID       string              `json:"evidence_event_id,omitempty"`
+	DeclaredSourceVersion string              `json:"declared_source_version,omitempty"`
+	ExecutionStop         string              `json:"execution_stop,omitempty"`
+	FailureKind           string              `json:"failure_kind,omitempty"`
+	Pass                  bool                `json:"pass"`
+	Check                 string              `json:"check"`    // the verify, in one line
+	Evidence              string              `json:"evidence"` // what came back
 }
 
 // verifyToolRunner is the slice of the tool registry a verify needs. Narrow on
@@ -59,7 +65,8 @@ func RunVerify(ctx context.Context, reg verifyToolRunner, workspace string, v *p
 func verifyEval(ctx context.Context, reg verifyToolRunner, v *plan.Verify, line string) Verdict {
 	// Ask for the value of the expression, JSON-encoded, so "truthy" is decided
 	// here rather than by however the page chose to print it.
-	args := map[string]any{"eval": "JSON.stringify(!!(" + v.Expr + "))"}
+	// Await first: a Promise object is truthy even when it resolves to false.
+	args := map[string]any{"eval": "Promise.resolve((" + v.Expr + ")).then(value => JSON.stringify(!!value))"}
 	if v.Path != "" {
 		args["path"] = v.Path
 	} else {
@@ -67,8 +74,19 @@ func verifyEval(ctx context.Context, reg verifyToolRunner, v *plan.Verify, line 
 	}
 	raw, _ := json.Marshal(args)
 	out, err := reg.ExecuteMode(ctx, "check_page", raw, "autopilot")
-	if err != nil {
-		return Verdict{Pass: false, Check: line, Evidence: "check_page failed: " + err.Error()}
+	// A partial true value cannot override a timed-out or failed browser.
+	// Retain output as well as the error: loading stages and stderr explain
+	// whether to diagnose the application, its server, or the probe itself.
+	kind := browserFailureKind(out)
+	if err != nil || kind != "" {
+		evidence := out
+		if err != nil {
+			evidence += "\ncheck_page failed: " + err.Error()
+		}
+		if kind == "" {
+			kind = "browser_unavailable"
+		}
+		return Verdict{Pass: false, Check: line, FailureKind: kind, Evidence: verificationEvidence(evidence)}
 	}
 	// check_page reports the value as `eval result: <v>` among console lines.
 	pass := false
@@ -79,7 +97,19 @@ func verifyEval(ctx context.Context, reg verifyToolRunner, v *plan.Verify, line 
 			break
 		}
 	}
-	return Verdict{Pass: pass, Check: line, Evidence: clip(out, 600)}
+	return Verdict{Pass: pass, Check: line, Evidence: verificationEvidence(out)}
+}
+
+func browserFailureKind(out string) string {
+	d, ok := tools.ParseBrowserDiagnostics(out)
+	if !ok {
+		return ""
+	}
+	switch d.Status {
+	case "timeout", "cancelled", "process_failed", "missing_dom", "missing_eval", "eval_timeout":
+		return "browser_" + d.Status
+	}
+	return ""
 }
 
 func verifyCommand(ctx context.Context, reg verifyToolRunner, v *plan.Verify, line string) Verdict {
@@ -88,9 +118,16 @@ func verifyCommand(ctx context.Context, reg verifyToolRunner, v *plan.Verify, li
 	if err != nil {
 		// A non-zero exit surfaces as an error here — which is the whole point
 		// of this kind, so report it as a clean failure with its output.
-		return Verdict{Pass: false, Check: line, Evidence: clip(strings.TrimSpace(out+"\n"+err.Error()), 600)}
+		return Verdict{Pass: false, Check: line, Evidence: verificationEvidence(strings.TrimSpace(out + "\n" + err.Error()))}
 	}
-	return Verdict{Pass: true, Check: line, Evidence: clip(out, 600)}
+	return Verdict{Pass: true, Check: line, Evidence: verificationEvidence(out)}
+}
+
+func verificationEvidence(out string) string {
+	// Long node -e source/caret lines used to consume the entire 600-byte
+	// prefix and discard the actual error. Keep both ends; full tool output
+	// remains in the journal under Verdict.EvidenceEventID.
+	return recoveryExcerpt(strings.TrimSpace(out), 3600)
 }
 
 func verifyContains(workspace string, v *plan.Verify, line string) Verdict {

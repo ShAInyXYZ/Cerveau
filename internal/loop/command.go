@@ -2,6 +2,7 @@ package loop
 
 import (
 	"cerveau/internal/episodic"
+	"cerveau/internal/llm"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -11,16 +12,18 @@ import (
 )
 
 type Command struct {
-	ID       string `json:"command_id"`
-	Kind     string `json:"kind"`
-	Text     string `json:"text,omitempty"`
-	Mode     string `json:"mode,omitempty"`
-	Sampling string `json:"sampling,omitempty"`
-	Step     int    `json:"step"`
-	Steps    []int  `json:"steps,omitempty"`
-	Revision bool   `json:"revision,omitempty"`
-	PlanID   string `json:"plan_event_id,omitempty"`
-	Reason   string `json:"reason,omitempty"`
+	ID       string      `json:"command_id"`
+	Kind     string      `json:"kind"`
+	Text     string      `json:"text,omitempty"`
+	Images   []llm.Image `json:"images,omitempty"`
+	Mode     string      `json:"mode,omitempty"`
+	Sampling string      `json:"sampling,omitempty"`
+	Step     int         `json:"step"`
+	Steps    []int       `json:"steps,omitempty"`
+	Revision bool        `json:"revision,omitempty"`
+	PlanID   string      `json:"plan_event_id,omitempty"`
+	Reason   string      `json:"reason,omitempty"`
+	Continue bool        `json:"continue_plan,omitempty"`
 }
 type commandKey struct{}
 type commandIdentity struct{ ID, Hash string }
@@ -33,6 +36,19 @@ func (l *Loop) Start(sid string, cmd Command, release func()) (*RunState, error)
 	defer l.commandMu.Unlock()
 	// The admitted scope must not remain aliased to the caller's slice.
 	cmd.Steps = append([]int(nil), cmd.Steps...)
+	images, imageErr := llm.ValidateImages(cmd.Images)
+	if imageErr != nil {
+		return nil, imageErr
+	}
+	cmd.Images = images
+	if len(cmd.Images) > 0 {
+		if cmd.Kind != "chat" {
+			return nil, fmt.Errorf("images are only valid for a chat command")
+		}
+		if strings.TrimSpace(cmd.Text) == "" {
+			cmd.Text = ImageOnlyText
+		}
+	}
 	if cmd.ID == "" || len(cmd.ID) > 128 {
 		return nil, fmt.Errorf("command_id required (maximum 128 characters)")
 	}
@@ -47,6 +63,9 @@ func (l *Loop) Start(sid string, cmd Command, release func()) (*RunState, error)
 	}
 	if cmd.Kind != "selected" && len(cmd.Steps) != 0 {
 		return nil, fmt.Errorf("steps is only valid for a selected command")
+	}
+	if cmd.Continue && cmd.Kind != "step" {
+		return nil, fmt.Errorf("continue_plan is only valid for a step command")
 	}
 	if cmd.Kind == "selected" && cmd.Revision {
 		return nil, fmt.Errorf("selected execution cannot request a revision; revise the target step explicitly")
@@ -106,6 +125,7 @@ func (l *Loop) Start(sid string, cmd Command, release func()) (*RunState, error)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	ctx = context.WithValue(WithSampling(WithLongTurn(ctx), cmd.Sampling), commandKey{}, commandIdentity{cmd.ID, hash})
+	ctx = context.WithValue(ctx, imageContextKey{}, cmd.Images)
 	mode := ModeByName(cmd.Mode).Name
 	if cmd.Kind != "chat" {
 		mode = "autopilot"
@@ -135,7 +155,7 @@ func (l *Loop) Start(sid string, cmd Command, release func()) (*RunState, error)
 		case "chat":
 			result, runErr = l.Run(ctx, sid, cmd.Text, mode)
 		case "step":
-			result, runErr = l.RunStep(ctx, sid, StepRunRequest{Step: cmd.Step, Revision: cmd.Revision, PlanID: cmd.PlanID, Reason: cmd.Reason})
+			result, runErr = l.RunStep(ctx, sid, StepRunRequest{Step: cmd.Step, Revision: cmd.Revision, PlanID: cmd.PlanID, Reason: cmd.Reason, Continue: cmd.Continue})
 		case "continue":
 			result, runErr = l.RunAutopilot(ctx, sid)
 		case "selected":

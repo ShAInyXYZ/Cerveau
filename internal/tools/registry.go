@@ -83,6 +83,20 @@ func (r *Registry) SetRemediator(rm Remediator) { r.remediate = rm }
 
 func (r *Registry) SetPostExec(f func(name string, args json.RawMessage)) { r.postExec = f }
 
+// WithScopedEntry preserves policy while adding one owner-local capability.
+// Collisions are errors: an extension must not impersonate an internal tool.
+func (r *Registry) WithScopedEntry(e Entry) (*Registry, error) {
+	if _, exists := r.entries[e.Tool.Name()]; exists {
+		return nil, fmt.Errorf("scoped tool collision: %s", e.Tool.Name())
+	}
+	cp := &Registry{entries: map[string]Entry{}, guard: r.guard, remediate: r.remediate, postExec: r.postExec, workspace: r.workspace}
+	for k, v := range r.entries {
+		cp.entries[k] = v
+	}
+	cp.entries[e.Tool.Name()] = e
+	return cp, nil
+}
+
 func (r *Registry) Entry(name string) (Entry, bool) {
 	e, ok := r.entries[name]
 	return e, ok
@@ -352,6 +366,12 @@ func (r *Registry) validateRemediatedArgs(ctx context.Context, name string, befo
 }
 
 func (r *Registry) dispatch(ctx context.Context, e Entry, name string, args json.RawMessage, mode string) (string, error) {
+	// Recheck inherited Reflex cards at the final dispatch boundary, including
+	// remediated and automatically repaired arguments. Nested tools cannot shed
+	// their caller's restrictions by going through another Reflex.
+	if err := checkReflexCards(ctx, name, args); err != nil {
+		return "", err
+	}
 	if mt, ok := e.Tool.(ModeTool); ok {
 		return mt.ExecuteMode(ctx, args, mode)
 	}

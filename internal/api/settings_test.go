@@ -50,6 +50,23 @@ func readSettingsConfig(t *testing.T, path string) config.Config {
 	return cfg
 }
 
+func TestCoreSamplingDefaultPersists(t *testing.T) {
+	if config.Default().Sampling != "default" {
+		t.Fatal("fresh config must defer sampling to Core")
+	}
+	a, path := settingsFixture(t)
+	if r := settingsRequest(a.SetSampling, `{"name":"default"}`); r.Code != http.StatusOK {
+		t.Fatalf("set default: %d %s", r.Code, r.Body.String())
+	}
+	saved, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Sampling != "default" || a.chat.SamplingName() != "default" {
+		t.Fatal("Core default must be active and survive config reload")
+	}
+}
+
 func TestConcurrentDefaultsAndPairingPersistWithoutLostUpdates(t *testing.T) {
 	a, path := settingsFixture(t)
 	var wg sync.WaitGroup

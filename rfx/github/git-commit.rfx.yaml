@@ -1,0 +1,16 @@
+rfx: 1
+name: git-commit
+description: Commit only the reviewed staged index using repository-local identity, with hooks and signing disabled
+kind: exec
+risk: sensitive
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-github, git-commit]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}
+params:
+  type: object
+  additionalProperties: false
+  properties:
+    message: {type: string, minLength: 1, maxLength: 4096}
+  required: [message]

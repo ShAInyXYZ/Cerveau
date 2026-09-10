@@ -1,0 +1,6 @@
+rfx: 1
+pack: dgv
+version: 0.1.0
+author: Cerveau
+description: Workspace architecture context and bounded plan authoring using the original Dia-GramV engine, without MCP.
+icon: database

@@ -1,0 +1,10 @@
+rfx: 1
+name: git-init
+description: Initialize this exact workspace on main after a user request; existing and parent repositories are refused
+kind: exec
+risk: sensitive
+modes: [autopilot]
+argv: [/usr/bin/env, rfx-github, git-init]
+timeout: 50s
+ingress_cap: 65536
+card: {fs: [workspace], network: none, subprocess: true}

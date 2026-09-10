@@ -2,8 +2,8 @@
   "dgv": 1,
   "meta": {
     "title": "0.6 LABRIG — loop contract and release gates",
-    "description": "0.6 LABRIG checkpoint 8571d5f; follow-up hardening in ordered commits. Operator owns installation. Existing Brain Core unchanged. Evidence and limitations in docs/release-0.6-LABRIG.md.",
-    "updated": "2026-09-05",
+    "description": "0.6 LABRIG contract; 2026-09-07 backlog pass adds whole-batch JS syntax preflight, stack-aware failure identity, cumulative reasoning/output limits, versioned implementation guidance and explicit delivery ordering. Memory readiness/query conventions and configured-Core Ignite wake are coordinated dependencies. Current verification/install boundaries: docs/backlog-fixes-2026-09-07.md; original voxel benchmark unmodified and not certified by fixture passes.",
+    "updated": "2026-09-07",
     "colorBy": "kind"
   },
   "frames": [
@@ -17,7 +17,7 @@
       },
       "size": {
         "width": 664,
-        "height": 647
+        "height": 729
       }
     },
     {
@@ -30,7 +30,7 @@
       },
       "size": {
         "width": 356,
-        "height": 794
+        "height": 824
       }
     },
     {
@@ -43,7 +43,7 @@
       },
       "size": {
         "width": 756,
-        "height": 1664
+        "height": 2017
       }
     },
     {
@@ -68,7 +68,7 @@
       "kind": "ui",
       "label": "Chat · CLI · RFX",
       "sublabel": "one command and state contract",
-      "note": "Canonical snapshots and session/run/event incident chime tested. First-party Planner now embedded in executable; built-in identity wins, installed copies untouched, other RFX remain external. Pack cards and /api/build show origin/digest/precedence/loaded state/ignored copies. Full race+vet, 58 Vitest, 2 packaging tests pass; actual live controls remain follow-up 5.",
+      "note": "Installed 2026-09-06, revision a3a8367-dirty-45e4ab58c05d. All five private UI backlog items implemented with incumbent identity: quiet sidebar, consecutive successful-read groups retaining full details, compact incidents/technical disclosure, multiline composer/action separation and non-overlay dock seam. Canonical blocked-target stopped status preserved. 101 Vitest tests pass; Svelte has zero errors/eight existing warnings; browser fixtures pass four configurations. Served HTML/JS/CSS match package; model/embedder/Typesense healthy. Core and embedder PIDs unchanged; no original session run triggered.",
       "frame": "surface",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -100,7 +100,7 @@
       "kind": "api",
       "label": "Command service",
       "sublabel": "typed targets · idempotency keys",
-      "note": "Detached accepted worker, persisted start/control dedup, stale target rejection; selected scope validated including dependencies. Tests: command_test.go, runcontrol_test.go, selected_test.go.",
+      "note": "Image-bearing commands and raw user-event ingress bounded to 768 KiB. At most two validated inline JPEG/PNG images, <=256 KiB and <=1280 px per axis. Canonical image bytes participate in command identity and msg.user persistence. Session-scoped DevCheck reads require exact path and expected digest; no general file-read route.",
       "frame": "control",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -132,7 +132,7 @@
       "kind": "module",
       "label": "Run policy snapshot",
       "sublabel": "capabilities · settings · budgets",
-      "note": "Run-local workspace/capabilities/thinking/sampling; actual call settings and budgets journaled. Shared config persistence serialized. Session overrides and active-run updates are outside delivered scope.",
+      "note": "Run-local policy and budgets journaled; config writes serialized. Sampling default now defers to Core; explicit overrides and frozen active runs preserved. Live setting saved; source fallback and copy tested, not installed. Evidence: docs/sampling-default-2026-09-05.md. Session overrides outside scope.",
       "frame": "control",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -148,7 +148,7 @@
       "kind": "module",
       "label": "Task and plan compiler",
       "sublabel": "answer-only or validated build",
-      "note": "Structured commit_plan criteria; bounded planning failure suspends rather than free execution; new task after completed plan plans again. Legacy unchecked plans remain unverified. Answer-only classification remains heuristic.",
+      "note": "Bounded safe DGV planning and local check guidance installed (d706d2b3a3ab). Stored plans unchanged. Local installation receipt retained privately.",
       "frame": "execution",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -164,7 +164,7 @@
       "kind": "module",
       "label": "Plan supervisor",
       "sublabel": "cursor · retries · revisions",
-      "note": "Plan-bound persisted snapshots: retries/revisions/pairs/reverify ordering survive replay. Sequential dependencies, selected-scope limits; out-of-scope revision suspends. Tests: supervisor/steprun/selected/lifecycle.",
+      "note": "Installed 619383328f9d: explicit step continue_plan flag and error-aware retry; ordinary step remains single, Selected scope never widened; stale declared-file evidence rechecked before advance. Release gates pass; operator recovery benchmark pending.",
       "frame": "execution",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -180,7 +180,7 @@
       "kind": "worker",
       "label": "Common runner",
       "sublabel": "one model / tool / verify loop",
-      "note": "Shared boundaries and dispatch for chat, plan, verification, nested/manual RFX. Model cancellation plus safe tool boundaries; real-Core isolated write/read smoke passed. No exactly-once external-effects promise.",
+      "note": "Implemented and regression-tested bounded recovery memory plus one verified-new-source continuation; no global guard removal or automatic restore. Packed real-Core regional baseline repaired a specific error, rechecked prior work and continued. Actual voxel repair remains unverified; see recovery node and docs/targeted-file-recovery-2026-09-06.md.",
       "frame": "execution",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -196,10 +196,14 @@
       "kind": "module",
       "label": "Per-run context builder",
       "sublabel": "pinned brief · atomic tool groups",
-      "note": "Atomic tool-call/result packing, pinned brief/current step, recount and schema/output reservation. Missing results become unknown. Window tests plus child-process crash-after-effect test.",
+      "note": "Installed bounded 6000-byte related-step context retains previously passed shared-file checks as historical/awaiting recheck. Scoped read_plan_step supplies exact immutable plan/check/verdict on demand; tool result receipt IDs are visible for evidence citations. No new current pass is inferred from reading historical state.",
       "frame": "execution",
       "status": "done",
-      "path": "docs/loop-contract-2026-09-05.md",
+      "path": [
+        "internal/loop/recovery_progress.go",
+        "internal/loop/recovery_source.go",
+        "docs/targeted-file-recovery-2026-09-06.md"
+      ],
       "position": {
         "x": 1728,
         "y": 848
@@ -212,7 +216,7 @@
       "kind": "module",
       "label": "Tool dispatcher",
       "sublabel": "validate → authorize → journal → act",
-      "note": "Shared prepareRunRegistry now used by chat, plan/steps and manual reflexes; obsolete factory removed. Current instruction plus explicit plan-original brief; accepted registry cached/frozen. Registration rejection recorded and fails closed before inference on both paths. Tests red-before/green-after cover policy and cache; session/global skill write regression guard passes. Full Go race suite and vet pass.",
+      "note": "Raw guarded patch validation, explicit fields and sequential shadow checks installed. Runtime partial failures disclosed. Local installation receipt retained privately.",
       "frame": "execution",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -307,7 +311,7 @@
       "kind": "api",
       "label": "Snapshot + event stream",
       "sublabel": "cursor resume · gap detection",
-      "note": "Single-prefix snapshots remain canonical. Real W8A16 child crash after actual planned write/before result: 9e8d202f88420dd41dc5de8c reopens interrupted/pending; three observer replays have no effects. Actual Planner whole/selected complete with browser closed; fresh contexts show2/2 and2/3. Unknown-outcome helper checked; resumed inference not exercised. Evidence: docs/release-0.6-LABRIG.md.",
+      "note": "Installed9c527991491f. Live report confirms2 stale/1blocked/5pending/0skipped. Served native panel and embeddedPlanner1.5.1 bytes verified. Builtin precedence visible; historical chat reports immutable. Default sampling/Medium autopilot settings preserved.",
       "frame": "surface",
       "status": "done",
       "path": "docs/loop-contract-2026-09-05.md",
@@ -362,6 +366,43 @@
       "position": {
         "x": 2216,
         "y": 275
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "recovery",
+      "kind": "module",
+      "label": "Recovery contract",
+      "note": "Installed a3a8367-dirty-c71e1f303281: evidence-backed verification review preserves original criterion and fresh verdict; no automatic proposal execution/approval. Durable note replay and stale plan fail-closed checks covered by regressions. Original Minecraft run untouched; latest stop was generated 300-face threshold versus observed 256, not service crash.",
+      "frame": "execution",
+      "status": "done",
+      "path": [
+        "internal/loop/recovery.go",
+        "internal/loop/recovery_progress.go",
+        "docs/targeted-file-recovery-2026-09-06.md"
+      ],
+      "position": {
+        "x": 1328,
+        "y": 1656
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "idle",
+      "kind": "module",
+      "label": "Observed idle state",
+      "note": "Installed localhost:7700 revision a3a8367-dirty-8fdba1cf204e after no-active-run check. Observed service state controls nonmodal parked/waking notices and avoids health HTTP wakes. Full tests and desktop/mobile fixtures pass; live model/embedder/Typesense healthy and served assets match. Existing watchdog changed Core PID during preparation; installer refused, observation reconciled with audit retained, no Core lifecycle commands issued. Backup install-backup-harness-recovery-HuLS5D. See docs/idle-screen-2026-09-06.md. Next actual idle cycle not forced.",
+      "status": "done",
+      "path": [
+        "internal/idle",
+        "internal/api/idle.go",
+        "panel/src/lib/stores/idle.svelte.ts"
+      ],
+      "position": {
+        "x": 2644,
+        "y": 0
       }
     }
   ],
@@ -560,6 +601,44 @@
       "protocol": "fs",
       "label": "single durable append owner",
       "id": "writer-journal"
+    },
+    {
+      "kind": "control",
+      "source": "supervisor",
+      "target": "recovery",
+      "id": "supervisor-recovery"
+    },
+    {
+      "kind": "control",
+      "source": "recovery",
+      "target": "runner",
+      "id": "recovery-runner",
+      "protocol": "ipc",
+      "label": "failure evidence and scoped recovery capabilities"
+    },
+    {
+      "kind": "control",
+      "source": "recovery",
+      "target": "verify",
+      "id": "recovery-verify"
+    },
+    {
+      "kind": "data",
+      "id": "core-idle-observation",
+      "source": "core",
+      "target": "idle",
+      "protocol": "systemd show",
+      "label": "read-only service state",
+      "payload": "LoadState, ActiveState, SubState, MainPID, Result"
+    },
+    {
+      "kind": "data",
+      "id": "idle-state-projection",
+      "source": "idle",
+      "target": "readapi",
+      "protocol": "Go",
+      "label": "reconciled idle state",
+      "payload": "observed idle status"
     }
   ],
   "history": [
@@ -1870,6 +1949,1122 @@
           "field": "note",
           "from": "Follow-up 5 isolated child-process recovery and actual Planner/browser comman…",
           "to": "Single-prefix snapshots remain canonical. Real W8A16 child crash after actual…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:44:06.016Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Canonical snapshots and session/run/event incident chime tested. First-party …",
+          "to": "RFX capability follow-up in progress: persisted manual Reflex kind/name preve…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:44:06.016Z",
+      "by": "agent",
+      "type": "node",
+      "id": "commands",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Detached accepted worker, persisted start/control dedup, stale target rejecti…",
+          "to": "Image-bearing chat commands bounded to768KiB; max2 validated inlineJPEG/PNG<=…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:44:06.016Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Atomic tool-call/result packing, pinned brief/current step, recount and schem…",
+          "to": "Text-compatible multimodal messages with image_url content parts. Journal rep…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T09:44:06.016Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Shared prepareRunRegistry now used by chat, plan/steps and manual reflexes; o…",
+          "to": "Inherited Reflex cards checked at final dispatch after remediation/repair; re…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.124Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "RFX capability follow-up in progress: persisted manual Reflex kind/name preve…",
+          "to": "Native Reflex follow-up implemented: journaled manual kind/name prevents unre…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.124Z",
+      "by": "agent",
+      "type": "node",
+      "id": "commands",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Image-bearing chat commands bounded to768KiB; max2 validated inlineJPEG/PNG<=…",
+          "to": "Image-bearing commands and raw user-event ingress bounded to 768 KiB. At most…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.124Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Text-compatible multimodal messages with image_url content parts. Journal rep…",
+          "to": "Text-compatible multimodal messages preserve journal, edited/retried requests…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T10:02:41.124Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Inherited Reflex cards checked at final dispatch after remediation/repair; re…",
+          "to": "Final dispatch rechecks inherited primitive cards after repair/remediation. R…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:21:17.590Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Structured commit_plan criteria; bounded planning failure suspends rather tha…",
+          "to": "Recovery: allow bounded safe DGV planning reads; align check scope with step …"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:21:17.590Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Final dispatch rechecks inherited primitive cards after repair/remediation. R…",
+          "to": "Recovery: fix apply_patch matching against paginated numbered read output. Au…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:27:20.809Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Text-compatible multimodal messages preserve journal, edited/retried requests…",
+          "to": "Recovery: exact verification contract, independent read cursor per fresh chat…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.583Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Recovery: allow bounded safe DGV planning reads; align check scope with step …",
+          "to": "Bounded safe DGV planning reads; local checks required by guidance, integrati…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.583Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Recovery: exact verification contract, independent read cursor per fresh chat…",
+          "to": "Full verification JSON and per-window read cursors; fresh retry isolation tes…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:32:41.583Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Recovery: fix apply_patch matching against paginated numbered read output. Au…",
+          "to": "Raw guarded patch validation, explicit fields and sequential shadow checks. R…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.132Z",
+      "by": "agent",
+      "type": "node",
+      "id": "planner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Bounded safe DGV planning reads; local checks required by guidance, integrati…",
+          "to": "Bounded safe DGV planning and local check guidance installed (d706d2b3a3ab). …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.132Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Full verification JSON and per-window read cursors; fresh retry isolation tes…",
+          "to": "Full verification JSON and per-window read cursors installed; budgets/brief/i…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-05T17:46:05.132Z",
+      "by": "agent",
+      "type": "node",
+      "id": "dispatcher",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Raw guarded patch validation, explicit fields and sequential shadow checks. R…",
+          "to": "Raw guarded patch validation, explicit fields and sequential shadow checks in…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:36:54.112Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "add",
+      "kind": "module",
+      "label": "Recovery contract"
+    },
+    {
+      "at": "2026-09-06T01:36:54.112Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "supervisor-recovery",
+      "op": "add",
+      "kind": "control",
+      "label": "supervisor → recovery"
+    },
+    {
+      "at": "2026-09-06T01:36:54.112Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "recovery-runner",
+      "op": "add",
+      "kind": "control",
+      "label": "recovery → runner"
+    },
+    {
+      "at": "2026-09-06T01:36:54.112Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "recovery-verify",
+      "op": "add",
+      "kind": "control",
+      "label": "recovery → verify"
+    },
+    {
+      "at": "2026-09-06T01:52:51.916Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Plan-bound persisted snapshots: retries/revisions/pairs/reverify ordering sur…",
+          "to": "Source recovery contract 2026-09-06: explicit step continue_plan flag; normal…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:52:51.916Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Failure-aware retry with journal evidence, bounded preserved plan files, read…",
+          "to": "Implemented and tested in source; not installed. Current-plan event/source re…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "internal/loop/recovery.go",
+          "to": "internal/loop/recovery.go, docs/failure-aware-recovery-2026-09-06.md"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:52:51.916Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "recovery-runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "protocol",
+          "to": "ipc"
+        },
+        {
+          "field": "label",
+          "to": "failure evidence and scoped recovery capabilities"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:59:38.544Z",
+      "by": "agent",
+      "type": "node",
+      "id": "supervisor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Source recovery contract 2026-09-06: explicit step continue_plan flag; normal…",
+          "to": "Installed 619383328f9d: explicit step continue_plan flag and error-aware retr…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T01:59:38.544Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implemented and tested in source; not installed. Current-plan event/source re…",
+          "to": "Installed and live 2026-09-06: a3a8367-dirty-619383328f9d. Verified binaries/…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:29:03.444Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Shared boundaries and dispatch for chat, plan, verification, nested/manual RF…",
+          "to": "Regression target: six inspection rounds + two empty length replies must reac…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:29:03.444Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Single-prefix snapshots remain canonical. Real W8A16 child crash after actual…",
+          "to": "Report projection preserves old pass as historical and counts needs_reverify …"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:29:03.444Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed and live 2026-09-06: a3a8367-dirty-619383328f9d. Verified binaries/…",
+          "to": "Follow-up to installed 619383328f9d: controlled recovery stall, not service c…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:42:54.378Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Regression target: six inspection rounds + two empty length replies must reac…",
+          "to": "Regression six inspections + two empty length replies reaches actionable fall…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:42:54.378Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Report projection preserves old pass as historical and counts needs_reverify …",
+          "to": "Canonical report distinguishes historical pass awaiting recheck from pending/…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:42:54.378Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Follow-up to installed 619383328f9d: controlled recovery stall, not service c…",
+          "to": "2026-09-06 follow-up source complete, NOT INSTALLED. Controlled no-write reco…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:51:57.882Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Regression six inspections + two empty length replies reaches actionable fall…",
+          "to": "Installed9c527991491f after race/vet/75UI tests. Six inspections+two empty le…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:51:57.882Z",
+      "by": "agent",
+      "type": "node",
+      "id": "readapi",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Canonical report distinguishes historical pass awaiting recheck from pending/…",
+          "to": "Installed9c527991491f. Live report confirms2 stale/1blocked/5pending/0skipped…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T02:51:57.882Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 follow-up source complete, NOT INSTALLED. Controlled no-write reco…",
+          "to": "Installed 2026-09-06 as9c527991491f, verified backup aFev3t. Reissues max2 pr…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:02:30.081Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed9c527991491f after race/vet/75UI tests. Six inspections+two empty le…",
+          "to": "Installed bounded output fallback remains tested but was not exercised by lat…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "update"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:02:30.081Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Full verification JSON and per-window read cursors installed; budgets/brief/i…",
+          "to": "Evidence acquisition gap observed live: explicit read headers overstate retur…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "update"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:02:30.081Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed 2026-09-06 as9c527991491f, verified backup aFev3t. Reissues max2 pr…",
+          "to": "Live runf4538ef4dd60bbc3e2d674d0 confirms recovery still ineffective for trun…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "update"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:26:01.222Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed bounded output fallback remains tested but was not exercised by lat…",
+          "to": "Integrate recovery record and actionable failure handback without relaxing it…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:26:01.222Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Evidence acquisition gap observed live: explicit read headers overstate retur…",
+          "to": "Carry bounded acquired regions, evidence refs, edits and check outcomes acros…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:26:01.222Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Live runf4538ef4dd60bbc3e2d674d0 confirms recovery still ineffective for trun…",
+          "to": "Repair in progress: durable source/version-bound evidence reuse, decoded hist…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:41:48.665Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Carry bounded acquired regions, evidence refs, edits and check outcomes acros…",
+          "to": "Bounded durable acquired observations re-injected on recovery; original paire…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:51:28.104Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Integrate recovery record and actionable failure handback without relaxing it…",
+          "to": "Actual-copy regression still stalled at eight-call window despite acquiring n…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T03:51:28.104Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Repair in progress: durable source/version-bound evidence reuse, decoded hist…",
+          "to": "Tools/evidence memoryimplemented+baselineverified, actualcopyoxHvQhfailed16ca…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:03:32.193Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Tools/evidence memoryimplemented+baselineverified, actualcopyoxHvQhfailed16ca…",
+          "to": "2026-09-06: Durable observations carry original result identity, output hash,…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:08:11.787Z",
+      "by": "agent",
+      "type": "node",
+      "id": "runner",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Actual-copy regression still stalled at eight-call window despite acquiring n…",
+          "to": "Implemented and regression-tested bounded recovery memory plus one verified-n…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:08:11.787Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Bounded durable acquired observations re-injected on recovery; original paire…",
+          "to": "Implemented bounded journal-derived observations validated against original p…"
+        },
+        {
+          "field": "path",
+          "from": "docs/loop-contract-2026-09-05.md",
+          "to": "internal/loop/recovery_progress.go, internal/loop/recovery_source.go, docs/targeted-file-recovery-2026-09-06.md"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:08:11.787Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: Durable observations carry original result identity, output hash,…",
+          "to": "Regional live recovery passed with production packing. Actual voxel copy rema…"
+        },
+        {
+          "field": "path",
+          "from": "internal/loop/recovery.go, docs/failure-aware-recovery-2026-09-06.md",
+          "to": "internal/loop/recovery.go, internal/loop/recovery_progress.go, docs/targeted-file-recovery-2026-09-06.md"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:32:39.823Z",
+      "by": "agent",
+      "type": "node",
+      "id": "idle",
+      "op": "add",
+      "kind": "module",
+      "label": "Observed idle state"
+    },
+    {
+      "at": "2026-09-06T04:38:29.484Z",
+      "by": "agent",
+      "type": "node",
+      "id": "idle",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Fix stale warning after park/reload: read selected Core service state without…",
+          "to": "Idle state reconciles registered Core user-service state with read-only syste…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T04:38:29.484Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "core-idle-observation",
+      "op": "add",
+      "kind": "data",
+      "label": "core → idle"
+    },
+    {
+      "at": "2026-09-06T04:38:29.484Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "idle-state-projection",
+      "op": "add",
+      "kind": "data",
+      "label": "idle → readapi"
+    },
+    {
+      "at": "2026-09-06T04:48:00.955Z",
+      "by": "agent",
+      "type": "node",
+      "id": "idle",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Idle state reconciles registered Core user-service state with read-only syste…",
+          "to": "Installed localhost:7700 revision a3a8367-dirty-8fdba1cf204e after no-active-…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:19:09.391Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Native Reflex follow-up implemented: journaled manual kind/name prevents unre…",
+          "to": "User-approved private backlog implemented this pass: quiet flat rail, grouped…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:19:09.391Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Regional live recovery passed with production packing. Actual voxel copy rema…",
+          "to": "2026-09-06: replace mutation-only budget extension with committed-check-backe…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:34:25.547Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "User-approved private backlog implemented this pass: quiet flat rail, grouped…",
+          "to": "2026-09-06: private UI backlog implemented with incumbent visual tokens. Quie…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:34:25.547Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: replace mutation-only budget extension with committed-check-backe…",
+          "to": "2026-09-06: checked recovery cycles implemented and 200 loop tests race PASS.…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:36:09.127Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: checked recovery cycles implemented and 200 loop tests race PASS.…",
+          "to": "2026-09-06: checked recovery cycles pass full release gates; integration revi…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:39:40.331Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: checked recovery cycles pass full release gates; integration revi…",
+          "to": "2026-09-06 final: checked recovery baseline, bounded repair/check cycles and …"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:42:34.134Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: private UI backlog implemented with incumbent visual tokens. Quie…",
+          "to": "2026-09-06 installed revisiona3a8367-dirty-45e4ab58c05d: all5privateUIbacklog…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:42:34.134Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 final: checked recovery baseline, bounded repair/check cycles and …",
+          "to": "2026-09-06 installed localhost7700 revisiona3a8367-dirty-45e4ab58c05d: fresh …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:43:21.098Z",
+      "by": "agent",
+      "type": "node",
+      "id": "surfaces",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 installed revisiona3a8367-dirty-45e4ab58c05d: all5privateUIbacklog…",
+          "to": "Installed 2026-09-06, revision a3a8367-dirty-45e4ab58c05d. All five private U…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T06:43:21.098Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06 installed localhost7700 revisiona3a8367-dirty-45e4ab58c05d: fresh …",
+          "to": "Installed 2026-09-06 on localhost:7700, revision a3a8367-dirty-45e4ab58c05d. …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:06:45.005Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Implemented bounded journal-derived observations validated against original p…",
+          "to": "2026-09-06: StepContext drops needs_reverify shared passes before recovery pr…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:06:45.005Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Installed 2026-09-06 on localhost:7700, revision a3a8367-dirty-45e4ab58c05d. …",
+          "to": "2026-09-06: latest cap8 was intentional no-progress stop, but model adapted v…"
+        },
+        {
+          "field": "status",
+          "from": "done",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:30:10.168Z",
+      "by": "agent",
+      "type": "node",
+      "id": "context",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: StepContext drops needs_reverify shared passes before recovery pr…",
+          "to": "Installed bounded 6000-byte related-step context retains previously passed sh…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-06T08:30:10.168Z",
+      "by": "agent",
+      "type": "node",
+      "id": "recovery",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "2026-09-06: latest cap8 was intentional no-progress stop, but model adapted v…",
+          "to": "Installed a3a8367-dirty-c71e1f303281: evidence-backed verification review pre…"
         },
         {
           "field": "status",
