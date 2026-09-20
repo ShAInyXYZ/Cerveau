@@ -19,6 +19,12 @@ h1, h2, h3, h4, p, figure, blockquote, dl, dd, ul, ol { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
 img, svg, canvas { display: block; max-width: 100%; }
+/* SvelteFlow draws every edge in its own absolutely-positioned <svg> inside a
+   layer that has no width, and relies on overflow: visible. There the
+   max-width above resolves to 0, and a zero-width svg paints nothing: every
+   graph in the panel had its lines silently erased (found 2026-09-20, when
+   the Rig diagram showed edge labels floating with no edges). */
+.svelte-flow svg { max-width: none; }
 
 :root, [data-theme="dark"] {
   /* ---- surfaces: flat 4-step ladder, near-black, never pure black.
