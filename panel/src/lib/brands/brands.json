@@ -1,0 +1,95 @@
+{
+  "nvidia": {
+    "match": [
+      "nvidia",
+      "nemotron"
+    ],
+    "color": "#74B71B",
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.0/icons/nvidia.svg",
+    "license": "MIT — LobeHub icons"
+  },
+  "qwen": {
+    "match": [
+      "qwen"
+    ],
+    "color": "#6336E7",
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.0/icons/qwen.svg",
+    "license": "MIT — LobeHub icons"
+  },
+  "vllm": {
+    "match": [
+      "vllm"
+    ],
+    "source": "panel/src/lib/engines/vllm.svg",
+    "license": "Cerveau — traced in this repository"
+  },
+  "llamacpp": {
+    "match": [
+      "llama.cpp",
+      "llamacpp",
+      "llama-server"
+    ],
+    "source": "panel/src/lib/engines/llamacpp.svg",
+    "license": "Cerveau — traced in this repository"
+  },
+  "huggingface": {
+    "match": [
+      "huggingface",
+      "hugging face"
+    ],
+    "color": "#FF9D0B",
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.0/icons/huggingface.svg",
+    "license": "MIT — LobeHub icons"
+  },
+  "ollama": {
+    "match": [
+      "ollama"
+    ],
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.0/icons/ollama.svg",
+    "license": "MIT — LobeHub icons"
+  },
+  "typesense": {
+    "match": [
+      "typesense"
+    ],
+    "color": "#c0f858",
+    "own": true,
+    "raster": true,
+    "source": "https://typesense.org/favicon.png",
+    "license": "the icon of typesense.org, from its own site"
+  },
+  "docker": {
+    "match": [
+      "docker",
+      "containerd"
+    ],
+    "color": "#2496ED",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@15.0.0/icons/docker.svg",
+    "license": "CC0-1.0 — Simple Icons"
+  },
+  "python": {
+    "match": [
+      "python"
+    ],
+    "color": "#3776AB",
+    "source": "https://cdn.jsdelivr.net/npm/simple-icons@15.0.0/icons/python.svg",
+    "license": "CC0-1.0 — Simple Icons"
+  },
+  "comfyui": {
+    "match": [
+      "comfy"
+    ],
+    "color": "#F0FF41",
+    "source": "https://unpkg.com/@lobehub/icons-static-svg@1.95.0/icons/comfyui.svg",
+    "license": "MIT — LobeHub icons"
+  },
+  "cerveau": {
+    "match": [
+      "cerveau",
+      "crv"
+    ],
+    "color": "var(--accent)",
+    "source": "panel/src/lib/logo.svg",
+    "license": "Cerveau — traced in this repository"
+  }
+}
