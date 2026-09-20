@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"cerveau/internal/config"
@@ -232,9 +233,23 @@ func (a *API) writeParams(w http.ResponseWriter, c *cores.Core) {
 func (a *API) ApplyCore(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID string `json:"id"`
+		// Force: the user has been told which runs a restart interrupts, and
+		// asked for it anyway.
+		Force bool `json:"force"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id required"})
+		return
+	}
+	// A switch stops the Core, reloads tens of GB and restarts Cerveau. Runs
+	// are server-owned and outlive a closed browser, so one can be working
+	// with nobody watching the chat: refuse before anything is written, and
+	// name what would be lost.
+	if running := a.runningSessions(); len(running) > 0 && !body.Force {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":   fmt.Sprintf("%d run%s in progress — restarting the Core would interrupt %s", len(running), plural(len(running)), them(len(running))),
+			"running": running,
+		})
 		return
 	}
 	path := cores.DefaultPath()
@@ -283,6 +298,32 @@ func (a *API) ApplyCore(w http.ResponseWriter, r *http.Request) {
 		"status": cores.ReadSwitchStatus(),
 		"note":   "the park watchdog stops the other Cores, starts this one and restarts Cerveau; poll /api/cores for `switch`",
 	})
+}
+
+// runningSessions is every session a run is working in right now. A field
+// stands in for the loop in tests, which have no model to keep a run alive.
+func (a *API) runningSessions() []string {
+	if a.runningFn != nil {
+		return a.runningFn()
+	}
+	if a.chat == nil {
+		return nil
+	}
+	return a.chat.RunningSessions()
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+func them(n int) string {
+	if n == 1 {
+		return "it"
+	}
+	return "them"
 }
 
 // GET /api/thinking — which modes reason before answering, and how hard.

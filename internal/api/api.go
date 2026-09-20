@@ -38,6 +38,7 @@ type API struct {
 	sess          session.Store
 	http          *http.Client
 	chat          *loop.Loop
+	runningFn     func() []string // tests only; see runningSessions
 	sctx          *tools.SessionContext
 	ci            *codeintel.Indexer
 	mem           *memory.TSClient
