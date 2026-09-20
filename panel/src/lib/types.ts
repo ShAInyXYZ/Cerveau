@@ -16,6 +16,78 @@ export interface Health {
   workspace?: string;
 }
 
+// ── Rig (GET /api/rig) — mirrors internal/rig ──
+/** What a card IS. Live temperature and load are in SysStats, not here. */
+export interface RigGPU {
+  index: number; uuid: string; name: string;
+  mem_total: number; // MiB
+  pcie_gen?: number; pcie_width?: number; power_limit?: number; compute_cap?: string;
+}
+export interface RigInventory {
+  gpus: RigGPU[] | null; // null on a machine without nvidia-smi
+  links?: string[][];
+  nvlink: boolean;
+}
+export type RigRole = 'core' | 'embedder' | 'other';
+export interface RigConsumer { pid: number; mem: number; name: string; unit?: string; role: RigRole; core?: string }
+/** One card's memory right now. `used` is everything the driver counts; the
+ *  consumers are only compute processes, so the two need not add up. */
+export interface RigCardUse { gpu: number; used: number; consumers: RigConsumer[] }
+/** Where the active Core sits on its NEXT start: profile defaults + overrides. */
+export interface RigPlacement {
+  core: string; name: string; engine: string; model?: string;
+  gpus: number[] | null; // null: the profile does not say
+  tp?: number; gpu_util?: number; kv?: string; max_len?: number;
+  embed: { device: string; gpus?: number[] };
+  editable: boolean; overridden: boolean; order_pinned: boolean;
+  /** everything the profile runs with: defaults + the user's overrides */
+  params: Record<string, string> | null;
+  /** the Core the harness is talking to; any other profile is a preview */
+  live: boolean;
+}
+export interface RigProfile { id: string; name: string; engine: string; model?: string; live: boolean; editable: boolean }
+export interface Rig {
+  inventory: RigInventory; observed: RigCardUse[] | null;
+  next: RigPlacement | null;      // the profile asked for, or the live one
+  profiles?: RigProfile[] | null; // every profile this machine knows
+}
+/** One card of a fit estimate, MiB. */
+export interface RigCardFit { gpu: number; total: number; busy: number; budget: number; weights: number; overhead: number; kv_room: number; kv_needed: number }
+export interface RigFit {
+  verdict: 'fits' | 'tight' | 'no' | 'unknown';
+  reasons: string[];
+  cards: RigCardFit[];
+  window: number; max_window: number;
+  group_sizes: number[]; // how many cards this model can be split across
+  remote: boolean;
+}
+export interface RigSavedLayout { name: string; gpus: number[]; embed: { device: string; gpus?: number[] }; gpu_util?: number }
+/** POST /api/rig/plan — what saving a drawn layout would write. The override
+ *  sets are COMPLETE: PUT /params replaces the file, so they are sent as given. */
+export interface RigPlan {
+  /** the profile this plan was made for — it is only ever saved to that one */
+  core: string;
+  overrides: Record<string, string>;
+  embed_overrides: Record<string, string>;
+  changed: string[];
+  problems: string[];  // block a save
+  warnings: string[];
+  fit?: RigFit | null;
+  gpus: number[]; gpu_util: number; kv: string; window: number;
+}
+
+// ── live hardware (GET /api/system/stats) ──
+export interface SysGPU {
+  index: number; name: string; temp: number; util: number;
+  mem_used: number; mem_total: number; power: number; power_max: number; fan: number;
+}
+export interface SysStats {
+  gpus?: SysGPU[] | null;
+  gpu?: SysGPU | null;
+  cpu?: { name: string; cores: number; temp: number; util: number };
+  ram?: { used: number; total: number; type?: string; speed?: string; vendor?: string; sticks?: number };
+}
+
 export interface Modalities {
   text: boolean;
   vision?: boolean;

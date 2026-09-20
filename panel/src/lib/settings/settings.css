@@ -1,0 +1,41 @@
+/* What every Settings section shares. Imported once by the shell and scoped
+   under .settings; anything only one section uses lives in that section. */
+
+.settings .sect-title { font-size: var(--fs-title); font-weight: 640; color: var(--text); margin: 0 0 14px; }
+.settings .sect-note {
+  margin: -6px 0 16px; font-size: var(--fs-body); line-height: 1.55; color: var(--dim);
+  max-width: 60ch;
+}
+
+/* a named group inside a section: its label, and a hint beside it */
+.settings .samp { margin-top: 22px; }
+.settings .samp-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px; flex-wrap: wrap; }
+.settings .samp-label { font-size: var(--fs-body); font-weight: 620; color: var(--text); }
+.settings .samp-hint { font-size: var(--fs-small); color: var(--dim); }
+
+/* a list of things with a control on each row */
+.settings .rows { display: flex; flex-direction: column; gap: 6px; transition: opacity .15s; }
+.settings .rows.dim { opacity: .45; }
+.settings .row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 10px;
+  background: color-mix(in srgb, #fff 2.5%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.settings .row.off { opacity: .45; }
+.settings .rtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.settings .rname { font-size: var(--fs-body); font-weight: 550; color: var(--text); }
+.settings .rdesc { font-size: var(--fs-small); color: var(--dim); }
+
+/* the small outlined button: save, reset, copy */
+.settings .copy {
+  flex-shrink: 0; font-size: var(--fs-micro); letter-spacing: .06em; cursor: pointer;
+  background: none; border: 1px solid var(--line2); border-radius: 4px;
+  padding: 3px 8px; color: var(--dim);
+}
+.settings .copy:hover { color: var(--accent); border-color: var(--accent); }
+.settings .copy:disabled { opacity: .45; cursor: default; }
+.settings .copy:disabled:hover { color: var(--dim); border-color: var(--line2); }
+
+.settings .empty { font-size: var(--fs-small); color: var(--dim); }
+.settings .alert { font-size: var(--fs-small); color: var(--err); margin: 10px 0 0; }

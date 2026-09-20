@@ -8,6 +8,8 @@ export const storageKeys = {
   planArchived: (planId: string) => `crv:plan-archived:${planId}`,
   /** user muted the UI sounds (boolean) */
   soundMuted: 'crv:sound-muted',
+  /** the Settings section last open (string id) */
+  settingsSection: 'crv:settings-section',
 } as const;
 
 export const storage = {

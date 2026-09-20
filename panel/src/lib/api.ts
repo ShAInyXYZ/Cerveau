@@ -3,6 +3,7 @@
 import type {
   ChatMessage, ChatResult, EpisodicEvent, Health, Mode, PlanReport,
   Question, SessionError, SessionMeta, RunState, PlanState, SessionSnapshot,
+  Rig, RigPlan, RigSavedLayout, SysStats,
 } from './types';
 
 // Auth — the core gates everything behind a bearer token once paired.
@@ -52,9 +53,11 @@ export class ApiError extends Error {
  constructor(public status: number, message: string) { super(message); this.name='ApiError'; }
 }
 export interface RunControl { run_id: string; control_id: string; control_version: number }
-async function postJSON<T>(url: string, body?: unknown): Promise<T> {
+async function postJSON<T>(url: string, body?: unknown): Promise<T> { return sendJSON<T>('POST', url, body); }
+// Throws ApiError with the core's own words — a refusal has to reach the user.
+async function sendJSON<T>(method: 'POST' | 'PUT' | 'DELETE', url: string, body?: unknown): Promise<T> {
  const r = await fetch(url, {
-    method: 'POST',
+    method,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body ?? {}),
  });
@@ -124,6 +127,27 @@ export const api = {
     }).then((r) => r.ok),
   setWorkspace: (path: string) =>
     postJSON<{ ok?: string }>('/api/config/workspace', { path }),
+
+  // ── Rig: the machine, and where the active Core sits on it ──
+  // null from a core that predates /api/rig — the section says so.
+  // no id: the live profile. With one: that profile, live or a preview.
+  rig: (core?: string) => getJSON<Rig>(core ? `/api/rig?core=${encodeURIComponent(core)}` : '/api/rig'),
+  // a what-if: nothing is saved until savePlacement. gpuUtil 0 keeps the profile's share.
+  rigPlan: (core: string, gpus: number[], embed: { device: string; gpus: number[] }, gpuUtil = 0) =>
+    postJSON<RigPlan>('/api/rig/plan', { core, gpus, embed, gpu_util: gpuUtil }),
+  // "Save as": named placements kept beside a profile
+  rigLayouts: async (core: string): Promise<RigSavedLayout[]> =>
+    (await getJSON<{ layouts: RigSavedLayout[] }>(`/api/rig/layouts?core=${encodeURIComponent(core)}`))?.layouts ?? [],
+  saveRigLayout: async (core: string, layout: RigSavedLayout): Promise<RigSavedLayout[]> =>
+    (await sendJSON<{ layouts: RigSavedLayout[] }>('PUT', '/api/rig/layouts', { core, layout })).layouts,
+  deleteRigLayout: async (core: string, name: string): Promise<RigSavedLayout[]> =>
+    (await sendJSON<{ layouts: RigSavedLayout[] }>('DELETE', `/api/rig/layouts?core=${encodeURIComponent(core)}&name=${encodeURIComponent(name)}`)).layouts,
+  savePlacement: (core: string, plan: RigPlan) =>
+    sendJSON<{ id: string }>('PUT', `/api/cores/${core}/params`, { overrides: plan.overrides, embed_overrides: plan.embed_overrides }),
+  // 409 while a run is in progress; `force` is the user saying "interrupt it"
+  applyCore: (id: string, force = false) =>
+    postJSON<{ manual?: boolean; applying?: boolean }>('/api/cores/apply', { id, force }),
+  systemStats: () => getJSON<SysStats>('/api/system/stats'),
 
   // ── Idle / power parking ──
   idleStatus: () => getJSON<IdleStatus>('/api/idle'),
