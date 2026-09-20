@@ -38,3 +38,20 @@ function lastTs(sessions) {
     return t > max ? t : max;
   }, 0);
 }
+
+// Narrow the rail to what the user typed. A project matches by its name or
+// its path and then keeps every session; otherwise it stays only with the
+// sessions that match by name or id. Matching is case-insensitive, and every
+// word must be found — "racer 9" finds "racer9".
+export function filterProjects(projects, query) {
+  const words = (query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return projects;
+  const hit = (text) => words.every((w) => text.includes(w));
+  const out = [];
+  for (const p of projects) {
+    if (hit(`${p.name} ${p.instant ? '' : p.path}`.toLowerCase())) { out.push(p); continue; }
+    const sessions = p.sessions.filter((s) => hit(`${s.name} ${s.id}`.toLowerCase()));
+    if (sessions.length) out.push({ ...p, sessions });
+  }
+  return out;
+}
