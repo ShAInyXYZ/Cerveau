@@ -1,0 +1,3114 @@
+{
+  "dgv": 1,
+  "meta": {
+    "title": "Rig management — see the machine, place the Core",
+    "description": "PLAN (0.7). Settings gains a Rig section: a SvelteFlow graph of the machine. HARDWARE nodes are illustrated cards — one per detected GPU, plus CPU, RAM and the disk or NAS the weights live on. WORKLOAD nodes are the things that run — the Core, the embedder, crv, Typesense, anything else found on a card. EDGES say where each workload loads and runs. Three layers are kept apart: OBSERVED (the driver, now), NEXT START (profile defaults + cores.d overrides), DRAFT (a what-if being edited). A layout is only a parameter change written through the existing overrides path; the harness still never runs systemctl — the park watchdog applies it. A fit estimator answers 'does this model fit this layout, and with how much context' from local checkpoint facts or Hugging Face. Scoped on purpose: the rest of Cerveau is in Architecture, the Core internals in profile-*.",
+    "updated": "2026-09-20",
+    "colorBy": "status",
+    "driftIgnore": [
+      "android",
+      "cmd",
+      "docs",
+      "docs-private",
+      "rfx",
+      "scripts",
+      "Benchmark",
+      "Reports",
+      "assets",
+      "build",
+      "strix_runs",
+      "sidecars/ignite",
+      "sidecars/embedding_conventions.py",
+      "sidecars/test_nemotron_embed.py",
+      "deploy/idle/README.md",
+      "deploy/idle/cerveau-embed.service",
+      "deploy/idle/crv-core-vllm.service",
+      "deploy/idle/crv-core-vllm-proxy.service",
+      "deploy/idle/crv-core-vllm-proxy.socket",
+      "deploy/idle/crv-park-watchdog.service",
+      "internal/codeintel",
+      "internal/config",
+      "internal/episodic",
+      "internal/guard",
+      "internal/idle",
+      "internal/llm",
+      "internal/loop",
+      "internal/memory",
+      "internal/panel",
+      "internal/plan",
+      "internal/rfx",
+      "internal/rfxdgv",
+      "internal/rfxgithub",
+      "internal/server",
+      "internal/session",
+      "internal/skills",
+      "internal/tools",
+      "internal/window",
+      "panel/public",
+      "panel/src/kit",
+      "panel/src/lib/chat",
+      "panel/src/lib/engines",
+      "panel/src/lib/stores/health.svelte.ts",
+      "panel/src/lib/stores/idle.svelte.ts",
+      "panel/src/lib/stores/session.svelte.ts",
+      "panel/src/lib/stores/settings.svelte.ts",
+      "panel/src/lib/stores/ui.svelte.ts"
+    ]
+  },
+  "frames": [
+    {
+      "tone": "cyan",
+      "id": "panel",
+      "label": "Panel · Settings, revamped",
+      "note": "Svelte 5. Settings.svelte is a 762-line monolith today (Engine · Sound · RFX in one scroll); it becomes a shell with a section nav and one file per section.",
+      "position": {
+        "x": 396,
+        "y": 0
+      },
+      "size": {
+        "width": 1652,
+        "height": 2192
+      }
+    },
+    {
+      "tone": "amber",
+      "id": "core",
+      "label": "crv · Go core · new internal/rig",
+      "note": "New package internal/rig plus one handler file. Everything that WRITES goes through the existing internal/cores — rig adds description and arithmetic, never a second way to change a Core.",
+      "position": {
+        "x": -4,
+        "y": 2328
+      },
+      "size": {
+        "width": 1652,
+        "height": 1481
+      }
+    },
+    {
+      "tone": "neutral",
+      "id": "state",
+      "label": "State · what decides placement",
+      "note": "All existing except the rig cache. A layout is a diff in cores.d; nothing new becomes a source of truth.",
+      "position": {
+        "x": 1780,
+        "y": 2328
+      },
+      "size": {
+        "width": 356,
+        "height": 1086
+      }
+    },
+    {
+      "tone": "green",
+      "id": "machine",
+      "label": "Machine · what actually runs",
+      "note": "Owned by systemd, not by Cerveau. The harness never runs systemctl — that invariant is why a crash mid-switch cannot strand the machine with no model.",
+      "position": {
+        "x": 2268,
+        "y": 2328
+      },
+      "size": {
+        "width": 1328,
+        "height": 593
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "ports": [],
+      "tags": [],
+      "id": "settings-shell",
+      "kind": "ui",
+      "label": "Settings shell",
+      "sublabel": "icon tabs: Rig · Engine · Generation · Talents · Sound — one section on screen",
+      "note": "A ~100-line shell and one file per section, each owning its own loading. Tabs are an icon and a word, selected the way everything in the panel is (raised surface + accent hairline + accent icon), with the open section's one-line description at the right. The open section is remembered. Forms sit in a 640 px column; Rig takes the full width. vocabulary.ts is the ONE place a profile's parameters are put into words (label · reading · tip): the Engine table and the Rig spec plate both read it, and a key it does not know is still shown under its own name.",
+      "frame": "panel",
+      "tech": "Svelte 5",
+      "status": "done",
+      "path": [
+        "panel/src/lib/Settings.svelte",
+        "panel/src/lib/settings/EngineSection.svelte",
+        "panel/src/lib/settings/GenerationSection.svelte",
+        "panel/src/lib/settings/TalentsSection.svelte",
+        "panel/src/lib/settings/SoundSection.svelte",
+        "panel/src/lib/settings/settings.css",
+        "panel/src/lib/settings/vocabulary.ts",
+        "panel/src/lib/settings/vocabulary.test.ts"
+      ],
+      "position": {
+        "x": 444,
+        "y": 646
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rig-view",
+      "kind": "ui",
+      "label": "Rig diagram",
+      "sublabel": "a FIXED SvelteFlow diagram: hardware cards · workload cards · links you draw",
+      "note": "A fixed diagram: pan, zoom and scroll are off; the frame takes the drawing's own aspect ratio; the legend sits on the diagram. Draws whichever profile the head has chosen. ONE effect, keyed on the profile on screen, drops every draft and plan when that profile changes — by the user's pick or because another device switched the live Core under an open page — and opens the engine card's form. A plan is saved only to the profile it names (found in review 2026-09-20: a draft for profile A could otherwise be saved over profile B after a poll). Link colour = its module's; stroke = state. ROOT-CAUSE FIX on record: tokens.css gave every svg max-width:100%, collapsing SvelteFlow's edge svgs — `.svelte-flow svg { max-width: none }`.",
+      "frame": "panel",
+      "tech": "Svelte 5 · @xyflow/svelte",
+      "status": "done",
+      "path": [
+        "panel/src/lib/settings/rig/RigView.svelte",
+        "panel/src/lib/settings/rig/RigFit.svelte"
+      ],
+      "position": {
+        "x": 768,
+        "y": 631
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "layout-editor",
+      "kind": "ui",
+      "label": "Linking",
+      "sublabel": "drag a module's port onto a card · click a link to remove it",
+      "note": "BUILT inside the diagram rather than as a separate editor: the Core and the embedder carry a visible port; the whole hardware card is the drop target (a link is aimed at 'that GPU', not at a 6px dot). While a link is in the air, cards that can take it light up in accent and the ones that cannot fade (rigLink store), and existing links step back. The embedder taken off its card goes to the CPU — it is never left nowhere. Every change round-trips POST /api/rig/plan; the panel does no placement arithmetic. SvelteFlow's automatic edge is declined in onbeforeconnect, because links are derived from the placement. Presets (spread · pack · leave N free) are NOT built yet.",
+      "frame": "panel",
+      "tech": "Svelte 5",
+      "status": "done",
+      "path": "panel/src/lib/settings/rig/rigLink.svelte.ts",
+      "position": {
+        "x": 1092,
+        "y": 304
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "model-fit",
+      "kind": "ui",
+      "label": "Model fit browser",
+      "sublabel": "search Hugging Face · does it fit this layout, with how much context",
+      "note": "A what-if tool first: search, pick a model, see fits / tight / does not fit per layout and the largest context that fits. It does NOT download or install a model in this plan — installing a profile stays install.sh's job.",
+      "frame": "panel",
+      "tech": "Svelte 5",
+      "status": "todo",
+      "path": "panel/src/lib/settings/rig/ModelFit.svelte",
+      "position": {
+        "x": 1092,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rig-store",
+      "kind": "module",
+      "label": "rig.svelte.ts",
+      "sublabel": "inventory · live stats · allocation · draft layout",
+      "note": "BUILT: /api/rig every 5 s (two nvidia-smi calls a time), /api/system/stats every 2 s, both only while the Rig section is mounted. Keeps the last good picture through a failed poll; reports 'unsupported' when the core never answers /api/rig.",
+      "frame": "panel",
+      "tech": "Svelte 5 runes · TypeScript",
+      "status": "done",
+      "path": "panel/src/lib/stores/rig.svelte.ts",
+      "position": {
+        "x": 1416,
+        "y": 60
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "api-client",
+      "kind": "module",
+      "label": "api.ts",
+      "sublabel": "typed client — components never string-build URLs",
+      "note": "Gains rig functions + Rig* types. The existing cores functions (params, apply) are reused unchanged.",
+      "frame": "panel",
+      "tech": "TypeScript",
+      "status": "done",
+      "path": [
+        "panel/src/lib/api.ts",
+        "panel/src/lib/types.ts"
+      ],
+      "position": {
+        "x": 1740,
+        "y": 83
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "GET /api/rig → {inventory, observed[], next, services[]} · POST /api/rig/plan {core, gpus[], embed} → {overrides, embed_overrides, changed[], fit, problems[]} · GET /api/rig/models?q= → model facts[] · POST /api/rig/fit {model, layout} → verdict"
+        }
+      ],
+      "tags": [],
+      "id": "rig-api",
+      "kind": "api",
+      "label": "/api/rig/*",
+      "sublabel": "GET rig · POST plan · GET models · POST fit",
+      "note": "Thin handlers: every rule is in internal/rig. GET /api/rig[?core=] (profile resolved BEFORE the driver is touched) → {inventory, observed[], next{…params, live}, profiles[]} · POST /api/rig/plan {core, gpus, embed, gpu_util} → Plan + fit · GET|PUT|DELETE /api/rig/layouts (the two that write take JSON only, like every endpoint a sandboxed panel must not reach). Still TODO: the Hugging Face model browser.",
+      "frame": "core",
+      "tech": "Go net/http",
+      "status": "done",
+      "path": [
+        "internal/api/rig.go",
+        "internal/api/rig_test.go"
+      ],
+      "position": {
+        "x": 44,
+        "y": 3241
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "inventory",
+      "kind": "module",
+      "label": "rig/inventory",
+      "sublabel": "what the machine HAS: GPUs, VRAM, PCIe, power cap, link topology",
+      "note": "Static GPU facts from one nvidia-smi query plus `topo -m` for the link matrix (this rig: all NODE, no NVLink). Cached in memory for a minute — the cards do not change while the panel is open. No nvidia-smi → empty list, a CPU-only box, not an error. CPU and RAM are NOT duplicated here: /api/system/stats already reports their name, core count, size, type and speed, and the rig store reads them from there.",
+      "frame": "core",
+      "tech": "Go",
+      "status": "done",
+      "path": [
+        "internal/rig/inventory.go",
+        "internal/rig/rig_test.go"
+      ],
+      "position": {
+        "x": 1016,
+        "y": 2388
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "alloc",
+      "kind": "module",
+      "label": "rig/alloc",
+      "sublabel": "who is USING what: observed per-GPU consumers + declared next-start placement",
+      "note": "OBSERVED: nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory, then pid → /proc/<pid>/cgroup → systemd unit, so VRAM is attributed to 'the Core', 'the embedder' or 'other' without guessing from names (vLLM's TP workers are children in the Core unit's cgroup). DECLARED: the active Core's effective params (CUDA_VISIBLE_DEVICES, TP, GPU_UTIL, KV, MAX_LEN) and effective embed placement. Both are returned; the panel shows the difference instead of hiding it.",
+      "frame": "core",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/rig/alloc.go",
+      "position": {
+        "x": 368,
+        "y": 2867
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "estimator",
+      "kind": "module",
+      "label": "rig/estimate",
+      "sublabel": "weights ÷ TP + KV for the window + overhead, per card → fits / tight / no",
+      "note": "BUILT, 7 tests on the rig's real numbers. Per card: share of the card = weights ÷ cards + ~2.5 GB runtime + room for KV. One token costs a card 2 × attention layers × its KV heads × head dim × (1 byte fp8 | 2 otherwise). Verdict fits · tight · no · unknown, with the reason and the LARGEST window that fits. Also refuses what vLLM would: a card whose FREE memory is below its share because something else holds it. Live: W8A16 on four cards fits with room for 1.6M tokens; on one card the weights alone need 29.4 GB of a 22.1 GB share; BF16 fits with 363K and is flagged as loading 51.7 GB over the NAS.",
+      "frame": "core",
+      "tech": "Go",
+      "status": "done",
+      "path": [
+        "internal/rig/estimate.go",
+        "internal/rig/estimate_test.go"
+      ],
+      "position": {
+        "x": 692,
+        "y": 3304
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "layout",
+      "kind": "module",
+      "label": "rig/layout",
+      "sublabel": "a drawn layout → the profile's parameter language, validated",
+      "note": "PlanLayout(PlanInput, LayoutRequest) → Plan. The plan names the profile it was made for (`core`) and carries the COMPLETE override sets to save (existing overrides + placement keys), because SetCoreParams replaces the file. Always writes CUDA_DEVICE_ORDER=PCI_BUS_ID. Group sizes come from the model's head counts (facts), powers of two when the checkpoint cannot be read. The embedder's room beside the Core is what it is MEASURED to hold (+25%) when it is running, a 3 GB default otherwise. Refuses: an illegal group size, a share outside 20–98%, the embedder on a card the Core fills, unknown cards, a profile with no placement keys (rig.Placeable — one definition, used by Declared, PlanLayout and the profile list). layouts.go is 'Save as': named placements per profile in rig-layouts.json, at most 24 each.",
+      "frame": "core",
+      "tech": "Go",
+      "status": "done",
+      "path": [
+        "internal/rig/layout.go",
+        "internal/rig/layout_test.go",
+        "internal/rig/layouts.go",
+        "internal/rig/layouts_test.go"
+      ],
+      "position": {
+        "x": 368,
+        "y": 3201
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "question",
+          "title": "Only the two TP=4 profiles declare placement params — llama.cpp and the single-card vLLM Core expose none",
+          "note": "Checked the installed cores.json: vllm-27b-bf16 and vllm-27b-w8a16 declare CUDA_VISIBLE_DEVICES, TP, GPU_UTIL, KV, MAX_LEN, MODEL. The `llamacpp` Core (cerveau-llama.service) and the older `vllm` Core have an empty params map, so there is nothing for a layout to write. llama.cpp also speaks a different language: --tensor-split, -ngl, --n-cpu-moe rather than TP. And the vLLM launcher that turns env into flags lives outside this repo (Gpu-Rig/quad/start_qwen_tp4.sh), so the contract is not enforced here.",
+          "fix": "Define one small placement contract per engine — vLLM: CUDA_VISIBLE_DEVICES + TP + GPU_UTIL; llama.cpp: CUDA_VISIBLE_DEVICES + TENSOR_SPLIT + N_CPU_MOE — and have rig/layout pick the adapter from core.engine. A Core that declares none of the keys is shown read-only on the canvas ('this profile does not expose placement') instead of offering an editor that cannot save. Decide whether 0.7 ships the llama.cpp adapter or vLLM only.",
+          "by": "agent",
+          "at": "2026-09-20T08:28:37.827Z"
+        }
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "hfclient",
+      "kind": "module",
+      "label": "rig/hf",
+      "sublabel": "Hugging Face Hub: search · model info · config.json",
+      "note": "GET /api/models?search=…&pipeline_tag=text-generation, GET /api/models/{id} (safetensors parameter totals by dtype, sibling file sizes), and config.json for layers / KV heads / head dim / quantization_config. Facts are cached on disk so a model looked up once can be re-evaluated offline.",
+      "frame": "core",
+      "tech": "Go net/http",
+      "status": "todo",
+      "path": "internal/rig/hf.go",
+      "position": {
+        "x": 1340,
+        "y": 3468
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "question",
+          "title": "A model browser sends search terms to huggingface.co — against 'no cloud, no accounts, no telemetry'",
+          "note": "Checked the Go core's outbound hosts: the only one it contacts on its own is dl.typesense.org, once, when the user installs the memory sidecar. Everything else is the user's own services or a tool the user/model invoked (web_fetch, the GitHub pack). A model browser would be the first feature where using Settings sends what the user typed to a third party. For the labs and clinics this is built for, that must be a visible choice, not a side effect of opening a panel.",
+          "fix": "User-initiated only: a request goes out when the user presses Search or opens a model, never on load, never in the background, no refresh timer. A config switch turns the browser off entirely, and the panel then offers 'paste a repo id or a local model path' — a local config.json + safetensors sizes give the same facts with no network. An HF token is optional, read from the environment for gated repos, never stored in the rig cache and never logged. Cached facts keep working offline.",
+          "by": "agent",
+          "at": "2026-09-20T08:28:48.519Z"
+        }
+      ]
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "GET → {gpus[], gpu, cpu, ram}"
+        }
+      ],
+      "tags": [],
+      "id": "sysstats",
+      "kind": "api",
+      "label": "/api/system/stats",
+      "sublabel": "live: temp · util · VRAM used · power per GPU · CPU + RAM facts",
+      "note": "Exists and already reports every GPU, plus the CPU name/cores and RAM size/type/speed the canvas needs. Reused as is.",
+      "frame": "core",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/api/sysstats.go",
+      "position": {
+        "x": 44,
+        "y": 3571
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "rest",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "PUT /api/cores/{id}/params {overrides, embed_overrides} · POST /api/cores/apply {id} · GET /api/cores (incl. switch status)"
+        }
+      ],
+      "tags": [],
+      "id": "cores-api",
+      "kind": "api",
+      "label": "/api/cores/*",
+      "sublabel": "params (overrides) · apply (switch + restart)",
+      "note": "The ONLY write path. Rig reuses PUT params and POST apply as they are. BUILT 2026-09-20: apply now asks the loop for running sessions first and answers 409 with their ids unless the request carries force:true; a refused apply writes nothing (3 tests). The Engine tab shows the refusal instead of failing silently.",
+      "frame": "core",
+      "tech": "Go net/http",
+      "status": "done",
+      "path": [
+        "internal/api/cores.go",
+        "internal/api/cores_apply_test.go"
+      ],
+      "position": {
+        "x": 368,
+        "y": 2567
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "cores",
+      "kind": "module",
+      "label": "internal/cores",
+      "sublabel": "registry · overrides · embed.env · switch request",
+      "frame": "core",
+      "tech": "Go",
+      "status": "done",
+      "path": "internal/cores",
+      "position": {
+        "x": 692,
+        "y": 2815
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "coresjson",
+      "kind": "storage",
+      "label": "cores.json",
+      "sublabel": "~/.config/cerveau — each Core's profile DEFAULTS (params + embed)",
+      "frame": "state",
+      "status": "done",
+      "position": {
+        "x": 1828,
+        "y": 2388
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "overrides",
+      "kind": "storage",
+      "label": "cores.d/<id>.env · <id>.embed.env",
+      "sublabel": "the user's diff — where a saved layout lands",
+      "frame": "state",
+      "status": "done",
+      "position": {
+        "x": 1828,
+        "y": 2530
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "embedenv",
+      "kind": "storage",
+      "label": "embed.env",
+      "sublabel": "the ACTIVE Core's effective embedder placement, written on apply",
+      "frame": "state",
+      "status": "done",
+      "position": {
+        "x": 1828,
+        "y": 2672
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "switchreq",
+      "kind": "storage",
+      "label": "switch-request.json · switch-status.json",
+      "sublabel": "XDG_RUNTIME_DIR (tmpfs) — a stale request cannot survive a reboot",
+      "frame": "state",
+      "status": "done",
+      "position": {
+        "x": 1828,
+        "y": 2814
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rigcache",
+      "kind": "cache",
+      "label": "rig cache",
+      "sublabel": "~/.cache/cerveau/rig — model facts by repo@revision",
+      "note": "Disposable: deleting it costs one re-fetch. Never holds a token. Only the Hugging Face facts need disk; the inventory is cheap to re-probe and lives in memory.",
+      "frame": "state",
+      "status": "todo",
+      "position": {
+        "x": 1828,
+        "y": 2956
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "watchdog",
+      "kind": "worker",
+      "label": "crv-park-watchdog",
+      "sublabel": "polls the switch request · stops the other Cores · starts this one · restarts Cerveau",
+      "frame": "machine",
+      "tech": "bash · systemd --user",
+      "status": "done",
+      "path": "deploy/idle/crv-park-watchdog.sh",
+      "position": {
+        "x": 2316,
+        "y": 2499
+      },
+      "flags": [
+        {
+          "id": "f1",
+          "kind": "issue",
+          "title": "The switch waits for EVERY card to be empty — a layout that leaves things on other cards stalls each switch for 60 s",
+          "note": "crv-park-watchdog.sh, switch_core: after stopping the old Core it loops up to 30 × 2 s until no compute process anywhere holds more than 2000 MiB (`nvidia-smi --query-compute-apps=used_memory | awk '$1>2000'`). It does not look at WHICH card or WHOSE process. Rig management exists to let the Core take cards 2 and 3 while the embedder and other work stay on 0, 1 and 4 — every one of those layouts makes the loop run its full minute before the Core even starts loading. The embedder alone can cross 2 GB.",
+          "fix": "Put the new Core's card group in the switch request (`gpus`, as UUIDs from the inventory) and have the watchdog wait only for those cards: --query-compute-apps=gpu_uuid,used_memory filtered to the group. Still bounded, still proceeds on timeout. One field in SwitchRequest, one awk filter.",
+          "by": "agent",
+          "at": "2026-09-20T08:49:13.622Z"
+        }
+      ]
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "coreunit",
+      "kind": "service",
+      "label": "Core unit",
+      "sublabel": "systemd unit → launcher → engine · reads cores.d at START only",
+      "note": "Environment= defaults, then EnvironmentFile=-cores.d/<id>.env which wins. The two TP=4 profiles declare everything a layout needs: CUDA_VISIBLE_DEVICES, TP, GPU_UTIL, KV, MAX_LEN, MODEL.",
+      "frame": "machine",
+      "tech": "systemd .service",
+      "status": "done",
+      "path": "deploy/profiles",
+      "position": {
+        "x": 2640,
+        "y": 2544
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "chat",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "OpenAI-compatible /v1"
+        }
+      ],
+      "tags": [],
+      "id": "engine",
+      "kind": "model",
+      "label": "Inference engine",
+      "sublabel": "vLLM (tensor-parallel) or llama.cpp (tensor-split + experts in RAM)",
+      "frame": "machine",
+      "tech": "vLLM · llama.cpp",
+      "status": "done",
+      "position": {
+        "x": 2964,
+        "y": 2574
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "embeddings",
+          "protocol": "http",
+          "dir": "in",
+          "shape": "text[] → float[][]"
+        }
+      ],
+      "tags": [],
+      "id": "embedder",
+      "kind": "sidecar",
+      "label": "Embed sidecar",
+      "sublabel": "Nemotron-3-Embed-1B · :8081 · one card or CPU",
+      "frame": "machine",
+      "tech": "Python · sentence-transformers",
+      "status": "done",
+      "path": "sidecars/nemotron_embed.py",
+      "position": {
+        "x": 2964,
+        "y": 2388
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "nvsmi",
+      "kind": "program",
+      "label": "nvidia-smi",
+      "sublabel": "the only GPU probe — absent on a CPU-only box",
+      "frame": "machine",
+      "tech": "NVIDIA driver CLI",
+      "status": "done",
+      "position": {
+        "x": 2964,
+        "y": 2779
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "gpus",
+      "kind": "device",
+      "label": "GPUs",
+      "sublabel": "N detected — lab rig: 4× RTX 3090 + 1× RTX 3060 · no NVLink, no P2P",
+      "frame": "machine",
+      "position": {
+        "x": 3288,
+        "y": 2768
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "host",
+      "kind": "device",
+      "label": "Host · CPU + RAM",
+      "sublabel": "where crv and Typesense run, where llama.cpp puts MoE experts, where the embedder goes on a one-card box",
+      "frame": "machine",
+      "position": {
+        "x": 3288,
+        "y": 2410
+      }
+    },
+    {
+      "ports": [
+        {
+          "id": "api",
+          "protocol": "https",
+          "dir": "in",
+          "shape": "GET /api/models · /api/models/{id} · /{id}/resolve/{rev}/config.json"
+        }
+      ],
+      "tags": [],
+      "id": "hfhub",
+      "kind": "external",
+      "label": "Hugging Face Hub",
+      "sublabel": "huggingface.co/api — public model metadata",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rig-graph",
+      "kind": "module",
+      "label": "rigGraph.ts",
+      "sublabel": "rig data → flow nodes + edges + positions · pure, table-tested",
+      "note": "BUILT, 12 vitest cases from the lab rig's real /api/rig output: five cards, one card, no GPU, Core parked, Core running, observed ≠ next start in both directions, embedder on CPU, a docker container found on every card, the desktop's memory shown as 'system'. Places each workload above the middle of what it runs on and pushes overlapping cards apart. Storage (nvme · sata · hdd · nas) is NOT drawn yet: nothing reports where the weights live until rig/facts exists, and the graph does not guess.",
+      "frame": "panel",
+      "tech": "TypeScript",
+      "status": "done",
+      "path": [
+        "panel/src/lib/settings/rig/rigGraph.ts",
+        "panel/src/lib/settings/rig/rigGraph.test.ts"
+      ],
+      "position": {
+        "x": 1092,
+        "y": 1745
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rig-nodes",
+      "kind": "ui",
+      "label": "Node cards",
+      "sublabel": "HardwareNode (illustration + live meters) · WorkloadNode (what runs, how much it takes)",
+      "note": "HardwareNode: the illustration, the name, a memory bar split by who holds it, temp · load · power; the whole card is the drop target. WorkloadNode: the module's brand mark, title, state, chips, and — for the Core and the embedder — a port to drag from. ONE colour per module (--c, from its brand; the Core keeps the accent): the same on its mark, its card rule, its links and its share of every memory bar.",
+      "frame": "panel",
+      "tech": "Svelte 5 · @xyflow/svelte custom nodes",
+      "status": "done",
+      "path": [
+        "panel/src/lib/settings/rig/HardwareNode.svelte",
+        "panel/src/lib/settings/rig/WorkloadNode.svelte",
+        "panel/src/lib/settings/rig/BrandMark.svelte"
+      ],
+      "position": {
+        "x": 1092,
+        "y": 713
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "rig-art",
+      "kind": "ui",
+      "label": "Component illustrations",
+      "sublabel": "GPU · CPU · RAM · NVMe · SATA SSD · HDD · NAS — line-art SVG, every one animated by load",
+      "note": "BUILT: seven colourless, timeless SVG files + RigArt.svelte, which inlines one by kind (as EngineMark does the engine logos). Styled by class: b body · p part · v void · d detail · m marker. Moved by class, only while load > 0: fan (GPU, the pair counter-rotates) · platter + seek (HDD: the disk turns, the arm hunts from hub to outer tracks) · lit overlays with a phase --p (CPU pads chase round the package · a wave crosses the RAM packages · NVMe lights controller → cache → flash → flash · SATA level strip + LED · NAS power LED steady, drive LEDs blinking out of step). ONE number drives all of it — load 0–1 sets --dur, a GPU fan's full turn (3 s → 0.6 s); every other motion is a fixed multiple, so the rig speeds up and slows down together. Props: kind, width, load, tone (idle · on · accent — the accent means 'the draft targets this', nothing else). `node scripts/make-rig-art.mjs` regenerates; `--preview` writes docs-private/rig-art-preview.html using the CSS lifted out of RigArt.svelte, so the page cannot drift from the panel. GPU traced from cerveau-site's gpu.glb.",
+      "frame": "panel",
+      "tech": "Svelte 5 · inline SVG",
+      "status": "done",
+      "path": "panel/src/lib/settings/rig/art",
+      "position": {
+        "x": 1416,
+        "y": 586
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "facts",
+      "kind": "module",
+      "label": "rig/facts",
+      "sublabel": "model facts from a LOCAL checkpoint first, Hugging Face second",
+      "note": "BUILT. Reads the profile's own MODEL path (%h and ~ expanded): config.json (text_config for multimodal) + the sizes of the weight shards. AttnLayers counts only full-attention layers — Qwen3.5 is a hybrid, 16 of 64: counting all of them overstates the KV cache four times. GroupSizes come from the model's heads (24 attention, 4 KV, 16/48 linear → 1, 2, 4, 8). Remote = the checkpoint is on a network mount (the BF16 weights are on the NAS). A bare GGUF gives a size and nothing else, and the estimate says so. The handler reads it with a 3 s timeout: a stat on a dead SMB share can hang. Hugging Face is NOT wired in: the installed model is evaluated with no network.",
+      "frame": "core",
+      "tech": "Go",
+      "status": "done",
+      "path": [
+        "internal/rig/facts.go"
+      ],
+      "position": {
+        "x": 1016,
+        "y": 3400
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "checkpoint",
+      "kind": "storage",
+      "label": "Checkpoint",
+      "sublabel": "the MODEL path: safetensors / GGUF + config.json — on an NVMe, a SATA SSD, a hard drive or a NAS mount",
+      "note": "BF16 weights live on the NAS on this rig (see profile-bf16-tp4's open flag): the canvas should show that the Core loads over the network, and say so when the mount is absent.",
+      "frame": "machine",
+      "status": "done",
+      "position": {
+        "x": 3288,
+        "y": 2539
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "profile-bar",
+      "kind": "ui",
+      "label": "Profile bar",
+      "sublabel": "every profile · live or preview · the chosen one's configuration, read from the profile",
+      "note": "BUILT 2026-09-20, replacing a header of hand-written sentences. One button per profile from /api/rig `profiles` (engine mark, name, a 'live' tag on the loaded one). Picking one redraws the diagram for it: REAL TIME if it is the loaded Core, a PREVIEW of where it would go if it is not — and the Core that IS loaded stays on the cards, named. The configuration strip is the profile's effective params said the way a person would ('256K window', 'fp8 KV cache', '92% of each card'); a key it does not know is shown as written, never dropped.",
+      "frame": "panel",
+      "tech": "Svelte 5",
+      "status": "done",
+      "path": "panel/src/lib/settings/rig/ProfileBar.svelte",
+      "position": {
+        "x": 1092,
+        "y": 1032
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "module-form",
+      "kind": "ui",
+      "label": "Module form",
+      "sublabel": "click a module: where it runs · more · less · none · would it run? · Save · Save as · Cancel",
+      "note": "BUILT 2026-09-20 — the user's chosen way to change the graph. Core: a switch per card, the share of each card (− / slider / +), 'Would it run?' with the verdict, the reasons and a per-card table (weights · KV room · window needs), what saving changes, saved layouts, and Save · Save as… · Cancel. Embedder: CPU or one card. Anything else: read-only, saying why. It edits nothing itself: every change goes up as a whole placement, the diagram redraws, and the core answers what it means. Nothing is written until Save.",
+      "frame": "panel",
+      "tech": "Svelte 5",
+      "status": "done",
+      "path": "panel/src/lib/settings/rig/ModuleForm.svelte",
+      "position": {
+        "x": 1092,
+        "y": 1396
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "layouts-store",
+      "kind": "storage",
+      "label": "rig-layouts.json",
+      "sublabel": "~/.config/cerveau — named placements kept beside each profile ('Save as')",
+      "note": "A profile is a systemd unit with its own port, so a drawn placement cannot become a NEW profile from the panel. 'Save as' keeps it as a named layout instead; loading one only fills the editor — Save is still what writes the profile.",
+      "frame": "state",
+      "status": "done",
+      "position": {
+        "x": 1828,
+        "y": 3170
+      }
+    },
+    {
+      "ports": [],
+      "tags": [],
+      "id": "brands",
+      "kind": "module",
+      "label": "brands",
+      "sublabel": "a module's own strings → its brand's mark and colour · vendored, never fetched",
+      "note": "BUILT 2026-09-20. Resolution order: a vendored icon first, else the brand's own site is asked for its vector mark, else a neutral icon. WHEN it runs matters: Cerveau is local-first, so scripts/vendor-brand-icons.mjs runs that resolution at development time (LobeHub MIT → Simple Icons CC0 → the site's own svg → the site's raster icon) and commits the result with its source and licence in brands.json. The panel never goes to the network for a picture. brandFor(...names) takes a module's title, model name, systemd unit and process name and returns the first brand they name — 'nemotron-embed' → NVIDIA, a docker-… scope → Docker whatever runs inside it — or null, and the card draws a neutral box. No component names a brand; adding one is one line in the script. Colours are lifted until legible on #161616. Typesense publishes no vector mark, so it keeps its official PNG, untinted.",
+      "frame": "panel",
+      "tech": "TypeScript · generated json + svg",
+      "status": "done",
+      "path": "panel/src/lib/brands",
+      "position": {
+        "x": 1416,
+        "y": 1648
+      }
+    }
+  ],
+  "edges": [
+    {
+      "kind": "import",
+      "source": "settings-shell",
+      "target": "rig-view",
+      "protocol": "import",
+      "label": "Rig is the first section",
+      "id": "settings-shell-rig-view",
+      "ack": "Svelte component composition: a compile-time import between two components, no runtime hop"
+    },
+    {
+      "kind": "import",
+      "source": "rig-view",
+      "target": "layout-editor",
+      "protocol": "import",
+      "label": "edit mode on the same canvas",
+      "id": "rig-view-layout-editor",
+      "ack": "Svelte component composition: a compile-time import between two components, no runtime hop"
+    },
+    {
+      "kind": "import",
+      "source": "rig-view",
+      "target": "model-fit",
+      "protocol": "import",
+      "label": "what-if drawer",
+      "id": "rig-view-model-fit",
+      "ack": "Svelte component composition: a compile-time import between two components, no runtime hop"
+    },
+    {
+      "kind": "import",
+      "source": "layout-editor",
+      "target": "rig-store",
+      "protocol": "import",
+      "label": "owns the draft layout",
+      "id": "layout-editor-rig-store"
+    },
+    {
+      "kind": "import",
+      "source": "model-fit",
+      "target": "rig-store",
+      "protocol": "import",
+      "label": "candidate model + verdict",
+      "id": "model-fit-rig-store"
+    },
+    {
+      "kind": "import",
+      "source": "rig-store",
+      "target": "api-client",
+      "protocol": "import",
+      "label": "named functions only",
+      "id": "rig-store-api-client"
+    },
+    {
+      "kind": "sync",
+      "source": "api-client",
+      "target": "rig-api",
+      "protocol": "http",
+      "label": "load the rig · plan a draft · search models · check fit",
+      "targetPort": "rest",
+      "payload": "draft layout → params diff + verdict",
+      "id": "api-client-rig-api"
+    },
+    {
+      "kind": "sync",
+      "source": "api-client",
+      "target": "sysstats",
+      "protocol": "http",
+      "label": "poll live temp · util · VRAM · power while Rig is open",
+      "targetPort": "rest",
+      "id": "api-client-sysstats"
+    },
+    {
+      "kind": "sync",
+      "source": "api-client",
+      "target": "cores-api",
+      "protocol": "http",
+      "label": "save the plan's COMPLETE override sets · Restart to apply",
+      "targetPort": "rest",
+      "payload": "{overrides, embed_overrides} exactly as /api/rig/plan returned them, then {id}",
+      "id": "api-client-cores-api"
+    },
+    {
+      "kind": "import",
+      "source": "rig-api",
+      "target": "inventory",
+      "protocol": "import",
+      "label": "what the machine has",
+      "id": "rig-api-inventory"
+    },
+    {
+      "kind": "import",
+      "source": "rig-api",
+      "target": "alloc",
+      "protocol": "import",
+      "label": "observed + next-start placement",
+      "id": "rig-api-alloc"
+    },
+    {
+      "kind": "import",
+      "source": "rig-api",
+      "target": "layout",
+      "protocol": "import",
+      "label": "plan a draft",
+      "id": "rig-api-layout"
+    },
+    {
+      "kind": "import",
+      "source": "rig-api",
+      "target": "estimator",
+      "protocol": "import",
+      "label": "fit verdict",
+      "id": "rig-api-estimator"
+    },
+    {
+      "kind": "import",
+      "source": "layout",
+      "target": "estimator",
+      "protocol": "import",
+      "label": "a plan carries its verdict",
+      "id": "layout-estimator"
+    },
+    {
+      "kind": "import",
+      "source": "layout",
+      "target": "cores",
+      "protocol": "import",
+      "label": "profile defaults · ValidateOverride — same rules as the params table",
+      "id": "layout-cores"
+    },
+    {
+      "kind": "import",
+      "source": "alloc",
+      "target": "cores",
+      "protocol": "import",
+      "label": "active Core's effective params + embed placement",
+      "id": "alloc-cores"
+    },
+    {
+      "kind": "import",
+      "source": "estimator",
+      "target": "inventory",
+      "protocol": "import",
+      "label": "VRAM per card",
+      "id": "estimator-inventory"
+    },
+    {
+      "kind": "import",
+      "source": "cores-api",
+      "target": "cores",
+      "protocol": "import",
+      "label": "SaveOverrides · WriteEmbedEnv · WriteSwitchRequest",
+      "id": "cores-api-cores"
+    },
+    {
+      "kind": "sync",
+      "source": "inventory",
+      "target": "nvsmi",
+      "protocol": "exec",
+      "label": "-L · --query-gpu (static fields) · topo -m",
+      "id": "inventory-nvsmi"
+    },
+    {
+      "kind": "sync",
+      "source": "alloc",
+      "target": "nvsmi",
+      "protocol": "exec",
+      "label": "--query-compute-apps=gpu_uuid,pid,used_memory",
+      "id": "alloc-nvsmi"
+    },
+    {
+      "kind": "sync",
+      "source": "sysstats",
+      "target": "nvsmi",
+      "protocol": "exec",
+      "label": "--query-gpu live fields, 2 s timeout",
+      "id": "sysstats-nvsmi"
+    },
+    {
+      "kind": "sync",
+      "source": "nvsmi",
+      "target": "gpus",
+      "protocol": "ffi",
+      "label": "NVML",
+      "id": "nvsmi-gpus"
+    },
+    {
+      "kind": "data",
+      "source": "hfclient",
+      "target": "rigcache",
+      "protocol": "fs",
+      "label": "model facts by repo@revision",
+      "id": "hfclient-rigcache"
+    },
+    {
+      "kind": "sync",
+      "source": "hfclient",
+      "target": "hfhub",
+      "protocol": "https",
+      "label": "search · model info · config.json",
+      "targetPort": "api",
+      "payload": "→ weight bytes by dtype · layers · KV heads · head dim · quant",
+      "id": "hfclient-hfhub"
+    },
+    {
+      "kind": "data",
+      "source": "cores",
+      "target": "coresjson",
+      "protocol": "fs",
+      "label": "profile defaults · active Core",
+      "id": "cores-coresjson"
+    },
+    {
+      "kind": "data",
+      "source": "cores",
+      "target": "overrides",
+      "protocol": "fs",
+      "label": "the layout, as a diff",
+      "id": "cores-overrides"
+    },
+    {
+      "kind": "data",
+      "source": "cores",
+      "target": "embedenv",
+      "protocol": "fs",
+      "label": "effective embedder placement, on apply",
+      "id": "cores-embedenv"
+    },
+    {
+      "kind": "data",
+      "source": "cores",
+      "target": "switchreq",
+      "protocol": "fs",
+      "label": "queue the switch · read its phase",
+      "id": "cores-switchreq"
+    },
+    {
+      "kind": "data",
+      "source": "watchdog",
+      "target": "switchreq",
+      "protocol": "fs",
+      "label": "polls the request · writes queued → stopping → starting → restarting → done",
+      "id": "watchdog-switchreq"
+    },
+    {
+      "kind": "control",
+      "source": "watchdog",
+      "target": "coreunit",
+      "protocol": "exec",
+      "label": "systemctl --user stop others · start this one",
+      "id": "watchdog-coreunit"
+    },
+    {
+      "kind": "control",
+      "source": "watchdog",
+      "target": "embedder",
+      "protocol": "exec",
+      "label": "restart with the new embed.env",
+      "id": "watchdog-embedder"
+    },
+    {
+      "kind": "data",
+      "source": "overrides",
+      "target": "coreunit",
+      "protocol": "fs",
+      "label": "EnvironmentFile= — read at start, wins over Environment=",
+      "id": "overrides-coreunit"
+    },
+    {
+      "kind": "data",
+      "source": "embedenv",
+      "target": "embedder",
+      "protocol": "fs",
+      "label": "EnvironmentFile= · EMBED_DEVICE · CUDA_VISIBLE_DEVICES",
+      "id": "embedenv-embedder",
+      "ack": "an EnvironmentFile read once at unit start, not a call on the embeddings port"
+    },
+    {
+      "kind": "control",
+      "source": "coreunit",
+      "target": "engine",
+      "protocol": "exec",
+      "label": "launcher translates env → engine flags",
+      "id": "coreunit-engine"
+    },
+    {
+      "kind": "deploy",
+      "source": "engine",
+      "target": "gpus",
+      "label": "weights sharded across the chosen group · KV fills the rest up to GPU_UTIL",
+      "id": "engine-gpus"
+    },
+    {
+      "kind": "deploy",
+      "source": "engine",
+      "target": "host",
+      "label": "llama.cpp: MoE experts held in RAM",
+      "id": "engine-host"
+    },
+    {
+      "kind": "deploy",
+      "source": "embedder",
+      "target": "gpus",
+      "label": "one card when the profile gives it one",
+      "id": "embedder-gpus"
+    },
+    {
+      "kind": "deploy",
+      "source": "embedder",
+      "target": "host",
+      "label": "CPU when no card is spare",
+      "id": "embedder-host"
+    },
+    {
+      "kind": "import",
+      "source": "rig-view",
+      "target": "rig-graph",
+      "protocol": "import",
+      "label": "nodes + edges to draw",
+      "id": "rig-view-rig-graph"
+    },
+    {
+      "kind": "import",
+      "source": "rig-view",
+      "target": "rig-nodes",
+      "protocol": "import",
+      "label": "nodeTypes: hardware · workload",
+      "ack": "Svelte component composition: a compile-time import between two components, no runtime hop",
+      "id": "rig-view-rig-nodes"
+    },
+    {
+      "kind": "import",
+      "source": "rig-nodes",
+      "target": "rig-art",
+      "protocol": "import",
+      "label": "one illustration per hardware kind",
+      "ack": "Svelte component composition: a compile-time import between two components, no runtime hop",
+      "id": "rig-nodes-rig-art"
+    },
+    {
+      "kind": "import",
+      "source": "rig-api",
+      "target": "facts",
+      "protocol": "import",
+      "label": "facts for the active model · for a candidate",
+      "id": "rig-api-facts"
+    },
+    {
+      "kind": "import",
+      "source": "facts",
+      "target": "hfclient",
+      "protocol": "import",
+      "label": "remote facts, only when asked",
+      "id": "facts-hfclient"
+    },
+    {
+      "kind": "data",
+      "source": "facts",
+      "target": "checkpoint",
+      "protocol": "fs",
+      "label": "config.json · shard sizes · which mount",
+      "id": "facts-checkpoint"
+    },
+    {
+      "kind": "import",
+      "source": "layout",
+      "target": "facts",
+      "protocol": "import",
+      "label": "attention heads → which TP values are legal",
+      "id": "layout-facts"
+    },
+    {
+      "kind": "data",
+      "source": "engine",
+      "target": "checkpoint",
+      "protocol": "fs",
+      "label": "loads the shards at start — minutes when it is on the NAS",
+      "id": "engine-checkpoint"
+    },
+    {
+      "kind": "data",
+      "source": "alloc",
+      "target": "host",
+      "protocol": "fs",
+      "label": "pid → /proc/<pid>/cgroup → which unit owns this VRAM",
+      "id": "alloc-host"
+    },
+    {
+      "kind": "import",
+      "source": "rig-view",
+      "target": "rig-store",
+      "protocol": "import",
+      "label": "starts and stops the polling · reads rig + live stats",
+      "id": "rig-view-rig-store"
+    },
+    {
+      "kind": "import",
+      "source": "rig-view",
+      "target": "profile-bar",
+      "protocol": "import",
+      "label": "which profile to draw",
+      "ack": "Svelte component composition: a compile-time import between two components, no runtime hop",
+      "id": "rig-view-profile-bar"
+    },
+    {
+      "kind": "import",
+      "source": "rig-view",
+      "target": "module-form",
+      "protocol": "import",
+      "label": "the open module's placement, plan and layouts",
+      "ack": "Svelte component composition: a compile-time import between two components, no runtime hop",
+      "id": "rig-view-module-form"
+    },
+    {
+      "kind": "data",
+      "source": "rig-api",
+      "target": "layouts-store",
+      "protocol": "fs",
+      "label": "named placements per profile",
+      "id": "rig-api-layouts-store"
+    },
+    {
+      "kind": "import",
+      "source": "estimator",
+      "target": "facts",
+      "protocol": "import",
+      "label": "weight bytes · KV cost of a token · legal group sizes",
+      "id": "estimator-facts"
+    },
+    {
+      "kind": "import",
+      "source": "rig-graph",
+      "target": "brands",
+      "protocol": "import",
+      "label": "brandFor(title, model, unit, process) → mark + colour",
+      "id": "rig-graph-brands"
+    }
+  ],
+  "history": [
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "panel",
+      "op": "add",
+      "label": "Panel · Settings, revamped"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "core",
+      "op": "add",
+      "label": "crv · Go core · new internal/rig"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "state",
+      "op": "add",
+      "label": "State · what decides placement"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "frame",
+      "id": "machine",
+      "op": "add",
+      "label": "Machine · what actually runs"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "settings-shell",
+      "op": "add",
+      "kind": "ui",
+      "label": "Settings shell"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-view",
+      "op": "add",
+      "kind": "ui",
+      "label": "Rig canvas"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout-editor",
+      "op": "add",
+      "kind": "ui",
+      "label": "Layout editor"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "model-fit",
+      "op": "add",
+      "kind": "ui",
+      "label": "Model fit browser"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-store",
+      "op": "add",
+      "kind": "module",
+      "label": "rig.svelte.ts"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "api-client",
+      "op": "add",
+      "kind": "module",
+      "label": "api.ts"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-api",
+      "op": "add",
+      "kind": "api",
+      "label": "/api/rig/*"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "inventory",
+      "op": "add",
+      "kind": "module",
+      "label": "rig/inventory"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "alloc",
+      "op": "add",
+      "kind": "module",
+      "label": "rig/alloc"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "estimator",
+      "op": "add",
+      "kind": "module",
+      "label": "rig/estimate"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout",
+      "op": "add",
+      "kind": "module",
+      "label": "rig/layout"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "hfclient",
+      "op": "add",
+      "kind": "module",
+      "label": "rig/hf"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "sysstats",
+      "op": "add",
+      "kind": "api",
+      "label": "/api/system/stats"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cores-api",
+      "op": "add",
+      "kind": "api",
+      "label": "/api/cores/*"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cores",
+      "op": "add",
+      "kind": "module",
+      "label": "internal/cores"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coresjson",
+      "op": "add",
+      "kind": "storage",
+      "label": "cores.json"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "overrides",
+      "op": "add",
+      "kind": "storage",
+      "label": "cores.d/<id>.env · <id>.embed.env"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "embedenv",
+      "op": "add",
+      "kind": "storage",
+      "label": "embed.env"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "switchreq",
+      "op": "add",
+      "kind": "storage",
+      "label": "switch-request.json · switch-status.json"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rigcache",
+      "op": "add",
+      "kind": "cache",
+      "label": "rig cache"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "watchdog",
+      "op": "add",
+      "kind": "worker",
+      "label": "crv-park-watchdog"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "coreunit",
+      "op": "add",
+      "kind": "service",
+      "label": "Core unit"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "engine",
+      "op": "add",
+      "kind": "model",
+      "label": "Inference engine"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "embedder",
+      "op": "add",
+      "kind": "sidecar",
+      "label": "Embed sidecar"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "nvsmi",
+      "op": "add",
+      "kind": "program",
+      "label": "nvidia-smi"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "gpus",
+      "op": "add",
+      "kind": "device",
+      "label": "GPUs"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "host",
+      "op": "add",
+      "kind": "device",
+      "label": "CPU + RAM"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "node",
+      "id": "hfhub",
+      "op": "add",
+      "kind": "external",
+      "label": "Hugging Face Hub"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "settings-shell-rig-view",
+      "op": "add",
+      "kind": "import",
+      "label": "settings-shell → rig-view"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-layout-editor",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → layout-editor"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-model-fit",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → model-fit"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-rig-store",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → rig-store"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "layout-editor-rig-store",
+      "op": "add",
+      "kind": "import",
+      "label": "layout-editor → rig-store"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "model-fit-rig-store",
+      "op": "add",
+      "kind": "import",
+      "label": "model-fit → rig-store"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-store-api-client",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-store → api-client"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-client-rig-api",
+      "op": "add",
+      "kind": "sync",
+      "label": "api-client → rig-api"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-client-sysstats",
+      "op": "add",
+      "kind": "sync",
+      "label": "api-client → sysstats"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-client-cores-api",
+      "op": "add",
+      "kind": "sync",
+      "label": "api-client → cores-api"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-inventory",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-api → inventory"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-alloc",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-api → alloc"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-layout",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-api → layout"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-estimator",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-api → estimator"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-hfclient",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-api → hfclient"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "layout-estimator",
+      "op": "add",
+      "kind": "import",
+      "label": "layout → estimator"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "layout-cores",
+      "op": "add",
+      "kind": "import",
+      "label": "layout → cores"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "alloc-cores",
+      "op": "add",
+      "kind": "import",
+      "label": "alloc → cores"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "estimator-inventory",
+      "op": "add",
+      "kind": "import",
+      "label": "estimator → inventory"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "sysstats-inventory",
+      "op": "add",
+      "kind": "import",
+      "label": "sysstats → inventory"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "cores-api-cores",
+      "op": "add",
+      "kind": "import",
+      "label": "cores-api → cores"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "inventory-nvsmi",
+      "op": "add",
+      "kind": "sync",
+      "label": "inventory → nvsmi"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "alloc-nvsmi",
+      "op": "add",
+      "kind": "sync",
+      "label": "alloc → nvsmi"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "sysstats-nvsmi",
+      "op": "add",
+      "kind": "sync",
+      "label": "sysstats → nvsmi"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "alloc-coreunit",
+      "op": "add",
+      "kind": "data",
+      "label": "alloc → coreunit"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "nvsmi-gpus",
+      "op": "add",
+      "kind": "sync",
+      "label": "nvsmi → gpus"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "inventory-rigcache",
+      "op": "add",
+      "kind": "data",
+      "label": "inventory → rigcache"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "hfclient-rigcache",
+      "op": "add",
+      "kind": "data",
+      "label": "hfclient → rigcache"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "hfclient-hfhub",
+      "op": "add",
+      "kind": "sync",
+      "label": "hfclient → hfhub"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "cores-coresjson",
+      "op": "add",
+      "kind": "data",
+      "label": "cores → coresjson"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "cores-overrides",
+      "op": "add",
+      "kind": "data",
+      "label": "cores → overrides"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "cores-embedenv",
+      "op": "add",
+      "kind": "data",
+      "label": "cores → embedenv"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "cores-switchreq",
+      "op": "add",
+      "kind": "data",
+      "label": "cores → switchreq"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "watchdog-switchreq",
+      "op": "add",
+      "kind": "data",
+      "label": "watchdog → switchreq"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "watchdog-coreunit",
+      "op": "add",
+      "kind": "control",
+      "label": "watchdog → coreunit"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "watchdog-embedder",
+      "op": "add",
+      "kind": "control",
+      "label": "watchdog → embedder"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "overrides-coreunit",
+      "op": "add",
+      "kind": "data",
+      "label": "overrides → coreunit"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "embedenv-embedder",
+      "op": "add",
+      "kind": "data",
+      "label": "embedenv → embedder"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "coreunit-engine",
+      "op": "add",
+      "kind": "control",
+      "label": "coreunit → engine"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "engine-gpus",
+      "op": "add",
+      "kind": "deploy",
+      "label": "engine → gpus"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "engine-host",
+      "op": "add",
+      "kind": "deploy",
+      "label": "engine → host"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "embedder-gpus",
+      "op": "add",
+      "kind": "deploy",
+      "label": "embedder → gpus"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "embedder-host",
+      "op": "add",
+      "kind": "deploy",
+      "label": "embedder → host"
+    },
+    {
+      "at": "2026-09-20T08:28:08.711Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "to": "android, cmd, docs, docs-private, rfx, scripts, Benchmark, Reports, assets, build, strix_runs, sidecars/ignite, sidecars/embedding_conventions.py, sidecars/test_nemotron_embed.py, deploy/idle/README.md, deploy/idle/cerveau-embed.service, deploy/idle/crv-core-vllm.service, deploy/idle/crv-core-vllm-proxy.service, deploy/idle/crv-core-vllm-proxy.socket, deploy/idle/crv-park-watchdog.service, internal/codeintel, internal/config, internal/episodic, internal/guard, internal/idle, internal/llm, internal/loop, internal/memory, internal/panel, internal/plan, internal/rfx, internal/rfxdgv, internal/rfxgithub, internal/server, internal/session, internal/skills, internal/tools, internal/window, panel/src/kit, panel/src/lib/chat, panel/src/lib/engines, panel/src/lib/stores"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:28:22.661Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "settings-shell-rig-view",
+      "op": "change",
+      "fields": [
+        {
+          "field": "ack",
+          "to": "Svelte component composition: a compile-time import between two components, n…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:28:22.661Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-layout-editor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "ack",
+          "to": "Svelte component composition: a compile-time import between two components, n…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:28:22.661Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-model-fit",
+      "op": "change",
+      "fields": [
+        {
+          "field": "ack",
+          "to": "Svelte component composition: a compile-time import between two components, n…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:28:22.661Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "embedenv-embedder",
+      "op": "change",
+      "fields": [
+        {
+          "field": "ack",
+          "to": "an EnvironmentFile read once at unit start, not a call on the embeddings port"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:28:22.661Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "from": "android, cmd, docs, docs-private, rfx, scripts, Benchmark, Reports, assets, build, strix_runs, sidecars/ignite, sidecars/embedding_conventions.py, sidecars/test_nemotron_embed.py, deploy/idle/README.md, deploy/idle/cerveau-embed.service, deploy/idle/crv-core-vllm.service, deploy/idle/crv-core-vllm-proxy.service, deploy/idle/crv-core-vllm-proxy.socket, deploy/idle/crv-park-watchdog.service, internal/codeintel, internal/config, internal/episodic, internal/guard, internal/idle, internal/llm, internal/loop, internal/memory, internal/panel, internal/plan, internal/rfx, internal/rfxdgv, internal/rfxgithub, internal/server, internal/session, internal/skills, internal/tools, internal/window, panel/src/kit, panel/src/lib/chat, panel/src/lib/engines, panel/src/lib/stores",
+          "to": "android, cmd, docs, docs-private, rfx, scripts, Benchmark, Reports, assets, build, strix_runs, sidecars/ignite, sidecars/embedding_conventions.py, sidecars/test_nemotron_embed.py, deploy/idle/README.md, deploy/idle/cerveau-embed.service, deploy/idle/crv-core-vllm.service, deploy/idle/crv-core-vllm-proxy.service, deploy/idle/crv-core-vllm-proxy.socket, deploy/idle/crv-park-watchdog.service, internal/codeintel, internal/config, internal/episodic, internal/guard, internal/idle, internal/llm, internal/loop, internal/memory, internal/panel, internal/plan, internal/rfx, internal/rfxdgv, internal/rfxgithub, internal/server, internal/session, internal/skills, internal/tools, internal/window, panel/src/kit, panel/src/lib/chat, panel/src/lib/engines, panel/src/lib/stores/health.svelte.ts, panel/src/lib/stores/idle.svelte.ts, panel/src/lib/stores/session.svelte.ts, panel/src/lib/stores/settings.svelte.ts, panel/src/lib/stores/ui.svelte.ts"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:28:30.722Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cores-api",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Apply restarts Cerveau and reloads the engine without checking for an active run"
+      }
+    },
+    {
+      "at": "2026-09-20T08:28:37.827Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "Only the two TP=4 profiles declare placement params — llama.cpp and the single-card vLLM Core expose none"
+      }
+    },
+    {
+      "at": "2026-09-20T08:28:43.245Z",
+      "by": "agent",
+      "type": "node",
+      "id": "estimator",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "idea",
+        "title": "Observed VRAM cannot show whether a model fits — vLLM fills every card to GPU_UTIL by design"
+      }
+    },
+    {
+      "at": "2026-09-20T08:28:48.520Z",
+      "by": "agent",
+      "type": "node",
+      "id": "hfclient",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "question",
+        "title": "First outbound call the core makes on its own behalf — against 'no cloud, no accounts, no telemetry'"
+      }
+    },
+    {
+      "at": "2026-09-20T08:33:48.666Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "wip"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:33:48.666Z",
+      "by": "agent",
+      "type": "node",
+      "id": "inventory",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "what the machine HAS: GPUs, VRAM, PCIe, topology, CPU, RAM",
+          "to": "what the machine HAS: GPUs, VRAM, PCIe, power cap, link topology"
+        },
+        {
+          "field": "note",
+          "from": "Static facts, probed once and cached: index, uuid, name, VRAM total, PCIe gen…",
+          "to": "Static GPU facts from one nvidia-smi query plus `topo -m` for the link matrix…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "internal/rig/inventory.go",
+          "to": "internal/rig/inventory.go, internal/rig/rig_test.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:33:48.666Z",
+      "by": "agent",
+      "type": "node",
+      "id": "alloc",
+      "op": "change",
+      "fields": [
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:33:48.666Z",
+      "by": "agent",
+      "type": "node",
+      "id": "sysstats",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "live: temp · util · VRAM used · power, per GPU",
+          "to": "live: temp · util · VRAM used · power per GPU · CPU + RAM facts"
+        },
+        {
+          "field": "note",
+          "from": "Exists and already reports every GPU. Update: take its static CPU/RAM brand r…",
+          "to": "Exists and already reports every GPU, plus the CPU name/cores and RAM size/ty…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:33:48.666Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rigcache",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "~/.cache/cerveau/rig — model facts by repo@revision · inventory snapshot",
+          "to": "~/.cache/cerveau/rig — model facts by repo@revision"
+        },
+        {
+          "field": "note",
+          "from": "Disposable: deleting it costs one re-probe and re-fetch. Never holds a token.",
+          "to": "Disposable: deleting it costs one re-fetch. Never holds a token. Only the Hug…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:33:48.666Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "sysstats-inventory",
+      "op": "remove",
+      "kind": "import",
+      "label": "sysstats → inventory"
+    },
+    {
+      "at": "2026-09-20T08:33:48.666Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "inventory-rigcache",
+      "op": "remove",
+      "kind": "data",
+      "label": "inventory → rigcache"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-graph",
+      "op": "add",
+      "kind": "module",
+      "label": "rigGraph.ts"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-nodes",
+      "op": "add",
+      "kind": "ui",
+      "label": "Node cards"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-art",
+      "op": "add",
+      "kind": "ui",
+      "label": "Component illustrations"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "facts",
+      "op": "add",
+      "kind": "module",
+      "label": "rig/facts"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkpoint",
+      "op": "add",
+      "kind": "storage",
+      "label": "Checkpoint"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-view",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "one GPU illustration per detected card · CPU · RAM · VRAM bars split by consumer",
+          "to": "SvelteFlow graph: hardware cards · workload cards · 'runs on' edges"
+        },
+        {
+          "field": "note",
+          "from": "Draws N cards from the inventory — 5 on the lab rig, 1 on a single-card box, …",
+          "to": "@xyflow/svelte is already in the panel (MemGraph, ActivityFlow) — no new depe…"
+        },
+        {
+          "field": "tech",
+          "from": "Svelte 5 · inline SVG",
+          "to": "Svelte 5 · @xyflow/svelte"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout-editor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "pick the Core's GPU group · place the embedder · presets",
+          "to": "connect a workload to cards · presets · Apply"
+        },
+        {
+          "field": "note",
+          "from": "Click cards in/out of the Core's group; choose where the embedder goes (a car…",
+          "to": "Edit mode on the same graph: drag from the Core's handle to a card to add it …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Read-only and what-if only. Nothing under /api/rig writes a Core's configurat…",
+          "to": "Read-only and what-if only: nothing under /api/rig writes a Core's configurat…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Translates {core gpus[], embedder placement} into CUDA_VISIBLE_DEVICES, TP, a…",
+          "to": "Translates {core gpus[], embedder placement} into the profile's keys and retu…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "hfclient",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "Hugging Face Hub: search · model info · config.json → model facts",
+          "to": "Hugging Face Hub: search · model info · config.json"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "node",
+      "id": "host",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "CPU + RAM",
+          "to": "Host · CPU + RAM"
+        },
+        {
+          "field": "sublabel",
+          "from": "where llama.cpp puts MoE experts, and where the embedder runs on a one-card box",
+          "to": "where crv and Typesense run, where llama.cpp puts MoE experts, where the embe…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-rig-store",
+      "op": "remove",
+      "kind": "import",
+      "label": "rig-view → rig-store"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-hfclient",
+      "op": "remove",
+      "kind": "import",
+      "label": "rig-api → hfclient"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "alloc-coreunit",
+      "op": "remove",
+      "kind": "data",
+      "label": "alloc → coreunit"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-rig-graph",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → rig-graph"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-rig-nodes",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → rig-nodes"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-nodes-rig-art",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-nodes → rig-art"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-graph-rig-store",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-graph → rig-store"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-facts",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-api → facts"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "facts-hfclient",
+      "op": "add",
+      "kind": "import",
+      "label": "facts → hfclient"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "facts-checkpoint",
+      "op": "add",
+      "kind": "data",
+      "label": "facts → checkpoint"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "layout-facts",
+      "op": "add",
+      "kind": "import",
+      "label": "layout → facts"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "engine-checkpoint",
+      "op": "add",
+      "kind": "data",
+      "label": "engine → checkpoint"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "alloc-host",
+      "op": "add",
+      "kind": "data",
+      "label": "alloc → host"
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "api-client-cores-api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "save the layout as overrides · Restart to apply",
+          "to": "save the plan's COMPLETE override sets · Restart to apply"
+        },
+        {
+          "field": "payload",
+          "from": "{overrides, embed_overrides} then {id}",
+          "to": "{overrides, embed_overrides} exactly as /api/rig/plan returned them, then {id}"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:48:57.537Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "description",
+          "from": "PLAN (0.7 draft, nothing built). Settings gains a Rig section that draws the …",
+          "to": "PLAN (0.7). Settings gains a Rig section: a SvelteFlow graph of the machine. …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T08:49:07.437Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout",
+      "op": "flag",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "The card you click may not be the card CUDA uses — nothing pins the device order"
+      }
+    },
+    {
+      "at": "2026-09-20T08:49:13.622Z",
+      "by": "agent",
+      "type": "node",
+      "id": "watchdog",
+      "op": "flag",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "The switch waits for EVERY card to be empty — a layout that leaves things on other cards stalls each switch for 60 s"
+      }
+    },
+    {
+      "at": "2026-09-20T08:55:01.030Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-art",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Drawn after cerveau-site/site/assets/models/*.glb as the site renders them: f…",
+          "to": "BUILT: five colourless SVG files + RigArt.svelte, which inlines one by kind (…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:14:50.240Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-art",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "GPU · CPU · RAM · SSD · NAS — line-art SVG, same language as cerveau-site's m…",
+          "to": "GPU · CPU · RAM · NVMe · SATA SSD · HDD · NAS — line-art SVG, every one anima…"
+        },
+        {
+          "field": "note",
+          "from": "BUILT: five colourless SVG files + RigArt.svelte, which inlines one by kind (…",
+          "to": "BUILT: seven colourless, timeless SVG files + RigArt.svelte, which inlines on…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:14:50.240Z",
+      "by": "agent",
+      "type": "node",
+      "id": "checkpoint",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "the MODEL path: safetensors / GGUF + config.json — local NVMe or a NAS mount",
+          "to": "the MODEL path: safetensors / GGUF + config.json — on an NVMe, a SATA SSD, a …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "node",
+      "id": "settings-shell",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "section nav: Rig · Engine · Model behaviour · Sound · RFX",
+          "to": "section tabs: Rig · Engine · Generation · Talents · Sound — one section on sc…"
+        },
+        {
+          "field": "note",
+          "from": "Today one file, three sections in one scroll. Becomes a thin shell + panel/sr…",
+          "to": "BUILT 2026-09-20. Was one 762-line file with three sections in a single scrol…"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "panel/src/lib/Settings.svelte",
+          "to": "panel/src/lib/Settings.svelte, panel/src/lib/settings/EngineSection.svelte, panel/src/lib/settings/GenerationSection.svelte, panel/src/lib/settings/TalentsSection.svelte, panel/src/lib/settings/SoundSection.svelte, panel/src/lib/settings/settings.css"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-view",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "@xyflow/svelte is already in the panel (MemGraph, ActivityFlow) — no new depe…",
+          "to": "BUILT (read-only): mounts SvelteFlow only once there are nodes, so fitView fr…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-store",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Inventory loaded once; live stats polled only while the Rig section is open; …",
+          "to": "BUILT: /api/rig every 5 s (two nvidia-smi calls a time), /api/system/stats ev…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "node",
+      "id": "api-client",
+      "op": "change",
+      "fields": [
+        {
+          "field": "status",
+          "from": "update",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-graph",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "The one place that decides what is drawn. Input: inventory, observed, next, d…",
+          "to": "BUILT, 12 vitest cases from the lab rig's real /api/rig output: five cards, o…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "panel/src/lib/settings/rig/rigGraph.ts",
+          "to": "panel/src/lib/settings/rig/rigGraph.ts, panel/src/lib/settings/rig/rigGraph.test.ts"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-nodes",
+      "op": "change",
+      "fields": [
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-graph-rig-store",
+      "op": "remove",
+      "kind": "import",
+      "label": "rig-graph → rig-store"
+    },
+    {
+      "at": "2026-09-20T09:27:51.503Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-rig-store",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → rig-store"
+    },
+    {
+      "at": "2026-09-20T11:27:33.782Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cores-api",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "issue",
+        "title": "Apply restarts Cerveau and reloads the engine without checking for an active run"
+      }
+    },
+    {
+      "at": "2026-09-20T11:27:34.968Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout",
+      "op": "resolve",
+      "flag": {
+        "id": "f2",
+        "kind": "issue",
+        "title": "The card you click may not be the card CUDA uses — nothing pins the device order"
+      }
+    },
+    {
+      "at": "2026-09-20T11:27:54.377Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-view",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "Rig canvas",
+          "to": "Rig diagram"
+        },
+        {
+          "field": "sublabel",
+          "from": "SvelteFlow graph: hardware cards · workload cards · 'runs on' edges",
+          "to": "a FIXED SvelteFlow diagram: hardware cards · workload cards · links you draw"
+        },
+        {
+          "field": "note",
+          "from": "BUILT (read-only): mounts SvelteFlow only once there are nodes, so fitView fr…",
+          "to": "BUILT. Not a canvas to wander — the user asked for that to go (2026-09-20): p…"
+        },
+        {
+          "field": "path",
+          "from": "panel/src/lib/settings/rig/RigView.svelte",
+          "to": "panel/src/lib/settings/rig/RigView.svelte, panel/src/lib/settings/rig/RigFit.svelte"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:27:54.377Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout-editor",
+      "op": "change",
+      "fields": [
+        {
+          "field": "label",
+          "from": "Layout editor",
+          "to": "Linking"
+        },
+        {
+          "field": "sublabel",
+          "from": "connect a workload to cards · presets · Apply",
+          "to": "drag a module's port onto a card · click a link to remove it"
+        },
+        {
+          "field": "note",
+          "from": "Edit mode on the same graph: drag from the Core's handle to a card to add it …",
+          "to": "BUILT inside the diagram rather than as a separate editor: the Core and the e…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "panel/src/lib/settings/rig/LayoutEditor.svelte",
+          "to": "panel/src/lib/settings/rig/rigLink.svelte.ts"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:27:54.377Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Translates {core gpus[], embedder placement} into the profile's keys and retu…",
+          "to": "BUILT, 7 tests. {core gpus[], embedder placement} → the COMPLETE override set…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "internal/rig/layout.go",
+          "to": "internal/rig/layout.go, internal/rig/layout_test.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:27:54.377Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cores-api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "The ONLY write path, and it already exists. Rig reuses it as is; the one chan…",
+          "to": "The ONLY write path. Rig reuses PUT params and POST apply as they are. BUILT …"
+        },
+        {
+          "field": "status",
+          "from": "update",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:49:32.261Z",
+      "by": "agent",
+      "type": "node",
+      "id": "estimator",
+      "op": "resolve",
+      "flag": {
+        "id": "f1",
+        "kind": "idea",
+        "title": "Observed VRAM cannot show whether a model fits — vLLM fills every card to GPU_UTIL by design"
+      }
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "node",
+      "id": "profile-bar",
+      "op": "add",
+      "kind": "ui",
+      "label": "Profile bar"
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "node",
+      "id": "module-form",
+      "op": "add",
+      "kind": "ui",
+      "label": "Module form"
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layouts-store",
+      "op": "add",
+      "kind": "storage",
+      "label": "rig-layouts.json"
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-view",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "BUILT. Not a canvas to wander — the user asked for that to go (2026-09-20): p…",
+          "to": "BUILT. A fixed diagram: pan, zoom and scroll are off; the frame takes the dra…"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Read-only and what-if only: nothing under /api/rig writes a Core's configurat…",
+          "to": "Read-only and what-if only, except the layouts file. GET /api/rig[?core=] → {…"
+        },
+        {
+          "field": "status",
+          "from": "wip",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "node",
+      "id": "estimator",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Pure arithmetic, no IO, table-tested. Inputs: model facts (weight bytes, laye…",
+          "to": "BUILT, 7 tests on the rig's real numbers. Per card: share of the card = weigh…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        },
+        {
+          "field": "path",
+          "from": "internal/rig/estimate.go",
+          "to": "internal/rig/estimate.go, internal/rig/estimate_test.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "node",
+      "id": "facts",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "One struct whatever the source: weight bytes by dtype, layers, attention laye…",
+          "to": "BUILT. Reads the profile's own MODEL path (%h and ~ expanded): config.json (t…"
+        },
+        {
+          "field": "status",
+          "from": "todo",
+          "to": "done"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-profile-bar",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → profile-bar"
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-view-module-form",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-view → module-form"
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-api-layouts-store",
+      "op": "add",
+      "kind": "data",
+      "label": "rig-api → layouts-store"
+    },
+    {
+      "at": "2026-09-20T11:49:57.370Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "estimator-facts",
+      "op": "add",
+      "kind": "import",
+      "label": "estimator → facts"
+    },
+    {
+      "at": "2026-09-20T12:41:52.996Z",
+      "by": "agent",
+      "type": "node",
+      "id": "brands",
+      "op": "add",
+      "kind": "module",
+      "label": "brands"
+    },
+    {
+      "at": "2026-09-20T12:41:52.996Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-nodes",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "HardwareNode: the component's illustration, its name, a VRAM/RAM bar segmente…",
+          "to": "HardwareNode: the illustration, the name, a memory bar split by who holds it,…"
+        },
+        {
+          "field": "path",
+          "from": "panel/src/lib/settings/rig/HardwareNode.svelte, panel/src/lib/settings/rig/WorkloadNode.svelte",
+          "to": "panel/src/lib/settings/rig/HardwareNode.svelte, panel/src/lib/settings/rig/WorkloadNode.svelte, panel/src/lib/settings/rig/BrandMark.svelte"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T12:41:52.996Z",
+      "by": "agent",
+      "type": "edge",
+      "id": "rig-graph-brands",
+      "op": "add",
+      "kind": "import",
+      "label": "rig-graph → brands"
+    },
+    {
+      "at": "2026-09-20T12:41:52.996Z",
+      "by": "agent",
+      "type": "meta",
+      "id": "meta",
+      "op": "change",
+      "fields": [
+        {
+          "field": "driftIgnore",
+          "from": "android, cmd, docs, docs-private, rfx, scripts, Benchmark, Reports, assets, build, strix_runs, sidecars/ignite, sidecars/embedding_conventions.py, sidecars/test_nemotron_embed.py, deploy/idle/README.md, deploy/idle/cerveau-embed.service, deploy/idle/crv-core-vllm.service, deploy/idle/crv-core-vllm-proxy.service, deploy/idle/crv-core-vllm-proxy.socket, deploy/idle/crv-park-watchdog.service, internal/codeintel, internal/config, internal/episodic, internal/guard, internal/idle, internal/llm, internal/loop, internal/memory, internal/panel, internal/plan, internal/rfx, internal/rfxdgv, internal/rfxgithub, internal/server, internal/session, internal/skills, internal/tools, internal/window, panel/src/kit, panel/src/lib/chat, panel/src/lib/engines, panel/src/lib/stores/health.svelte.ts, panel/src/lib/stores/idle.svelte.ts, panel/src/lib/stores/session.svelte.ts, panel/src/lib/stores/settings.svelte.ts, panel/src/lib/stores/ui.svelte.ts",
+          "to": "android, cmd, docs, docs-private, rfx, scripts, Benchmark, Reports, assets, build, strix_runs, sidecars/ignite, sidecars/embedding_conventions.py, sidecars/test_nemotron_embed.py, deploy/idle/README.md, deploy/idle/cerveau-embed.service, deploy/idle/crv-core-vllm.service, deploy/idle/crv-core-vllm-proxy.service, deploy/idle/crv-core-vllm-proxy.socket, deploy/idle/crv-park-watchdog.service, internal/codeintel, internal/config, internal/episodic, internal/guard, internal/idle, internal/llm, internal/loop, internal/memory, internal/panel, internal/plan, internal/rfx, internal/rfxdgv, internal/rfxgithub, internal/server, internal/session, internal/skills, internal/tools, internal/window, panel/public, panel/src/kit, panel/src/lib/chat, panel/src/lib/engines, panel/src/lib/stores/health.svelte.ts, panel/src/lib/stores/idle.svelte.ts, panel/src/lib/stores/session.svelte.ts, panel/src/lib/stores/settings.svelte.ts, panel/src/lib/stores/ui.svelte.ts"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T13:26:19.228Z",
+      "by": "agent",
+      "type": "node",
+      "id": "settings-shell",
+      "op": "change",
+      "fields": [
+        {
+          "field": "sublabel",
+          "from": "section tabs: Rig · Engine · Generation · Talents · Sound — one section on sc…",
+          "to": "icon tabs: Rig · Engine · Generation · Talents · Sound — one section on screen"
+        },
+        {
+          "field": "note",
+          "from": "BUILT 2026-09-20. Was one 762-line file with three sections in a single scrol…",
+          "to": "A ~100-line shell and one file per section, each owning its own loading. Tabs…"
+        },
+        {
+          "field": "path",
+          "from": "panel/src/lib/Settings.svelte, panel/src/lib/settings/EngineSection.svelte, panel/src/lib/settings/GenerationSection.svelte, panel/src/lib/settings/TalentsSection.svelte, panel/src/lib/settings/SoundSection.svelte, panel/src/lib/settings/settings.css",
+          "to": "panel/src/lib/Settings.svelte, panel/src/lib/settings/EngineSection.svelte, panel/src/lib/settings/GenerationSection.svelte, panel/src/lib/settings/TalentsSection.svelte, panel/src/lib/settings/SoundSection.svelte, panel/src/lib/settings/settings.css, panel/src/lib/settings/vocabulary.ts, panel/src/lib/settings/vocabulary.test.ts"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T13:26:19.228Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-view",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "BUILT. A fixed diagram: pan, zoom and scroll are off; the frame takes the dra…",
+          "to": "A fixed diagram: pan, zoom and scroll are off; the frame takes the drawing's …"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T13:26:19.228Z",
+      "by": "agent",
+      "type": "node",
+      "id": "rig-api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "Read-only and what-if only, except the layouts file. GET /api/rig[?core=] → {…",
+          "to": "Thin handlers: every rule is in internal/rig. GET /api/rig[?core=] (profile r…"
+        },
+        {
+          "field": "path",
+          "from": "internal/api/rig.go",
+          "to": "internal/api/rig.go, internal/api/rig_test.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T13:26:19.228Z",
+      "by": "agent",
+      "type": "node",
+      "id": "layout",
+      "op": "change",
+      "fields": [
+        {
+          "field": "note",
+          "from": "BUILT, 7 tests. {core gpus[], embedder placement} → the COMPLETE override set…",
+          "to": "PlanLayout(PlanInput, LayoutRequest) → Plan. The plan names the profile it wa…"
+        },
+        {
+          "field": "path",
+          "from": "internal/rig/layout.go, internal/rig/layout_test.go",
+          "to": "internal/rig/layout.go, internal/rig/layout_test.go, internal/rig/layouts.go, internal/rig/layouts_test.go"
+        }
+      ]
+    },
+    {
+      "at": "2026-09-20T13:26:19.228Z",
+      "by": "agent",
+      "type": "node",
+      "id": "cores-api",
+      "op": "change",
+      "fields": [
+        {
+          "field": "path",
+          "from": "internal/api/cores.go",
+          "to": "internal/api/cores.go, internal/api/cores_apply_test.go"
+        }
+      ]
+    }
+  ]
+}
